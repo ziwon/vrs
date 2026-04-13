@@ -1,0 +1,56 @@
+# Multi-stream runtime settings. Paired with a base config (default.yaml or
+# tiny.yaml) that supplies ingest / detector / event_state / verifier / sink.
+#
+# Usage:
+#   python scripts/run_multistream.py \
+#       --config  configs/default.yaml \
+#       --policy  configs/policies/safety.yaml \
+#       --streams configs/multistream.yaml \
+#       --out     runs/live
+
+multistream:
+  # Frame decode backend:
+  #   opencv       — FFmpeg CPU decode (default, works everywhere).
+  #   nvdec        — cv2.cudacodec NVDEC (requires OpenCV built with CUDA;
+  #                  falls back to opencv with a warning if unavailable).
+  #   deepstream   — placeholder; full DeepStream 8.0 path is a future
+  #                  optimization that also requires TRT-exported YOLOE
+  #                  and Cosmos engines. Not implemented yet.
+  decoder_backend: opencv
+
+  # Shared frame queue across all decoder threads. Drop oldest when the
+  # detector can't keep up — live-video correctness > completeness.
+  frame_queue_size: 64
+  frame_drop_policy: drop_oldest        # drop_oldest | drop_newest | block
+
+  # How many frames the DetectorWorker batches into one YOLOE forward pass.
+  # 4-8 is the sweet spot; larger batches raise latency without helping
+  # throughput once the GPU is saturated.
+  detector_batch_size: 4
+  detector_batch_timeout_ms: 30
+
+  # Verifier queue (CandidateAlerts waiting for Cosmos-Reason2-2B). Smaller
+  # than frame_queue_size because verifies are slow (~1-15 s each) and we'd
+  # rather drop an alert than hold a 60-s backlog.
+  verifier_queue_size: 16
+  verifier_drop_policy: drop_oldest
+
+  # Per-stream sink queue. Rarely fills unless the disk is slow.
+  sink_queue_size: 32
+
+# Stream manifest — one entry per camera / file.
+# ``id`` becomes the output subdirectory name: runs/<out>/<id>/{alerts.jsonl,annotated.mp4}
+streams:
+  - id: cam_lobby
+    rtsp: rtsp://demo:demo@192.168.1.10:554/stream1
+
+  - id: cam_corridor
+    rtsp: rtsp://demo:demo@192.168.1.11:554/stream1
+
+  - id: cam_warehouse
+    rtsp: rtsp://demo:demo@192.168.1.12:554/stream1
+
+  # You can also mix in files alongside live streams — useful for
+  # offline re-runs or regression testing.
+  # - id: replay_fire
+  #   rtsp: file:///data/clips/fire_2026_04_10.mp4

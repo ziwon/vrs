@@ -1,0 +1,45 @@
+# Watch policy — plain English event list.
+# This is the ONLY file you maintain when adding new event classes.
+#
+# Each entry has:
+#   name        : short id (also the class name in alerts.jsonl)
+#   detector    : list of noun-phrase prompts handed to YOLOE
+#   verifier    : single sentence that defines the event for Cosmos-Reason2
+#   severity    : info | low | medium | high | critical
+#   min_score   : per-class detector score floor (overrides config.detector.conf_floor up)
+#   min_persist_frames : how many of the last `event_state.window` frames must
+#                        contain a hit before we promote to a CandidateAlert
+
+watch:
+  - name: fire
+    detector: ["fire", "open flame", "burning object"]
+    verifier: "Open flames or active fire indoors that pose a safety risk"
+    severity: critical
+    min_score: 0.30
+    min_persist_frames: 2
+
+  - name: smoke
+    detector: ["smoke", "smoke cloud", "billowing smoke"]
+    verifier: "Thick smoke filling a space, indicating fire or fault"
+    severity: high
+    min_score: 0.25
+    min_persist_frames: 2
+
+  - name: falldown
+    detector:
+      - "person lying on the ground"
+      - "fallen person"
+      - "collapsed person"
+    verifier: "A person has collapsed and is lying motionless on the floor"
+    severity: high
+    min_score: 0.35
+    min_persist_frames: 3
+
+  # ── Custom example ─────────────────────────────────────────────
+  # Add new event types just like this; nothing else to change.
+  - name: weapon
+    detector: ["handgun", "knife", "rifle"]
+    verifier: "A person is visibly holding or brandishing a weapon"
+    severity: critical
+    min_score: 0.40
+    min_persist_frames: 1

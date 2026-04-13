@@ -1,0 +1,40 @@
+# VRS default config — single 16 GB GPU
+# Fast path: YOLOE-L FP16 (~0.5 GB)
+# Slow path: Cosmos-Reason2-2B BF16 (~5 GB)
+# Total VRAM budget: ~8.5 GB
+
+ingest:
+  target_fps: 4              # matches Cosmos-Reason2-2B's training distribution
+  roi_polygon: null
+
+detector:
+  model: "yoloe-11l-seg.pt"  # Ultralytics YOLOE large variant
+  device: "cuda"
+  imgsz: 640
+  conf_floor: 0.20           # global floor; per-class min_score in the policy overrides up
+  iou: 0.50
+  half: true                 # FP16
+
+event_state:
+  # how many of the last `window` frames must contain a detection of the class
+  # before we promote it to a CandidateAlert. Per-class override via policy.min_persist_frames.
+  window: 8
+  default_min_persist_frames: 2
+  cooldown_s: 10.0           # per-class debounce after an alert is raised
+
+verifier:
+  enabled: true
+  model_id: "nvidia/Cosmos-Reason2-2B"
+  dtype: "bf16"              # "bf16" | "fp16" | "w4a16" (requires bitsandbytes)
+  device: "cuda"
+  context_window_s: 4.0      # video clip handed to Cosmos: ±2s around the alert peak
+  clip_fps: 4                # Cosmos-Reason2 was trained at FPS=4
+  max_new_tokens: 1024       # CoT can run long; 1024 is safe for verify
+  temperature: 0.2
+  request_bbox: true         # ask Cosmos for {x,y,w,h} of the event in normalized coords
+  request_trajectory: true   # ask for a 2D trajectory (point list) for moving subjects
+
+sink:
+  jsonl: alerts.jsonl
+  annotated_mp4: annotated.mp4
+  write_annotated: true

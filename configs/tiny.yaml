@@ -1,0 +1,39 @@
+# VRS tight config — 8 GB cards / Jetson Orin / shared GPUs
+# Fast path: YOLOE-S FP16 (~0.2 GB)
+# Slow path: Cosmos-Reason2-2B W4A16 (~1.7 GB)
+# Total VRAM budget: ~3.5 GB
+
+ingest:
+  target_fps: 4
+  roi_polygon: null
+
+detector:
+  model: "yoloe-11s-seg.pt"
+  device: "cuda"
+  imgsz: 640
+  conf_floor: 0.20
+  iou: 0.50
+  half: true
+
+event_state:
+  window: 8
+  default_min_persist_frames: 2
+  cooldown_s: 10.0
+
+verifier:
+  enabled: true
+  # community-quantized W4A16 build of Cosmos-Reason2-2B
+  model_id: "embedl/Cosmos-Reason2-2B-W4A16"
+  dtype: "w4a16"
+  device: "cuda"
+  context_window_s: 3.0
+  clip_fps: 4
+  max_new_tokens: 768
+  temperature: 0.2
+  request_bbox: true
+  request_trajectory: false   # save tokens on tight budgets
+
+sink:
+  jsonl: alerts.jsonl
+  annotated_mp4: annotated.mp4
+  write_annotated: true

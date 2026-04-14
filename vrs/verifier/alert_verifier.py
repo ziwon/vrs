@@ -8,7 +8,7 @@ pipeline never silently drops a detector hit.
 from __future__ import annotations
 
 import json
-import re
+import logging
 from typing import List, Optional, Tuple
 
 from ..policy import WatchPolicy
@@ -16,22 +16,56 @@ from ..runtime import CosmosReason2
 from ..schemas import CandidateAlert, VerifiedAlert
 from .prompts import SYSTEM_PROMPT, build_user_prompt
 
+logger = logging.getLogger(__name__)
 
-_JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+def _find_json_object(text: str) -> Optional[str]:
+    """Find the first top-level ``{...}`` with balanced braces.
+
+    Unlike a greedy regex (``\\{.*\\}``), this stops at the correct closing
+    brace even when the LLM wraps JSON in explanatory prose that contains
+    additional braces.
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if escape:
+            escape = False
+            continue
+        if c == "\\":
+            escape = True
+            continue
+        if c == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
 
 
 def _safe_parse_json(text: str) -> Optional[dict]:
     if not text:
         return None
-    m = _JSON_RE.search(text)
-    if not m:
+    blob = _find_json_object(text)
+    if not blob:
         return None
-    blob = m.group(0)
     for candidate in (blob, blob.replace("'", '"')):
         try:
             return json.loads(candidate)
         except json.JSONDecodeError:
             continue
+    logger.warning("verifier JSON parse failed after extraction, raw: %.200s", blob)
     return None
 
 
@@ -109,8 +143,19 @@ class AlertVerifier:
                 rationale=f"verifier error: {e}",
             )
 
-        parsed = _safe_parse_json(raw) or {}
+        parsed = _safe_parse_json(raw)
+        if parsed is None:
+            logger.warning(
+                "verifier returned unparseable response for %s, passing through as true_alert: %.200s",
+                alert.class_name, raw,
+            )
+            parsed = {}
 
+        if "true_alert" not in parsed:
+            logger.warning(
+                "verifier response missing 'true_alert' field for %s, defaulting to True (pass-through)",
+                alert.class_name,
+            )
         true_alert = bool(parsed.get("true_alert", True))
         conf = float(parsed.get("confidence", 0.0) or 0.0)
         fn_cls = parsed.get("false_negative_class")

@@ -12,6 +12,7 @@ RTSP read thread when a downstream worker is slow.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 from ..policy import WatchPolicy
 from ..schemas import CandidateAlert, Detection, Frame, VerifiedAlert
 from .queues import BoundedQueue, DropPolicy
+
+logger = logging.getLogger(__name__)
 
 # Heavy deps (cv2 / ultralytics / transformers) are only imported when
 # threads actually run. This keeps the unit tests import-clean on CPU-only
@@ -80,7 +83,7 @@ class DecoderThread(threading.Thread):
                     break
                 self.frame_q.put(_FrameMsg(self.stream_id, frame))
         except Exception as e:  # noqa: BLE001 — log and exit
-            print(f"[decoder {self.stream_id}] terminated: {e}")
+            logger.error("decoder[%s] terminated: %s", self.stream_id, e)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -144,7 +147,7 @@ class DetectorWorker(threading.Thread):
             try:
                 all_dets = self.detector.batch(frames)
             except Exception as e:  # noqa: BLE001 — don't kill the worker on one bad batch
-                print(f"[detector] batch failed: {e}")
+                logger.warning("detector batch failed: %s", e)
                 continue
 
             # --- per-stream event-state + sink fanout ---
@@ -207,11 +210,11 @@ class VerifierWorker(threading.Thread):
             # mirror the single-stream log line
             tag = "TRUE " if verified.true_alert else "FALSE"
             extra = f"  (fn={verified.false_negative_class})" if verified.false_negative_class else ""
-            print(
-                f"[{msg.stream_id}] [{tag}] t={verified.candidate.peak_pts_s:7.2f}s  "
-                f"class={verified.candidate.class_name:<10}  "
-                f"sev={verified.candidate.severity:<8}  "
-                f"conf={verified.confidence:.2f}{extra}   -- {verified.rationale}"
+            logger.info(
+                "[%s] [%s] t=%7.2fs  class=%-10s  sev=%-8s  conf=%.2f%s   -- %s",
+                msg.stream_id, tag, verified.candidate.peak_pts_s,
+                verified.candidate.class_name, verified.candidate.severity,
+                verified.confidence, extra, verified.rationale,
             )
 
 

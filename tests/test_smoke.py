@@ -6,11 +6,41 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from vrs.pipeline import _validate_config
 from vrs.policy.watch_policy import WatchPolicy, load_watch_policy
 from vrs.schemas import CandidateAlert, Detection, Frame, VerifiedAlert
 from vrs.triage.event_state import EventStateQueue
 from vrs.verifier.alert_verifier import _safe_parse_json
 from vrs.verifier.prompts import build_user_prompt
+
+
+# ─── config validation ─────────────────────────────────────────────────
+
+def test_validate_config_rejects_missing_section():
+    cfg = {"ingest": {"target_fps": 4}, "event_state": {"window": 8},
+           "verifier": {"enabled": False}, "sink": {}}
+    with pytest.raises(ValueError, match="missing required section 'detector'"):
+        _validate_config(cfg, "test.yaml")
+
+
+def test_validate_config_rejects_missing_key():
+    cfg = {"ingest": {}, "detector": {"model": "x"}, "event_state": {"window": 8},
+           "verifier": {"enabled": False}, "sink": {}}
+    with pytest.raises(ValueError, match="ingest.target_fps"):
+        _validate_config(cfg, "test.yaml")
+
+
+def test_validate_config_requires_model_id_when_verifier_enabled():
+    cfg = {"ingest": {"target_fps": 4}, "detector": {"model": "x"},
+           "event_state": {"window": 8}, "verifier": {"enabled": True}, "sink": {}}
+    with pytest.raises(ValueError, match="verifier.model_id"):
+        _validate_config(cfg, "test.yaml")
+
+
+def test_validate_config_skips_model_id_when_verifier_disabled():
+    cfg = {"ingest": {"target_fps": 4}, "detector": {"model": "x"},
+           "event_state": {"window": 8}, "verifier": {"enabled": False}, "sink": {}}
+    _validate_config(cfg, "test.yaml")  # should not raise
 
 
 # ─── policy ────────────────────────────────────────────────────────────
@@ -102,6 +132,41 @@ def test_json_parser_handles_code_fences_and_single_quotes():
     assert parsed is not None and parsed["true_alert"] is False
     parsed = _safe_parse_json("{'true_alert': true, 'confidence': 0.5}")
     assert parsed is not None and parsed["true_alert"] is True
+
+
+def test_json_parser_handles_nested_braces():
+    """Balanced-brace finder should stop at the first complete object."""
+    raw = '{"true_alert": true, "bbox_xywh_norm": [0.1, 0.2, 0.3, 0.4], "rationale": "flames"}'
+    parsed = _safe_parse_json(raw)
+    assert parsed is not None and parsed["true_alert"] is True
+    assert parsed["bbox_xywh_norm"] == [0.1, 0.2, 0.3, 0.4]
+
+
+def test_json_parser_ignores_trailing_prose_with_braces():
+    """If the LLM adds prose after JSON containing braces, only the first object is extracted."""
+    raw = (
+        'Here is my analysis: {"true_alert": false, "confidence": 0.1, "rationale": "benign"}'
+        "\nNote: the scene {lighting} was dim."
+    )
+    parsed = _safe_parse_json(raw)
+    assert parsed is not None
+    assert parsed["true_alert"] is False
+    assert parsed["confidence"] == 0.1
+
+
+def test_json_parser_handles_braces_inside_strings():
+    """Braces inside JSON string values should not confuse the parser."""
+    raw = '{"true_alert": true, "rationale": "object at {x: 10, y: 20} is on fire"}'
+    parsed = _safe_parse_json(raw)
+    assert parsed is not None
+    assert parsed["true_alert"] is True
+    assert "{x: 10, y: 20}" in parsed["rationale"]
+
+
+def test_json_parser_returns_none_for_empty_or_missing():
+    assert _safe_parse_json("") is None
+    assert _safe_parse_json("no json here") is None
+    assert _safe_parse_json("{ unclosed") is None
 
 
 def test_user_prompt_lists_other_events_as_fn_options_only():

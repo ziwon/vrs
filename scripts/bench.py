@@ -24,9 +24,9 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# allow `python scripts/bench.py` without installing the package
-import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+from vrs import setup_logging
 
 
 def _vram_snapshot() -> Optional[Dict[str, float]]:
@@ -195,6 +195,7 @@ def bench_multistream(
 # ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    setup_logging()
     ap = argparse.ArgumentParser(description="Benchmark VRS on the local GPU")
     ap.add_argument("--clips", default="runs/test_clips")
     ap.add_argument("--config", default="configs/default.yaml")

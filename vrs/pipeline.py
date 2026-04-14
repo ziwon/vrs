@@ -5,6 +5,7 @@ module so this file stays short.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -18,10 +19,32 @@ from .sinks import JsonlSink, VideoAnnotator
 from .triage import EventStateQueue, YOLOEConfig, YOLOEDetector
 from .verifier import AlertVerifier
 
+logger = logging.getLogger(__name__)
+
+
+def _require_key(cfg: dict, section: str, key: str, path: str) -> None:
+    sec = cfg.get(section)
+    if not isinstance(sec, dict) or key not in sec:
+        raise ValueError(f"{path}: missing required key '{section}.{key}'")
+
+
+def _validate_config(cfg: dict, path: str = "<config>") -> None:
+    """Check that required sections and keys are present."""
+    for section in ("ingest", "detector", "event_state", "verifier", "sink"):
+        if section not in cfg or not isinstance(cfg[section], dict):
+            raise ValueError(f"{path}: missing required section '{section}'")
+    _require_key(cfg, "ingest", "target_fps", path)
+    _require_key(cfg, "detector", "model", path)
+    _require_key(cfg, "event_state", "window", path)
+    if cfg.get("verifier", {}).get("enabled", True):
+        _require_key(cfg, "verifier", "model_id", path)
+
 
 def load_config(path: str | Path) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    _validate_config(cfg or {}, str(path))
+    return cfg
 
 
 class VRSPipeline:
@@ -135,11 +158,10 @@ class VRSPipeline:
     def _log(v: VerifiedAlert) -> None:
         tag = "TRUE " if v.true_alert else "FALSE"
         extra = f"  (fn={v.false_negative_class})" if v.false_negative_class else ""
-        print(
-            f"[{tag}] t={v.candidate.peak_pts_s:7.2f}s  "
-            f"class={v.candidate.class_name:<10}  "
-            f"sev={v.candidate.severity:<8}  "
-            f"conf={v.confidence:.2f}{extra}   -- {v.rationale}"
+        logger.info(
+            "[%s] t=%7.2fs  class=%-10s  sev=%-8s  conf=%.2f%s   -- %s",
+            tag, v.candidate.peak_pts_s, v.candidate.class_name,
+            v.candidate.severity, v.confidence, extra, v.rationale,
         )
 
 

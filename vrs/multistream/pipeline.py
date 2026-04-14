@@ -6,6 +6,7 @@ so any one noisy camera can't starve the others.
 """
 from __future__ import annotations
 
+import logging
 import signal
 import threading
 import time
@@ -15,20 +16,16 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ..pipeline import load_config
 from ..policy import WatchPolicy, load_watch_policy
-
-
-def load_config(path: str | Path) -> Dict[str, Any]:
-    """Load a YAML config. Duplicated from vrs.pipeline to avoid pulling cv2
-    into the import chain of tests that don't exercise the decoder."""
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
 from ..runtime import CosmosConfig, CosmosReason2
 from ..triage import YOLOEConfig, YOLOEDetector
 from ..verifier import AlertVerifier
 from .queues import BoundedQueue, DropPolicy
 from .readers import Reader, build_reader
 from .workers import DecoderThread, DetectorWorker, SinkWorker, VerifierWorker
+
+logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -50,9 +47,30 @@ class StreamSpec:
         )
 
 
+def _validate_multistream_spec(cfg: dict, path: str = "<streams>") -> None:
+    if not isinstance(cfg, dict):
+        raise ValueError(f"{path}: expected a YAML mapping")
+    streams = cfg.get("streams")
+    if streams is None:
+        raise ValueError(f"{path}: missing required top-level 'streams' key")
+    if not isinstance(streams, list):
+        raise ValueError(f"{path}: 'streams' must be a list")
+    for i, item in enumerate(streams):
+        if not isinstance(item, dict):
+            raise ValueError(f"{path}: streams[{i}] must be a mapping")
+        if "id" not in item:
+            raise ValueError(f"{path}: streams[{i}] missing required key 'id'")
+        if not any(k in item for k in ("rtsp", "source", "video")):
+            raise ValueError(
+                f"{path}: streams[{i}] must define one of 'rtsp', 'source', or 'video'"
+            )
+
+
 def load_multistream_spec(path: str | Path) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f) or {}
+    _validate_multistream_spec(cfg, str(path))
+    return cfg
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -222,7 +240,7 @@ class MultiStreamPipeline:
 
         # graceful SIGINT
         def _handler(signum, frame):  # noqa: ARG001
-            print("\n[multistream] shutting down…")
+            logger.info("shutting down (signal %s)…", signum)
             self.stop()
         try:
             signal.signal(signal.SIGINT, _handler)

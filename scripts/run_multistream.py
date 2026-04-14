@@ -10,15 +10,14 @@ Example:
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from vrs.multistream import build_multistream_pipeline  # noqa: E402
+from vrs import setup_logging
+from vrs.multistream import build_multistream_pipeline
 
 
 def main() -> None:
+    setup_logging()
     p = argparse.ArgumentParser(description="VRS — multi-stream cascade on one GPU")
     p.add_argument("--config", default="configs/default.yaml")
     p.add_argument("--policy", default="configs/policies/safety.yaml")

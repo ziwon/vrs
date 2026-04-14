@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 from pathlib import Path
 
@@ -81,9 +82,28 @@ def gen_fire(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
             y1 = cy - fire_h
             x1 = cx - fire_w // 2
             alpha = (heat > 0.2).astype(np.float32)[..., None]
-            roi = frame[y1 : y1 + fire_h, x1 : x1 + fire_w]
-            frame[y1 : y1 + fire_h, x1 : x1 + fire_w] = (
-                alpha * fire + (1 - alpha) * roi
+
+            # Clip the synthetic patch against the output frame so tiny test
+            # resolutions still produce a valid video instead of slicing past
+            # the image bounds.
+            clip_x1 = max(0, x1)
+            clip_y1 = max(0, y1)
+            clip_x2 = min(w, x1 + fire_w)
+            clip_y2 = min(h, y1 + fire_h)
+            if clip_x1 >= clip_x2 or clip_y1 >= clip_y2:
+                wr.write(frame)
+                continue
+
+            src_x1 = clip_x1 - x1
+            src_y1 = clip_y1 - y1
+            src_x2 = src_x1 + (clip_x2 - clip_x1)
+            src_y2 = src_y1 + (clip_y2 - clip_y1)
+
+            roi = frame[clip_y1:clip_y2, clip_x1:clip_x2]
+            fire_crop = fire[src_y1:src_y2, src_x1:src_x2]
+            alpha_crop = alpha[src_y1:src_y2, src_x1:src_x2]
+            frame[clip_y1:clip_y2, clip_x1:clip_x2] = (
+                alpha_crop * fire_crop + (1 - alpha_crop) * roi
             ).astype(np.uint8)
             wr.write(frame)
     finally:
@@ -232,7 +252,7 @@ def main() -> None:
     for name in keys:
         fn = CLIP_GEN.get(name)
         if fn is None:
-            print(f"[WARN] unknown clip name: {name!r}")
+            logging.warning("unknown clip name: %r", name)
             continue
         path = out / f"{name}_test.mp4"
         print(f"[gen] {name:<10} → {path}   ({w}x{h} @ {args.fps} fps, {args.seconds}s)")

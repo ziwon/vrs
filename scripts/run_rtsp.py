@@ -10,15 +10,14 @@ Example:
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from vrs.pipeline import build_pipeline  # noqa: E402
+from vrs import setup_logging
+from vrs.pipeline import build_pipeline
 
 
 def main() -> None:
+    setup_logging()
     p = argparse.ArgumentParser(description="VRS — run on a live RTSP stream")
     p.add_argument("--rtsp", required=True, help='RTSP URL, e.g. "rtsp://u:p@host:554/stream"')
     p.add_argument("--config", default="configs/default.yaml")

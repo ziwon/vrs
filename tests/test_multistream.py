@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from vrs.multistream.queues import BoundedQueue, DropPolicy
+from vrs.multistream.pipeline import load_multistream_spec
 from vrs.multistream.workers import (
     DetectorWorker, SinkWorker, VerifierWorker, _FrameMsg,
 )
@@ -74,6 +75,23 @@ def test_bounded_queue_get_batch_drains_up_to_max():
 def test_bounded_queue_get_batch_returns_empty_on_timeout():
     q = BoundedQueue(maxsize=4)
     assert q.get_batch(max_items=4, timeout=0.05) == []
+
+
+def test_load_multistream_spec_accepts_partial_manifest(tmp_path):
+    manifest = tmp_path / "streams.yaml"
+    manifest.write_text(
+        "multistream:\n"
+        "  detector_batch_size: 4\n"
+        "streams:\n"
+        "  - id: cam01\n"
+        "    rtsp: rtsp://demo.example/stream1\n",
+        encoding="utf-8",
+    )
+
+    cfg = load_multistream_spec(manifest)
+
+    assert cfg["multistream"]["detector_batch_size"] == 4
+    assert cfg["streams"][0]["id"] == "cam01"
 
 
 # ─── worker fanout with stubs ─────────────────────────────────────────

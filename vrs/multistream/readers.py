@@ -23,6 +23,7 @@ implement a new reader that yields ``Frame`` and register it below.
 """
 from __future__ import annotations
 
+import logging
 import time
 from abc import ABC, abstractmethod
 from typing import Iterator, List, Optional, Tuple
@@ -31,6 +32,8 @@ import cv2
 import numpy as np
 
 from ..schemas import Frame
+
+logger = logging.getLogger(__name__)
 
 
 class Reader(ABC):
@@ -207,8 +210,7 @@ def build_reader(
         return OpenCVReader(source, target_fps, roi_polygon)
     if backend in ("nvdec", "cudacodec"):
         if not _has_cudacodec():
-            # graceful fallback, logged via a print so operators see it
-            print(f"[WARN] nvdec requested but cv2.cudacodec unavailable — falling back to opencv for {source}")
+            logger.warning("nvdec requested but cv2.cudacodec unavailable — falling back to opencv for %s", source)
             return OpenCVReader(source, target_fps, roi_polygon)
         return NvDecReader(source, target_fps, roi_polygon)
     raise ValueError(f"unknown decoder backend: {backend!r}")

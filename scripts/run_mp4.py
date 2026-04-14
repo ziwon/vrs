@@ -10,15 +10,14 @@ Example:
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from vrs.pipeline import build_pipeline  # noqa: E402
+from vrs import setup_logging
+from vrs.pipeline import build_pipeline
 
 
 def main() -> None:
+    setup_logging()
     p = argparse.ArgumentParser(description="VRS — run on an mp4 file")
     p.add_argument("--video", required=True, help="path to mp4/avi/mkv")
     p.add_argument("--config", default="configs/default.yaml")

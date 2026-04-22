@@ -45,7 +45,8 @@ multistream:
   drop_log_interval_s: 5.0
 
 # Stream manifest — one entry per camera / file.
-# ``id`` becomes the output subdirectory name: runs/<out>/<id>/{alerts.jsonl,annotated.mp4}
+# ``id`` becomes the output subdirectory name:
+# runs/<out>/<id>/{alerts.jsonl,thumbnails/*.jpg}
 streams:
   - id: cam_lobby
     rtsp: rtsp://demo:demo@192.168.1.10:554/stream1

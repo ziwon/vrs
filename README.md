@@ -57,7 +57,7 @@ RTSP/mp4 ─► Reader ─► YOLOE-L ─► per-class score+bbox ─► EventSt
                 └────────────────────────────────────────────────┘
                                                                   │
                                                                   ▼
-                                              alerts.jsonl + annotated.mp4
+                                              alerts.jsonl + thumbnails/*.jpg
 ```
 
 ## Install
@@ -126,12 +126,14 @@ python scripts/run_multistream.py \
 
 List your cameras in `configs/multistream.yaml`. One shared YOLOE and one
 shared verifier backend serve every stream; per-stream outputs land under
-`runs/live/<stream_id>/{alerts.jsonl, annotated.mp4}`.
+`runs/live/<stream_id>/{alerts.jsonl, thumbnails/*.jpg}`. Annotated MP4 output
+is still available as an opt-in debug/demo artifact.
 
 Outputs:
 
-- `runs/<name>/alerts.jsonl` — one JSON per verified alert (verdict, confidence, bbox, trajectory, rationale)
-- `runs/<name>/annotated.mp4` — overlay of detector boxes + verifier verdict + verifier bboxes/trajectories
+- `runs/<name>/alerts.jsonl` — one JSON per verified alert (verdict, confidence, bbox, trajectory, rationale, thumbnail path)
+- `runs/<name>/thumbnails/*.jpg` — one event image per alert, with detector/verifier overlays
+- `runs/<name>/annotated.mp4` — optional debug/demo overlay video when `sink.write_annotated: true`
 
 ## Smoke-test on your GPU (e.g. RTX 5080)
 
@@ -227,7 +229,7 @@ RTSP[i] ─► DecoderThread[i] ──┐
                     VerifierWorker  (VLM verifier, drop-oldest on overflow)
                               │
                               ▼
-                    SinkWorker[i]  ─► runs/<out>/<stream_id>/{alerts.jsonl, annotated.mp4}
+                    SinkWorker[i]  ─► runs/<out>/<stream_id>/{alerts.jsonl, thumbnails/*.jpg}
 ```
 
 Decoder backends (`multistream.decoder_backend`):
@@ -249,7 +251,7 @@ vrs/
 ├── verifier/      VLM verifier prompts + structured-output parsing
 ├── policy/        Plain-English watch policy parser
 ├── runtime/       VLM runtime backends (Cosmos baseline today)
-├── sinks/         JSONL writer, annotated-video writer (with bboxes/trajectories)
+├── sinks/         JSONL writer, event thumbnails, optional annotated-video writer
 ├── multistream/   N-stream cascade: decoders, workers, queues, pipeline
 ├── pipeline.py    Single-stream cascade orchestration
 └── schemas.py     Frame / Detection / CandidateAlert / VerifiedAlert

@@ -62,13 +62,21 @@ verifier:
 
 sink:
   jsonl: alerts.jsonl
+  # Production default: one event image per alert, linked from alerts.jsonl.
+  # Full annotated video is opt-in for debugging/demo because it is costly to
+  # store, slower to review, and carries more privacy surface.
+  write_thumbnails: true
+  thumbnails_dir: thumbnails
+  thumbnail_ext: jpg
+  thumbnail_quality: 90
   annotated_mp4: annotated.mp4
-  write_annotated: true
+  write_annotated: false
 
 privacy:
-  # Face blurring on the annotated mp4 (GDPR / K-GDPR: faces on retained
+  # Face blurring on retained visual outputs (thumbnails and optional mp4).
+  # GDPR / K-GDPR: faces on retained
   # CCTV footage should be obscured unless operator explicitly reviews).
-  # Only affects the mp4 writer — the detector/verifier still see raw
+  # Only affects retained output files — the detector/verifier still see raw
   # pixels because the verifier needs faces visible to reason about
   # events like "a person has collapsed".
   enabled: false             # opt-in once the ONNX model is deployed

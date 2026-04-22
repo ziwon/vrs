@@ -17,7 +17,7 @@ from .policy import WatchPolicy, load_watch_policy
 from .privacy import build_face_detector
 from .runtime import CosmosConfig, build_cosmos_backend
 from .schemas import VerifiedAlert
-from .sinks import JsonlSink, VideoAnnotator
+from .sinks import EventThumbnailSink, JsonlSink, VideoAnnotator
 from .triage import EventStateQueue, YOLOEConfig, build_detector, build_tracker
 from .verifier import AlertVerifier
 
@@ -128,9 +128,20 @@ class VRSPipeline:
         )
 
         jsonl_path = self.out_dir / sink_cfg.get("jsonl", "alerts.jsonl")
+        privacy_cfg = self.cfg.get("privacy") or {}
+        thumbnail_sink: Optional[EventThumbnailSink] = None
+        if sink_cfg.get("write_thumbnails", True):
+            thumbnail_sink = EventThumbnailSink(
+                self.out_dir,
+                dir_name=sink_cfg.get("thumbnails_dir", "thumbnails"),
+                ext=sink_cfg.get("thumbnail_ext", "jpg"),
+                quality=int(sink_cfg.get("thumbnail_quality", 90)),
+                face_detector=build_face_detector(privacy_cfg),
+                blur_kernel=int(privacy_cfg.get("blur_kernel", 31)),
+                blur_margin_pct=float(privacy_cfg.get("margin_pct", 0.15)),
+            )
         annotator: Optional[VideoAnnotator] = None
-        if sink_cfg.get("write_annotated", True):
-            privacy_cfg = self.cfg.get("privacy") or {}
+        if sink_cfg.get("write_annotated", False):
             annotator = VideoAnnotator(
                 self.out_dir / sink_cfg.get("annotated_mp4", "annotated.mp4"),
                 fps=float(ing_cfg["target_fps"]),
@@ -157,6 +168,11 @@ class VRSPipeline:
                                 false_negative_class=None,
                                 rationale="verifier disabled",
                             )
+                        if thumbnail_sink is not None:
+                            try:
+                                thumbnail_sink.write(verified)
+                            except Exception as e:  # noqa: BLE001
+                                logger.warning("thumbnail write failed: %s", e)
                         jsonl.write(verified)
                         if annotator is not None:
                             annotator.note_alert(verified)

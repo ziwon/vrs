@@ -73,6 +73,7 @@ class VerifiedAlert:
     bbox_xywh_norm: Optional[Tuple[float, float, float, float]] = None   # Cosmos bbox
     trajectory_xy_norm: List[Tuple[float, float]] = field(default_factory=list)
     verifier_raw: str = ""
+    thumbnail_path: Optional[str] = None
 
     def to_json(self) -> Dict[str, Any]:
         out = self.candidate.summary()
@@ -87,5 +88,6 @@ class VerifiedAlert:
             ),
             trajectory_xy_norm=[[float(x), float(y)] for (x, y) in self.trajectory_xy_norm],
             verifier_raw=self.verifier_raw,
+            thumbnail_path=self.thumbnail_path,
         )
         return out

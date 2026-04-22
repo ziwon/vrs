@@ -15,7 +15,8 @@ VRS is a two-stage video reasoning pipeline:
 - Slow path: a VLM verifier checks candidates, returns structured JSON, and can
   be swapped between runtime backends. Cosmos-Reason2-2B is the current
   baseline, not a locked product choice.
-- Output path: JSONL alerts and optional annotated MP4 with privacy blur.
+- Output path: JSONL alerts plus event thumbnails by default; annotated MP4 is
+  optional for debug/demo runs.
 
 The CPU-testable product surface is in good shape. The `.venv` test run passes:
 
@@ -49,7 +50,7 @@ The following components are present and covered by unit tests where practical:
 - Evaluation harness for event-level labeled video directories.
 - CI regression gate for eval-report F1 drops.
 - Stage-A threshold calibration suggestions.
-- Annotated-video JSONL/MP4 sinks.
+- JSONL, event-thumbnail, and optional annotated-video sinks.
 - Optional YuNet face detection and Gaussian face blur for retained MP4s.
 
 ## Correctness Fixes In This Review
@@ -98,8 +99,9 @@ These are the important remaining issues as of this review:
   Prometheus/OpenTelemetry endpoint, latency histogram, model error counter, or
   per-class verifier flip dashboard.
 - Privacy blur is output-only. Detector and verifier still receive raw frames,
-  which is correct for reasoning but should be explicitly documented for
-  deployments with stricter data-minimization requirements.
+  while retained thumbnails and optional MP4 can be blurred. This is correct for
+  reasoning but should be explicitly documented for deployments with stricter
+  data-minimization requirements.
 - JSONL alerts are unsigned. There is no tamper-evident audit log.
 
 ## Model And Runtime Notes
@@ -142,5 +144,6 @@ Use this before declaring a deployment ready:
 7. Before production model lock-in, compare Cosmos against at least one
    Qwen3.5/Qwen3.6-class verifier candidate on the same labeled clips and
    report F1, flip rate, malformed JSON rate, latency, and memory.
-8. Confirm privacy policy: whether annotated MP4 output is retained, whether
-   face blur is enabled, and whether raw frames may be passed to the verifier.
+8. Confirm privacy policy: whether thumbnails and optional annotated MP4 output
+   are retained, whether face blur is enabled, and whether raw frames may be
+   passed to the verifier.

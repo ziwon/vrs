@@ -35,5 +35,9 @@ verifier:
 
 sink:
   jsonl: alerts.jsonl
+  write_thumbnails: true
+  thumbnails_dir: thumbnails
+  thumbnail_ext: jpg
+  thumbnail_quality: 90
   annotated_mp4: annotated.mp4
-  write_annotated: true
+  write_annotated: false

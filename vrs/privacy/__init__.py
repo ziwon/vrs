@@ -1,10 +1,10 @@
 """Privacy primitives — face detection + blurring for written artifacts.
 
-Scope: only the annotated-mp4 writer. The detector/verifier pipeline sees
-unaltered frames (the verifier needs faces visible to reason about
-events like "a person has collapsed"), but anything *written to disk* for
-human review goes through a face-blur pass. This matches GDPR / K-GDPR
-expectations for CCTV retention.
+Scope: only retained operator artifacts (event thumbnails and optional
+annotated MP4). The detector/verifier pipeline sees unaltered frames (the
+verifier needs faces visible to reason about events like "a person has
+collapsed"), but anything *written to disk* for human review goes through a
+face-blur pass. This matches GDPR / K-GDPR expectations for CCTV retention.
 
 Factory:
 

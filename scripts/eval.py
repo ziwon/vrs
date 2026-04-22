@@ -10,7 +10,7 @@ Example:
 
 Layout of the dataset directory — see vrs.eval.datasets.labeled_dir for the
 sidecar-JSON schema. Each video gets its own subdir under ``--out`` holding
-its ``alerts.jsonl`` and ``annotated.mp4``. A single ``report.json`` with
+its ``alerts.jsonl`` and event thumbnails. A single ``report.json`` with
 per-video + aggregate metrics lands at ``--out`` (or the path given via
 ``--report``).
 """

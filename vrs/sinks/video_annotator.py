@@ -3,8 +3,8 @@
 Overlays we draw:
   * status banner per active alert (TRUE / FALSE / FN)
   * YOLOE detection boxes (white) on every frame the detector hit
-  * Cosmos-returned bbox (red) and trajectory polyline (yellow) for the duration
-    of an alert hold window — gives a strong visual audit trail
+  * verifier-returned bbox (red) and trajectory polyline (yellow) for the
+    duration of an alert hold window — gives a strong visual audit trail
 
 When a ``FaceDetector`` is supplied, faces are Gaussian-blurred on the
 frame copy *before* any overlay is drawn. The detector and verifier
@@ -131,7 +131,7 @@ class VideoAnnotator:
                     0.5, (255, 255, 255), 1, cv2.LINE_AA,
                 )
 
-        # active banners: text + Cosmos bbox + Cosmos trajectory
+        # active banners: text + verifier bbox + verifier trajectory
         h, w = img.shape[:2]
         for cls in list(self._active.keys()):
             if frame.pts_s > self._active[cls].expires_at_pts_s:

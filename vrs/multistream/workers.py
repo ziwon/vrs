@@ -4,9 +4,10 @@ Ownership rules:
   * one ``Detector`` instance (ultralytics or tensorrt) lives inside the
     DetectorWorker thread;
     no other thread touches the CUDA model.
-  * one ``AlertVerifier`` / Cosmos instance lives inside the VerifierWorker.
-  * per-stream ``EventStateQueue``, ``JsonlSink``, ``VideoAnnotator`` live
-    inside the DetectorWorker (event_state) and the per-stream SinkWorker.
+  * one ``AlertVerifier`` / verifier backend lives inside the VerifierWorker.
+  * per-stream ``EventStateQueue``, ``JsonlSink``, ``EventThumbnailSink``,
+    ``VideoAnnotator`` live inside the DetectorWorker (event_state) and the
+    per-stream SinkWorker.
 
 All communication is through ``BoundedQueue``s — producers never block the
 RTSP read thread when a downstream worker is slow.
@@ -259,6 +260,10 @@ class SinkWorker(threading.Thread):
         mp4_name: str,
         sink_q: BoundedQueue,
         stop_event: threading.Event,
+        write_thumbnails: bool = True,
+        thumbnails_dir: str = "thumbnails",
+        thumbnail_ext: str = "jpg",
+        thumbnail_quality: int = 90,
         privacy_cfg: Optional[dict] = None,
     ):
         super().__init__(name=f"sink[{stream_id}]", daemon=True)
@@ -267,8 +272,12 @@ class SinkWorker(threading.Thread):
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.fps = float(fps)
         self.write_annotated = bool(write_annotated)
+        self.write_thumbnails = bool(write_thumbnails)
         self.jsonl_name = jsonl_name
         self.mp4_name = mp4_name
+        self.thumbnails_dir = thumbnails_dir
+        self.thumbnail_ext = thumbnail_ext
+        self.thumbnail_quality = int(thumbnail_quality)
         self.q = sink_q
         self.stop_event = stop_event
         self.privacy_cfg = privacy_cfg or {}
@@ -280,6 +289,19 @@ class SinkWorker(threading.Thread):
         jsonl = JsonlSink(self.out_dir / self.jsonl_name)
 
         annotator = None
+        thumbnail_sink = None
+        if self.write_thumbnails:
+            from ..privacy import build_face_detector  # lazy — cv2 dep
+            from ..sinks.thumbnail_sink import EventThumbnailSink  # cv2 dep
+            thumbnail_sink = EventThumbnailSink(
+                self.out_dir,
+                dir_name=self.thumbnails_dir,
+                ext=self.thumbnail_ext,
+                quality=self.thumbnail_quality,
+                face_detector=build_face_detector(self.privacy_cfg),
+                blur_kernel=int(self.privacy_cfg.get("blur_kernel", 31)),
+                blur_margin_pct=float(self.privacy_cfg.get("margin_pct", 0.15)),
+            )
         if self.write_annotated:
             from ..privacy import build_face_detector  # lazy — cv2 dep
             from ..sinks.video_annotator import VideoAnnotator  # cv2 dep
@@ -312,6 +334,8 @@ class SinkWorker(threading.Thread):
                                 annotator.write(msg.frame, msg.detections or [])
                         elif msg.kind == "alert":
                             if msg.verified is not None:
+                                if thumbnail_sink is not None:
+                                    thumbnail_sink.write(msg.verified)
                                 jsonl.write(msg.verified)
                                 if annotator is not None:
                                     annotator.note_alert(msg.verified)

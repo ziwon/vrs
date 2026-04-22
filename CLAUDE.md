@@ -48,7 +48,7 @@ python -m vrs.eval.ci --baseline runs/baseline/report.json \
 .venv/bin/python -m pytest -q tests/test_smoke.py::test_event_state_requires_min_persist    # single test
 ```
 
-Outputs always land under `runs/<name>/` (and `runs/<name>/<stream_id>/` in multi-stream). Each run writes `alerts.jsonl` and, when enabled, an `annotated.mp4`.
+Outputs always land under `runs/<name>/` (and `runs/<name>/<stream_id>/` in multi-stream). Each production run writes `alerts.jsonl` plus event images under `thumbnails/`; `annotated.mp4` is opt-in for debugging/demo only.
 
 ## Architecture
 
@@ -77,7 +77,7 @@ RTSP[i] ─► DecoderThread[i] ──► frame_q (BoundedQueue, drop_oldest)
                          VerifierWorker (VLM verifier, shared)
                                   │
                                   ▼ per-stream sink_q[i]
-                         SinkWorker[i] — JsonlSink + VideoAnnotator
+                         SinkWorker[i] — JsonlSink + EventThumbnailSink (+ optional VideoAnnotator)
 ```
 
 Key ownership rules:

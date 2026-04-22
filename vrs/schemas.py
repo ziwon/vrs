@@ -25,6 +25,7 @@ class Detection:
     score: float
     xyxy: Tuple[float, float, float, float]   # absolute pixels in the source frame
     raw_label: str = ""                # the YOLOE prompt that fired (for debugging)
+    track_id: Optional[int] = None     # assigned by the tracker; None if untracked
 
 
 @dataclass
@@ -38,6 +39,7 @@ class CandidateAlert:
     peak_detections: List[Detection]   # detections on the peak frame
     keyframes: List[np.ndarray] = field(default_factory=list)        # BGR uint8
     keyframe_pts: List[float] = field(default_factory=list)
+    track_id: Optional[int] = None     # tracker id of the peak detection, or None if untracked
 
     def summary(self) -> Dict[str, Any]:
         return {
@@ -46,11 +48,13 @@ class CandidateAlert:
             "start_pts_s": self.start_pts_s,
             "peak_pts_s": self.peak_pts_s,
             "peak_frame_index": self.peak_frame_index,
+            "track_id": self.track_id,
             "peak_detections": [
                 {
                     "score": float(d.score),
                     "xyxy": [float(x) for x in d.xyxy],
                     "raw_label": d.raw_label,
+                    "track_id": d.track_id,
                 }
                 for d in self.peak_detections
             ],

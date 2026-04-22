@@ -1,0 +1,82 @@
+"""Cosmos verifier backend Protocol + factory.
+
+The slow path is the system's capacity ceiling, so we want to be able to
+swap the generation engine without touching ``AlertVerifier``. Every
+backend implements ``chat_video``; the verifier only ever calls that, and
+the backend decides internally how to apply a JSON-schema constraint.
+
+Backends shipped:
+
+* ``transformers`` — the ``CosmosReason2`` class in ``cosmos_loader``.
+  Default and well-tested.
+* ``vllm`` — higher generation throughput via paged KV cache + in-flight
+  batching. Optional dep (``pip install 'vrs[vllm]'``); implementation
+  lives in ``vllm_cosmos``.
+* ``trtllm`` — reserved (a future addition that produces the biggest
+  latency win when paired with speculative decoding).
+
+The Protocol is deliberately minimal. ``response_schema`` is passed
+through ``chat_video`` so each backend can map it to its native
+constraint surface (xgrammar logits processor for transformers,
+``GuidedDecodingParams`` for vLLM, constraint engines in TRT-LLM).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+
+import numpy as np
+
+
+@runtime_checkable
+class CosmosBackend(Protocol):
+    """Minimum surface the verifier needs from a Cosmos runtime."""
+    def chat_video(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        frames_bgr: List[np.ndarray],
+        *,
+        clip_fps: Optional[int] = None,
+        response_schema: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """One multi-modal turn over a short video clip. Returns completion text.
+
+        If ``response_schema`` is provided, the backend must constrain the
+        output to conform to it (no-op if the backend doesn't support
+        constrained decoding — in which case the caller's parser fallback
+        takes over).
+        """
+        ...
+
+
+# ──────────────────────────────────────────────────────────────────────
+# factory
+# ──────────────────────────────────────────────────────────────────────
+
+_KNOWN_BACKENDS = {"transformers", "vllm", "trtllm"}
+
+
+def build_cosmos_backend(cfg, backend: str = "transformers") -> CosmosBackend:
+    """Construct the Cosmos backend named by ``backend``.
+
+    Lazy-imports the backend module so hosts without vLLM / TRT-LLM
+    installed can still run the transformers default unchanged.
+    """
+    name = (backend or "transformers").lower()
+    if name == "transformers":
+        # Local import — avoids circular dep (cosmos_loader imports from here
+        # for Protocol registration only at type-check time).
+        from .cosmos_loader import CosmosReason2
+        return CosmosReason2(cfg)
+    if name == "vllm":
+        from .vllm_cosmos import VLLMCosmosBackend
+        return VLLMCosmosBackend(cfg)
+    if name == "trtllm":
+        raise NotImplementedError(
+            "the trtllm backend is a planned follow-on once the vllm path "
+            "is validated end-to-end; track the #10 roadmap item."
+        )
+    raise ValueError(
+        f"unknown verifier backend: {backend!r}. Valid: {sorted(_KNOWN_BACKENDS)}"
+    )

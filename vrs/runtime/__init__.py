@@ -1,3 +1,9 @@
-from .cosmos_loader import CosmosReason2, CosmosConfig
+from .backends import CosmosBackend, build_cosmos_backend
+from .cosmos_loader import CosmosConfig, CosmosReason2
 
-__all__ = ["CosmosReason2", "CosmosConfig"]
+__all__ = [
+    "CosmosBackend",
+    "CosmosConfig",
+    "CosmosReason2",
+    "build_cosmos_backend",
+]

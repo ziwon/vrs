@@ -4,9 +4,10 @@ Cosmos-Reason2-2B is post-trained from Qwen3-VL-2B-Instruct, so it loads
 through ``transformers`` with the standard Qwen-VL chat template and consumes
 multi-frame video natively (FPS=4 is the recommended training distribution).
 
-Three weight profiles, sized for very different VRAM budgets:
+Three weight profiles, sized for different deployment targets:
 
-    bf16   : ~5.0 GB — default for 16 GB GPUs.
+    bf16   : accuracy-oriented default; validate target GPU memory. NVIDIA's
+             2026 reference model card lists 24 GB minimum for this path.
     fp16   : ~5.0 GB — same footprint, prefer bf16 on Ampere+.
     w4a16  : ~1.7 GB — community quant ``embedl/Cosmos-Reason2-2B-W4A16``,
                        fits 8 GB cards / Jetson Orin.
@@ -18,7 +19,7 @@ the verifier code stays focused on prompt design.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional, Sequence
 
 import numpy as np
 import torch
@@ -81,9 +82,17 @@ class CosmosReason2:
         system_prompt: str,
         user_prompt: str,
         frames_bgr: List[np.ndarray],
+        *,
         clip_fps: int | None = None,
+        response_schema: Optional[dict] = None,
     ) -> str:
-        """One multi-modal turn over a short video clip; returns the completion text."""
+        """One multi-modal turn over a short video clip; returns the completion text.
+
+        ``response_schema`` (if given) is compiled to an XGrammar
+        ``LogitsProcessor`` right before ``generate`` — a fresh processor
+        per call because xgrammar matchers are stateful. ``None`` means
+        unconstrained generation.
+        """
         if not frames_bgr:
             raise ValueError("chat_video requires at least one frame")
 
@@ -124,12 +133,30 @@ class CosmosReason2:
             )
         inputs = {k: v.to(self.cfg.device) for k, v in inputs.items()}
 
-        gen = self.model.generate(
-            **inputs,
+        gen_kwargs = dict(
             max_new_tokens=self.cfg.max_new_tokens,
             do_sample=self.cfg.temperature > 0.0,
             temperature=max(self.cfg.temperature, 1e-5),
         )
+        if response_schema is not None:
+            proc = self._build_logits_processor(response_schema)
+            if proc is not None:
+                gen_kwargs["logits_processor"] = [proc]
+        gen = self.model.generate(**inputs, **gen_kwargs)
         prompt_len = inputs["input_ids"].shape[1]
         out_ids = gen[:, prompt_len:]
         return self.processor.batch_decode(out_ids, skip_special_tokens=True)[0]
+
+    def _build_logits_processor(self, schema: dict):
+        """Compile a JSON-schema constraint into a transformers LogitsProcessor.
+
+        Delegates to ``vrs.verifier.constrained.build_logits_processor`` so the
+        xgrammar setup lives in one place. Returns ``None`` when xgrammar
+        isn't installed (caller relies on the parser fallback).
+        """
+        from ..verifier.constrained import build_logits_processor  # avoid cycle
+        tokenizer = getattr(self.processor, "tokenizer", None)
+        if tokenizer is None:
+            return None
+        vocab_size = getattr(getattr(self.model, "config", None), "vocab_size", None)
+        return build_logits_processor(schema, tokenizer, vocab_size)

@@ -5,6 +5,13 @@ Overlays we draw:
   * YOLOE detection boxes (white) on every frame the detector hit
   * Cosmos-returned bbox (red) and trajectory polyline (yellow) for the duration
     of an alert hold window — gives a strong visual audit trail
+
+When a ``FaceDetector`` is supplied, faces are Gaussian-blurred on the
+frame copy *before* any overlay is drawn. The detector and verifier
+upstream still see unblurred pixels — the verifier needs faces visible
+to reason about events like "a person has collapsed" — but everything
+written to disk is blurred. This matches GDPR / K-GDPR expectations for
+CCTV retention.
 """
 from __future__ import annotations
 
@@ -15,6 +22,7 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+from ..privacy import FaceDetector, NullFaceDetector, blur_faces
 from ..schemas import Detection, Frame, VerifiedAlert
 
 
@@ -37,11 +45,23 @@ class _ActiveBanner:
 
 
 class VideoAnnotator:
-    def __init__(self, path: str | Path, fps: float, banner_hold_s: float = 4.0):
+    def __init__(
+        self,
+        path: str | Path,
+        fps: float,
+        banner_hold_s: float = 4.0,
+        *,
+        face_detector: Optional[FaceDetector] = None,
+        blur_kernel: int = 31,
+        blur_margin_pct: float = 0.15,
+    ):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.fps = float(fps)
         self.banner_hold_s = float(banner_hold_s)
+        self.face_detector: FaceDetector = face_detector or NullFaceDetector()
+        self.blur_kernel = int(blur_kernel)
+        self.blur_margin_pct = float(blur_margin_pct)
 
         self._writer: Optional[cv2.VideoWriter] = None
         self._size: Optional[Tuple[int, int]] = None
@@ -90,6 +110,15 @@ class VideoAnnotator:
     def write(self, frame: Frame, detections: Optional[List[Detection]] = None) -> None:
         img = frame.image.copy()
         self._lazy_open(img.shape)
+
+        # Privacy pass runs on raw pixels *before* any overlay is drawn —
+        # otherwise the banners/timestamps would get blurred too. A
+        # NullFaceDetector returns [] and blur_faces short-circuits, so
+        # the cost of a privacy-disabled run is one Python function call.
+        faces = self.face_detector(img)
+        if faces:
+            blur_faces(img, faces, kernel=self.blur_kernel,
+                       margin_pct=self.blur_margin_pct)
 
         # detector boxes (subtle white) — gives operator instant feedback
         if detections:

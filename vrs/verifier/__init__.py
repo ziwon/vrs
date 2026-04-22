@@ -1,3 +1,3 @@
-from .alert_verifier import AlertVerifier
+from .alert_verifier import AlertVerifier, FailurePolicy
 
-__all__ = ["AlertVerifier"]
+__all__ = ["AlertVerifier", "FailurePolicy"]

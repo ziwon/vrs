@@ -38,6 +38,12 @@ multistream:
   # Per-stream sink queue. Rarely fills unless the disk is slow.
   sink_queue_size: 32
 
+  # How often (seconds) to sample queue drop counters and log a WARNING
+  # naming every queue whose counter grew since the last sample. 0 disables.
+  # 5 s catches sustained overload quickly without logging on a healthy
+  # pipeline. Raise if you have many streams and want quieter logs.
+  drop_log_interval_s: 5.0
+
 # Stream manifest — one entry per camera / file.
 # ``id`` becomes the output subdirectory name: runs/<out>/<id>/{alerts.jsonl,annotated.mp4}
 streams:

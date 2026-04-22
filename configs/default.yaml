@@ -1,14 +1,21 @@
-# VRS default config — single 16 GB GPU
-# Fast path: YOLOE-L FP16 (~0.5 GB)
-# Slow path: Cosmos-Reason2-2B BF16 (~5 GB)
-# Total VRAM budget: ~8.5 GB
+# VRS default config — accuracy-oriented local profile.
+# Fast path: YOLOE-L FP16.
+# Slow path: Cosmos-Reason2-2B BF16.
+# Validate memory on the target GPU; NVIDIA's 2026 reference model card
+# lists 24 GB minimum for the BF16 Cosmos inference path.
 
 ingest:
   target_fps: 4              # matches Cosmos-Reason2-2B's training distribution
   roi_polygon: null
 
 detector:
-  model: "yoloe-11l-seg.pt"  # Ultralytics YOLOE large variant
+  backend: "ultralytics"     # ultralytics (default) | tensorrt.
+                             # tensorrt: loads a pre-exported .engine file; see
+                             # vrs/triage/tensorrt_detector.py for the two
+                             # supported export paths (Ultralytics or NVIDIA TAO).
+                             # Engines are GPU-arch-specific — export on the
+                             # same hardware as the deployment.
+  model: "yoloe-11l-seg.pt"  # Ultralytics YOLOE large variant (or path to .engine)
   device: "cuda"
   imgsz: 640
   conf_floor: 0.20           # global floor; per-class min_score in the policy overrides up
@@ -20,17 +27,36 @@ event_state:
   # before we promote it to a CandidateAlert. Per-class override via policy.min_persist_frames.
   window: 8
   default_min_persist_frames: 2
-  cooldown_s: 10.0           # per-class debounce after an alert is raised
+  cooldown_s: 10.0           # per-(class, track_id) debounce after an alert is raised
+
+tracker:
+  # Groups alerts by physical object: when enabled, cooldown_s applies per
+  # (class, track_id) instead of per class, so one persistent fire produces
+  # one alert — not N cooldown duplicates — and two simultaneous fires
+  # each get their own.
+  backend: simple_iou        # simple_iou | none
+  iou_threshold: 0.30        # min IoU to associate a detection with an existing track
+  max_gap_frames: 5          # drop a track if it's unseen for this many frames
 
 verifier:
   enabled: true
-  model_id: "nvidia/Cosmos-Reason2-2B"
+  # Current backend names are Cosmos-shaped. Treat Cosmos-Reason2-2B as a
+  # baseline verifier, not a final model choice. Internal benchmarks and
+  # 2026 Qwen releases justify adding/evaluating Qwen3.5/Qwen3.6-class
+  # verifier backends before production model lock-in.
+  backend: "transformers"    # transformers (default) | vllm | trtllm (reserved).
+                             # vllm: higher gen throughput, needs `pip install 'vrs[vllm]'`
+                             # and a GPU-local smoke run before prod — see vrs/runtime/vllm_cosmos.py.
+                             # planned: qwen/openai-compatible served VLM backend.
+  model_id: "nvidia/Cosmos-Reason2-2B"  # baseline; compare against Qwen candidates via eval
   dtype: "bf16"              # "bf16" | "fp16" | "w4a16" (requires bitsandbytes)
   device: "cuda"
   context_window_s: 4.0      # video clip handed to Cosmos: ±2s around the alert peak
   clip_fps: 4                # Cosmos-Reason2 was trained at FPS=4
   max_new_tokens: 1024       # CoT can run long; 1024 is safe for verify
   temperature: 0.2
+  failure_policy: pass_through  # pass_through: surface verifier failures as low-confidence alerts.
+                                # reject: log/suppress malformed verifier outputs.
   request_bbox: true         # ask Cosmos for {x,y,w,h} of the event in normalized coords
   request_trajectory: true   # ask for a 2D trajectory (point list) for moving subjects
 
@@ -38,3 +64,38 @@ sink:
   jsonl: alerts.jsonl
   annotated_mp4: annotated.mp4
   write_annotated: true
+
+privacy:
+  # Face blurring on the annotated mp4 (GDPR / K-GDPR: faces on retained
+  # CCTV footage should be obscured unless operator explicitly reviews).
+  # Only affects the mp4 writer — the detector/verifier still see raw
+  # pixels because the verifier needs faces visible to reason about
+  # events like "a person has collapsed".
+  enabled: false             # opt-in once the ONNX model is deployed
+  backend: yunet             # yunet | none
+  # Download once:
+  #   curl -L -o models/face_detection_yunet_2023mar.onnx \
+  #     https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+  model: "models/face_detection_yunet_2023mar.onnx"
+  input_size: 320            # long-edge resize; lower = faster, worse recall
+  score_threshold: 0.6       # YuNet internal confidence floor
+  nms_threshold: 0.3
+  top_k: 5000
+  blur_kernel: 31            # Gaussian kernel size (odd)
+  margin_pct: 0.15           # expand each face bbox this fraction before blur
+
+calibration:
+  # Stage A — log-only threshold self-calibration.
+  # Aggregates verifier flip rate per (stream_id, class) and writes
+  # suggested min_score deltas to <out>/calibration_suggestions.jsonl.
+  # A human reviews + applies; nothing is auto-tuned at this stage.
+  enabled: false             # opt-in; flip to true once you're comfortable reading the log
+  window_size: 100           # rolling verdict buffer per (stream, class)
+  min_sample: 10             # don't suggest off fewer than this many verdicts
+  max_flip_rate: 0.30        # flip_rate above this ⇒ tighten
+  min_flip_rate: 0.05        # flip_rate below this ⇒ candidate to loosen
+  score_delta: 0.02          # suggestion step size
+  min_score_cap: 0.15        # never suggest below this
+  max_score_cap: 0.80        # never suggest above this
+  target_alerts_per_hour: null  # null = tighten-only (safe default).
+                                # set a number to enable the loosen arm.

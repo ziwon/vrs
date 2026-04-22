@@ -1,7 +1,8 @@
 """Worker threads: decoder (per-stream) + detector + verifier + sink (per-stream).
 
 Ownership rules:
-  * one ``YOLOEDetector`` instance lives inside the DetectorWorker thread;
+  * one ``Detector`` instance (ultralytics or tensorrt) lives inside the
+    DetectorWorker thread;
     no other thread touches the CUDA model.
   * one ``AlertVerifier`` / Cosmos instance lives inside the VerifierWorker.
   * per-stream ``EventStateQueue``, ``JsonlSink``, ``VideoAnnotator`` live
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 # threads actually run. This keeps the unit tests import-clean on CPU-only
 # boxes that have neither OpenCV nor Torch/Ultralytics installed.
 if TYPE_CHECKING:
-    from ..triage import EventStateQueue, YOLOEDetector
+    from ..triage import Detector, EventStateQueue
     from ..verifier import AlertVerifier
     from .readers import Reader
 
@@ -93,7 +94,7 @@ class DecoderThread(threading.Thread):
 class DetectorWorker(threading.Thread):
     def __init__(
         self,
-        detector: YOLOEDetector,
+        detector: Detector,
         policy: WatchPolicy,
         frame_q: BoundedQueue,
         candidate_q: BoundedQueue,
@@ -103,6 +104,8 @@ class DetectorWorker(threading.Thread):
         batch_size: int = 4,
         batch_timeout_ms: int = 30,
         event_state_cfg: Optional[dict] = None,
+        verifier_cfg: Optional[dict] = None,
+        tracker_cfg: Optional[dict] = None,
         target_fps: float = 4.0,
     ):
         super().__init__(name="detector", daemon=True)
@@ -115,19 +118,30 @@ class DetectorWorker(threading.Thread):
         self.batch_size = int(batch_size)
         self.batch_timeout = max(batch_timeout_ms, 1) / 1000.0
 
-        from ..triage import EventStateQueue  # lazy — keep workers import-light
+        from ..triage import EventStateQueue, build_tracker  # lazy — keep workers import-light
 
+        # keyframes / context_window describe how much video context the
+        # verifier receives, so they belong to the verifier section — same as
+        # single-stream. window / cooldown stay on event_state where they
+        # describe detector-side persistence.
         es_cfg = event_state_cfg or {}
+        ver_cfg = verifier_cfg or {}
+        ver_enabled = bool(ver_cfg.get("enabled", True))
         self._event_states: Dict[str, Any] = {
             sid: EventStateQueue(
                 policy=policy,
                 window=int(es_cfg.get("window", 8)),
                 cooldown_s=float(es_cfg.get("cooldown_s", 10.0)),
-                keyframes=int(es_cfg.get("keyframes", 6)),
-                context_window_s=float(es_cfg.get("context_window_s", 3.0)),
+                keyframes=int(ver_cfg.get("keyframes", 6)) if ver_enabled else 6,
+                context_window_s=float(ver_cfg.get("context_window_s", 3.0)),
                 target_fps=float(target_fps),
             )
             for sid in stream_ids
+        }
+        # Trackers are stateful; one instance per stream so track ids can't
+        # collide across cameras.
+        self._trackers: Dict[str, Any] = {
+            sid: build_tracker(tracker_cfg) for sid in stream_ids
         }
 
     def run(self) -> None:
@@ -150,9 +164,13 @@ class DetectorWorker(threading.Thread):
                 logger.warning("detector batch failed: %s", e)
                 continue
 
-            # --- per-stream event-state + sink fanout ---
+            # --- per-stream tracking + event-state + sink fanout ---
             for msg, dets in zip(msgs, all_dets):
                 sid = msg.stream_id
+                tracker = self._trackers.get(sid)
+                if tracker is not None:
+                    dets = tracker.update(dets, msg.frame.index)
+
                 sink_q = self.sink_queues.get(sid)
                 if sink_q is not None:
                     sink_q.put(_SinkMsg(kind="frame", frame=msg.frame, detections=dets))
@@ -176,12 +194,14 @@ class VerifierWorker(threading.Thread):
         candidate_q: BoundedQueue,
         sink_queues: Dict[str, BoundedQueue],
         stop_event: threading.Event,
+        calibrator: Optional[Any] = None,
     ):
         super().__init__(name="verifier", daemon=True)
         self.verifier = verifier
         self.candidate_q = candidate_q
         self.sink_queues = sink_queues
         self.stop_event = stop_event
+        self.calibrator = calibrator
 
     def run(self) -> None:
         while not self.stop_event.is_set():
@@ -206,6 +226,12 @@ class VerifierWorker(threading.Thread):
             sink_q = self.sink_queues.get(msg.stream_id)
             if sink_q is not None:
                 sink_q.put(_SinkMsg(kind="alert", verified=verified))
+
+            if self.calibrator is not None:
+                try:
+                    self.calibrator.record(msg.stream_id, verified)
+                except Exception as e:  # noqa: BLE001 — calibration must never take the worker down
+                    logger.warning("calibrator.record failed on [%s]: %s", msg.stream_id, e)
 
             # mirror the single-stream log line
             tag = "TRUE " if verified.true_alert else "FALSE"
@@ -233,6 +259,7 @@ class SinkWorker(threading.Thread):
         mp4_name: str,
         sink_q: BoundedQueue,
         stop_event: threading.Event,
+        privacy_cfg: Optional[dict] = None,
     ):
         super().__init__(name=f"sink[{stream_id}]", daemon=True)
         self.stream_id = stream_id
@@ -244,6 +271,7 @@ class SinkWorker(threading.Thread):
         self.mp4_name = mp4_name
         self.q = sink_q
         self.stop_event = stop_event
+        self.privacy_cfg = privacy_cfg or {}
 
     def run(self) -> None:
         # Import each sink directly (not via the package __init__) so an
@@ -253,26 +281,49 @@ class SinkWorker(threading.Thread):
 
         annotator = None
         if self.write_annotated:
+            from ..privacy import build_face_detector  # lazy — cv2 dep
             from ..sinks.video_annotator import VideoAnnotator  # cv2 dep
-            annotator = VideoAnnotator(self.out_dir / self.mp4_name, fps=self.fps)
+            annotator = VideoAnnotator(
+                self.out_dir / self.mp4_name, fps=self.fps,
+                face_detector=build_face_detector(self.privacy_cfg),
+                blur_kernel=int(self.privacy_cfg.get("blur_kernel", 31)),
+                blur_margin_pct=float(self.privacy_cfg.get("margin_pct", 0.15)),
+            )
         try:
             with jsonl:
-                while not self.stop_event.is_set():
+                while True:
                     try:
                         msg: _SinkMsg = self.q.get(timeout=0.2)
                     except TimeoutError:
+                        if self.stop_event.is_set():
+                            break
                         continue
                     except StopIteration:
                         break
 
-                    if msg.kind == "frame":
-                        if annotator is not None and msg.frame is not None:
-                            annotator.write(msg.frame, msg.detections or [])
-                    elif msg.kind == "alert":
-                        if msg.verified is not None:
-                            jsonl.write(msg.verified)
-                            if annotator is not None:
-                                annotator.note_alert(msg.verified)
+                    # Per-message writes are the failure risk (disk full,
+                    # permissions flip, annotator mid-flight). Catch + log
+                    # rather than letting one bad write tear down the thread
+                    # — that would drop every subsequent alert for this
+                    # stream and the shutdown diagnostic is the only signal.
+                    try:
+                        if msg.kind == "frame":
+                            if annotator is not None and msg.frame is not None:
+                                annotator.write(msg.frame, msg.detections or [])
+                        elif msg.kind == "alert":
+                            if msg.verified is not None:
+                                jsonl.write(msg.verified)
+                                if annotator is not None:
+                                    annotator.note_alert(msg.verified)
+                    except Exception as e:  # noqa: BLE001 — survive per-message failures
+                        logger.warning(
+                            "sink[%s] write failed for %s: %s",
+                            self.stream_id, msg.kind, e,
+                        )
         finally:
             if annotator is not None:
-                annotator.close()
+                try:
+                    annotator.close()
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("sink[%s] annotator close failed: %s",
+                                   self.stream_id, e)

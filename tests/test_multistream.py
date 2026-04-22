@@ -137,6 +137,28 @@ class _StubVerifier:
         )
 
 
+def test_detector_worker_reads_keyframes_and_window_from_verifier_cfg():
+    """Regression: multi-stream must read keyframes / context_window_s from the
+    'verifier' section, matching single-stream. Previously it read them from
+    'event_state', which silently ignored configs/default.yaml."""
+    policy = _policy()
+    worker = DetectorWorker(
+        detector=_StubDetector(),
+        policy=policy,
+        frame_q=BoundedQueue(maxsize=4),
+        candidate_q=BoundedQueue(maxsize=4),
+        sink_queues={"s1": BoundedQueue(maxsize=4)},
+        stream_ids=["s1"],
+        stop_event=threading.Event(),
+        event_state_cfg={"window": 8, "cooldown_s": 10.0},
+        verifier_cfg={"enabled": True, "keyframes": 3, "context_window_s": 5.5},
+        target_fps=4.0,
+    )
+    es = worker._event_states["s1"]
+    assert es.keyframes == 3
+    assert es.context_window_s == 5.5
+
+
 def test_detector_worker_batches_frames_and_fires_candidates(tmp_path, monkeypatch):
     policy = _policy(min_persist=1)
     stop = threading.Event()
@@ -258,3 +280,69 @@ def test_queue_stats_report_backpressure():
         q.put(i)
     assert q.puts_dropped == 8
     assert q.qsize() == 2
+
+
+def test_drop_delta_logger_warns_on_increase(caplog):
+    """Regression: when queue drop counters grow between samples, the
+    pipeline must surface the jump as a WARNING naming every affected
+    queue — that's the only operator-visible signal of live-video
+    backpressure."""
+    import logging
+    from vrs.multistream.pipeline import MultiStreamPipeline
+
+    prev = {"frame_q": 0, "candidate_q": 0, "sink[s1]": 0}
+    cur = {"frame_q": 5, "candidate_q": 0, "sink[s1]": 2}
+
+    with caplog.at_level(logging.WARNING, logger="vrs.multistream.pipeline"):
+        MultiStreamPipeline._log_drop_deltas(prev, cur)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    msg = warnings[0].getMessage()
+    assert "frame_q+5" in msg
+    assert "sink[s1]+2" in msg
+    assert "candidate_q" not in msg    # unchanged → not named
+
+
+def test_drop_delta_logger_silent_when_unchanged(caplog):
+    import logging
+    from vrs.multistream.pipeline import MultiStreamPipeline
+
+    prev = {"frame_q": 10, "sink[s1]": 3}
+    cur = {"frame_q": 10, "sink[s1]": 3}
+    with caplog.at_level(logging.WARNING, logger="vrs.multistream.pipeline"):
+        MultiStreamPipeline._log_drop_deltas(prev, cur)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warnings == []
+
+
+def test_shutdown_helper_names_hung_threads():
+    """Regression: shutdown must surface a log-friendly record of any thread
+    that outlasts its join timeout, so hung shutdowns are debuggable."""
+    from vrs.multistream.pipeline import MultiStreamPipeline
+
+    release = threading.Event()
+
+    def _blocked():
+        release.wait()  # only exits when the test releases it
+
+    stuck = threading.Thread(target=_blocked, name="stuck-worker", daemon=True)
+    stuck.start()
+
+    hung: list[str] = []
+    try:
+        MultiStreamPipeline._join_or_track_hung(stuck, timeout=0.05, hung=hung)
+        assert len(hung) == 1
+        assert "stuck-worker" in hung[0]
+        assert "0.05" in hung[0]
+    finally:
+        release.set()
+        stuck.join(timeout=1.0)
+
+    # A thread that exits cleanly within the timeout must NOT be recorded.
+    fast = threading.Thread(target=lambda: None, name="fast-worker", daemon=True)
+    fast.start()
+    hung2: list[str] = []
+    MultiStreamPipeline._join_or_track_hung(fast, timeout=1.0, hung=hung2)
+    assert hung2 == []

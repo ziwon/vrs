@@ -16,10 +16,11 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from ..calibration import build_calibrator
 from ..pipeline import load_config
 from ..policy import WatchPolicy, load_watch_policy
-from ..runtime import CosmosConfig, CosmosReason2
-from ..triage import YOLOEConfig, YOLOEDetector
+from ..runtime import CosmosConfig, build_cosmos_backend
+from ..triage import YOLOEConfig, build_detector
 from ..verifier import AlertVerifier
 from .queues import BoundedQueue, DropPolicy
 from .readers import Reader, build_reader
@@ -101,7 +102,7 @@ class MultiStreamPipeline:
 
         # --- shared GPU models (created once, owned by their worker threads) ---
         det_cfg = config["detector"]
-        self._detector = YOLOEDetector(
+        self._detector = build_detector(
             YOLOEConfig(
                 model=det_cfg["model"],
                 device=det_cfg.get("device", "cuda"),
@@ -111,12 +112,13 @@ class MultiStreamPipeline:
                 half=bool(det_cfg.get("half", True)),
             ),
             policy,
+            backend=det_cfg.get("backend", "ultralytics"),
         )
 
         ver_cfg = config["verifier"]
         self._verifier: Optional[AlertVerifier] = None
         if ver_cfg.get("enabled", True):
-            cosmos = CosmosReason2(
+            cosmos = build_cosmos_backend(
                 CosmosConfig(
                     model_id=ver_cfg["model_id"],
                     dtype=ver_cfg.get("dtype", "bf16"),
@@ -124,7 +126,8 @@ class MultiStreamPipeline:
                     max_new_tokens=int(ver_cfg.get("max_new_tokens", 1024)),
                     temperature=float(ver_cfg.get("temperature", 0.2)),
                     clip_fps=int(ver_cfg.get("clip_fps", 4)),
-                )
+                ),
+                backend=ver_cfg.get("backend", "transformers"),
             )
             self._verifier = AlertVerifier(
                 cosmos=cosmos,
@@ -132,7 +135,13 @@ class MultiStreamPipeline:
                 request_bbox=bool(ver_cfg.get("request_bbox", True)),
                 request_trajectory=bool(ver_cfg.get("request_trajectory", True)),
                 clip_fps=int(ver_cfg.get("clip_fps", 4)),
+                failure_policy=ver_cfg.get("failure_policy"),
             )
+
+        # --- calibration (stage A, log-only) ---
+        # Shared across streams — suggestion lines carry stream_id so one
+        # JSONL at the run root stays comprehensible.
+        self._calibrator = build_calibrator(config.get("calibration"), policy, self.out_dir)
 
         # --- queues ---
         ms_cfg = config.get("multistream") or {}
@@ -155,6 +164,9 @@ class MultiStreamPipeline:
         self._ms_cfg = ms_cfg
         self._ing_cfg = config["ingest"]
         self._es_cfg = config["event_state"]
+        self._ver_cfg = config["verifier"]
+        self._tracker_cfg = config.get("tracker")
+        self._privacy_cfg = config.get("privacy") or {}
         self._sink_cfg = config["sink"]
 
         self._decoders: List[DecoderThread] = []
@@ -181,6 +193,7 @@ class MultiStreamPipeline:
                     mp4_name=self._sink_cfg.get("annotated_mp4", "annotated.mp4"),
                     sink_q=self._sink_qs[s.id],
                     stop_event=self._stop,
+                    privacy_cfg=self._privacy_cfg,
                 )
             )
 
@@ -190,6 +203,7 @@ class MultiStreamPipeline:
             candidate_q=self._candidate_q,
             sink_queues=self._sink_qs,
             stop_event=self._stop,
+            calibrator=self._calibrator,
         )
 
         # detector worker
@@ -204,6 +218,8 @@ class MultiStreamPipeline:
             batch_size=int(ms.get("detector_batch_size", 4)),
             batch_timeout_ms=int(ms.get("detector_batch_timeout_ms", 30)),
             event_state_cfg=self._es_cfg,
+            verifier_cfg=self._ver_cfg,
+            tracker_cfg=self._tracker_cfg,
             target_fps=float(ing["target_fps"]),
         )
 
@@ -249,11 +265,27 @@ class MultiStreamPipeline:
             # not in main thread — tests call run() from worker threads
             pass
 
+        # Backpressure visibility: sample drop counters on an interval and
+        # log a single WARNING naming every queue whose counter grew. 0
+        # disables. Default 5 s — chatty enough to catch degradation, quiet
+        # enough to stay out of the way on a healthy pipeline.
+        drop_log_interval = float(self._ms_cfg.get("drop_log_interval_s", 5.0))
+        last_drop_log = time.monotonic()
+        last_drop_snapshot = self._drop_counters()
+
         t0 = time.monotonic()
         try:
             while not self._stop.is_set():
-                if max_runtime_s is not None and (time.monotonic() - t0) >= max_runtime_s:
+                now = time.monotonic()
+                if max_runtime_s is not None and (now - t0) >= max_runtime_s:
                     break
+
+                if drop_log_interval > 0 and (now - last_drop_log) >= drop_log_interval:
+                    cur = self._drop_counters()
+                    self._log_drop_deltas(last_drop_snapshot, cur)
+                    last_drop_snapshot = cur
+                    last_drop_log = now
+
                 # join briefly on decoder threads so we exit naturally when files end
                 alive = any(d.is_alive() for d in self._decoders)
                 if not alive and self._frame_q.qsize() == 0 and self._candidate_q.qsize() == 0:
@@ -267,18 +299,63 @@ class MultiStreamPipeline:
         self._stop.set()
         self._frame_q.close()
         self._candidate_q.close()
+
+        # best-effort join — name anything that exceeds its timeout so a hung
+        # shutdown is debuggable from the log alone.
+        hung: List[str] = []
+        for d in self._decoders:
+            self._join_or_track_hung(d, timeout=2.0, hung=hung)
+        if self._detector_worker:
+            self._join_or_track_hung(self._detector_worker, timeout=5.0, hung=hung)
+        if self._verifier_worker:
+            self._join_or_track_hung(self._verifier_worker, timeout=5.0, hung=hung)
+
+        # Keep sink queues open until detector/verifier workers have stopped:
+        # either worker may still be finishing an in-flight frame/candidate and
+        # enqueueing its final message after stop() begins. Closing sink queues
+        # earlier can turn a graceful shutdown into alert loss.
         for q in self._sink_qs.values():
             q.close()
-
-        # best-effort join
-        for d in self._decoders:
-            d.join(timeout=2.0)
-        if self._detector_worker:
-            self._detector_worker.join(timeout=5.0)
-        if self._verifier_worker:
-            self._verifier_worker.join(timeout=5.0)
         for w in self._sinks:
-            w.join(timeout=2.0)
+            self._join_or_track_hung(w, timeout=2.0, hung=hung)
+
+        if hung:
+            logger.warning(
+                "shutdown left %d thread(s) still alive past their join timeout: %s",
+                len(hung), ", ".join(hung),
+            )
+
+        if self._calibrator is not None:
+            self._calibrator.close()
+
+    @staticmethod
+    def _join_or_track_hung(thread: threading.Thread, timeout: float, hung: List[str]) -> None:
+        thread.join(timeout=timeout)
+        if thread.is_alive():
+            hung.append(f"{thread.name}(>{timeout:g}s)")
+
+    # ---- backpressure diagnostics -----------------------------------
+
+    def _drop_counters(self) -> Dict[str, int]:
+        out: Dict[str, int] = {
+            "frame_q": self._frame_q.puts_dropped,
+            "candidate_q": self._candidate_q.puts_dropped,
+        }
+        for sid, q in self._sink_qs.items():
+            out[f"sink[{sid}]"] = q.puts_dropped
+        return out
+
+    @staticmethod
+    def _log_drop_deltas(prev: Dict[str, int], cur: Dict[str, int]) -> None:
+        deltas = [
+            (name, cur[name] - prev.get(name, 0))
+            for name in cur
+            if cur[name] > prev.get(name, 0)
+        ]
+        if not deltas:
+            return
+        parts = ", ".join(f"{name}+{delta}" for name, delta in deltas)
+        logger.warning("queue backpressure: dropped in last window — %s", parts)
 
     # ---- introspection for metrics / tests --------------------------
 

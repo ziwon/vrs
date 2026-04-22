@@ -1,11 +1,20 @@
 """Per-class temporal-persistence queue.
 
 Promotes streams of YOLOE detections into ``CandidateAlert`` records once an
-event has been seen on enough frames inside a sliding window. Each class also
-gets a debounce window (``cooldown_s``) so we don't re-alert on the same event.
+event has been seen on enough frames inside a sliding window. Each class
+also gets a debounce window (``cooldown_s``) so we don't re-alert on the
+same event.
 
-The queue also maintains a small ring buffer of recent ``Frame`` images per
-class so the verifier receives a true short clip rather than a single peak frame.
+When detections carry a ``track_id`` (set by the tracker upstream),
+cooldown is keyed on ``(class_name, track_id)`` — so one persistent fire
+with a stable track raises one alert, and two simultaneous fires with
+different track ids each get their own. Untracked detections (track_id
+is ``None``) fall back to the pre-tracking class-only key, which is
+equivalent to the old behavior.
+
+The queue also maintains a small ring buffer of recent ``Frame`` images
+per class so the verifier receives a true short clip rather than a single
+peak frame.
 """
 from __future__ import annotations
 
@@ -19,9 +28,11 @@ from ..schemas import CandidateAlert, Detection, Frame
 
 @dataclass
 class _ClassState:
-    hits: Deque[bool]                 # last `window` frame outcomes
-    fill_start_pts: Optional[float]   # pts of the first hit in the current run
-    last_alert_pts: Optional[float]   # last time an alert fired (cooldown anchor)
+    hits: Deque[bool]                       # last `window` frame outcomes
+    fill_start_pts: Optional[float]         # pts of the first hit in the current run
+    # cooldown anchor per track_id — ``None`` key is used when detections
+    # carry no track_id (untracked run).
+    last_alert_pts_by_track: Dict[Optional[int], float]
 
 
 class EventStateQueue:
@@ -44,7 +55,7 @@ class EventStateQueue:
             it.name: _ClassState(
                 hits=deque([False] * self.window, maxlen=self.window),
                 fill_start_pts=None,
-                last_alert_pts=None,
+                last_alert_pts_by_track={},
             )
             for it in policy
         }
@@ -80,26 +91,44 @@ class EventStateQueue:
             if not hit or sum(state.hits) < min_persist:
                 continue
 
-            # cooldown debounce
-            last = state.last_alert_pts
-            if last is not None and (frame.pts_s - last) < self.cooldown_s:
-                continue
-            state.last_alert_pts = frame.pts_s
-
             peak_dets = [d for d in detections if d.class_name == name]
-            keyframes, keyframe_pts = self._sample_keyframes(frame.pts_s)
-            alerts.append(
-                CandidateAlert(
-                    class_name=name,
-                    severity=self.policy[name].severity,
-                    start_pts_s=state.fill_start_pts or frame.pts_s,
-                    peak_pts_s=frame.pts_s,
-                    peak_frame_index=frame.index,
-                    peak_detections=peak_dets,
-                    keyframes=keyframes,
-                    keyframe_pts=keyframe_pts,
+            keyframes: Optional[list] = None
+            keyframe_pts: Optional[list] = None
+
+            # Fire one candidate per distinct track_id present on this frame,
+            # each with its own cooldown. An untracked run collapses to a
+            # single ``None`` bucket, which reproduces the pre-tracking
+            # per-class cooldown behavior exactly.
+            seen_tids: List[Optional[int]] = []
+            for d in peak_dets:
+                if d.track_id not in seen_tids:
+                    seen_tids.append(d.track_id)
+            # Stable ordering by highest-score detection per track id so tests
+            # and downstream consumers see deterministic output.
+
+            for tid in seen_tids:
+                last = state.last_alert_pts_by_track.get(tid)
+                if last is not None and (frame.pts_s - last) < self.cooldown_s:
+                    continue
+                state.last_alert_pts_by_track[tid] = frame.pts_s
+
+                if keyframes is None:
+                    keyframes, keyframe_pts = self._sample_keyframes(frame.pts_s)
+
+                tid_dets = [d for d in peak_dets if d.track_id == tid] or peak_dets
+                alerts.append(
+                    CandidateAlert(
+                        class_name=name,
+                        severity=self.policy[name].severity,
+                        start_pts_s=state.fill_start_pts or frame.pts_s,
+                        peak_pts_s=frame.pts_s,
+                        peak_frame_index=frame.index,
+                        peak_detections=tid_dets,
+                        keyframes=list(keyframes),
+                        keyframe_pts=list(keyframe_pts),
+                        track_id=tid,
+                    )
                 )
-            )
         return alerts
 
     # ---- helpers ----------------------------------------------------

@@ -11,12 +11,14 @@ from typing import Any, Dict, Optional
 
 import yaml
 
+from .calibration import build_calibrator
 from .ingest import StreamReader
 from .policy import WatchPolicy, load_watch_policy
-from .runtime import CosmosConfig, CosmosReason2
+from .privacy import build_face_detector
+from .runtime import CosmosConfig, build_cosmos_backend
 from .schemas import VerifiedAlert
 from .sinks import JsonlSink, VideoAnnotator
-from .triage import EventStateQueue, YOLOEConfig, YOLOEDetector
+from .triage import EventStateQueue, YOLOEConfig, build_detector, build_tracker
 from .verifier import AlertVerifier
 
 logger = logging.getLogger(__name__)
@@ -65,7 +67,7 @@ class VRSPipeline:
         ver_cfg = config["verifier"]
 
         # --- fast path ---
-        self.detector = YOLOEDetector(
+        self.detector = build_detector(
             YOLOEConfig(
                 model=det_cfg["model"],
                 device=det_cfg.get("device", "cuda"),
@@ -75,7 +77,9 @@ class VRSPipeline:
                 half=bool(det_cfg.get("half", True)),
             ),
             policy,
+            backend=det_cfg.get("backend", "ultralytics"),
         )
+        self.tracker = build_tracker(config.get("tracker"))
         self.event_state = EventStateQueue(
             policy=policy,
             window=int(es_cfg["window"]),
@@ -88,7 +92,7 @@ class VRSPipeline:
         # --- slow path (lazy: only spin up the VLM if enabled) ---
         self.verifier: Optional[AlertVerifier] = None
         if ver_cfg.get("enabled", True):
-            cosmos = CosmosReason2(
+            cosmos = build_cosmos_backend(
                 CosmosConfig(
                     model_id=ver_cfg["model_id"],
                     dtype=ver_cfg.get("dtype", "bf16"),
@@ -96,7 +100,8 @@ class VRSPipeline:
                     max_new_tokens=int(ver_cfg.get("max_new_tokens", 1024)),
                     temperature=float(ver_cfg.get("temperature", 0.2)),
                     clip_fps=int(ver_cfg.get("clip_fps", 4)),
-                )
+                ),
+                backend=ver_cfg.get("backend", "transformers"),
             )
             self.verifier = AlertVerifier(
                 cosmos=cosmos,
@@ -104,7 +109,11 @@ class VRSPipeline:
                 request_bbox=bool(ver_cfg.get("request_bbox", True)),
                 request_trajectory=bool(ver_cfg.get("request_trajectory", True)),
                 clip_fps=int(ver_cfg.get("clip_fps", 4)),
+                failure_policy=ver_cfg.get("failure_policy"),
             )
+
+        # --- calibration (stage A, log-only) ---
+        self.calibrator = build_calibrator(config.get("calibration"), policy, self.out_dir)
 
     # ---- main loop --------------------------------------------------
 
@@ -121,15 +130,20 @@ class VRSPipeline:
         jsonl_path = self.out_dir / sink_cfg.get("jsonl", "alerts.jsonl")
         annotator: Optional[VideoAnnotator] = None
         if sink_cfg.get("write_annotated", True):
+            privacy_cfg = self.cfg.get("privacy") or {}
             annotator = VideoAnnotator(
                 self.out_dir / sink_cfg.get("annotated_mp4", "annotated.mp4"),
                 fps=float(ing_cfg["target_fps"]),
+                face_detector=build_face_detector(privacy_cfg),
+                blur_kernel=int(privacy_cfg.get("blur_kernel", 31)),
+                blur_margin_pct=float(privacy_cfg.get("margin_pct", 0.15)),
             )
 
         try:
             with JsonlSink(jsonl_path) as jsonl:
                 for frame in reader:
                     detections = self.detector(frame)
+                    detections = self.tracker.update(detections, frame.index)
                     candidates = self.event_state.step(frame, detections)
 
                     for cand in candidates:
@@ -146,6 +160,8 @@ class VRSPipeline:
                         jsonl.write(verified)
                         if annotator is not None:
                             annotator.note_alert(verified)
+                        if self.calibrator is not None:
+                            self.calibrator.record("default", verified)
                         self._log(verified)
 
                     if annotator is not None:
@@ -153,6 +169,8 @@ class VRSPipeline:
         finally:
             if annotator is not None:
                 annotator.close()
+            if self.calibrator is not None:
+                self.calibrator.close()
 
     @staticmethod
     def _log(v: VerifiedAlert) -> None:

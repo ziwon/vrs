@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
@@ -93,13 +94,29 @@ class GateResult:
 
 # ──────────────────────────────────────────────────────────────────────
 
+def _metrics_section(report: Mapping[str, object]) -> Mapping[str, object]:
+    if isinstance(report.get("metrics"), Mapping):
+        return report["metrics"]
+    if isinstance(report.get("aggregate"), Mapping):
+        return report["aggregate"]
+    return {}
+
+
+def _quality_signals_section(report: Mapping[str, object]) -> Mapping[str, object]:
+    if isinstance(report.get("quality_signals"), Mapping):
+        return report["quality_signals"]
+    if isinstance(report.get("aggregate"), Mapping):
+        return report["aggregate"]
+    return {}
+
+
 def _per_class_f1(report: dict) -> Dict[str, float]:
-    per = report.get("aggregate", {}).get("per_class", {})
+    per = _metrics_section(report).get("per_class", {})
     return {cls: float(m.get("f1", 0.0)) for cls, m in per.items()}
 
 
 def _overall_f1(report: dict) -> float:
-    return float(report.get("aggregate", {}).get("overall", {}).get("f1", 0.0))
+    return float(_metrics_section(report).get("overall", {}).get("f1", 0.0))
 
 
 def compare_reports(
@@ -121,8 +138,8 @@ def compare_reports(
     """
     if max_f1_drop < 0:
         raise ValueError("max_f1_drop must be >= 0")
-    if "aggregate" not in baseline or "aggregate" not in current:
-        raise ValueError("both reports must have an 'aggregate' key")
+    if not _metrics_section(baseline) or not _metrics_section(current):
+        raise ValueError("both reports must have either a 'metrics' or 'aggregate' key")
 
     b_pc = _per_class_f1(baseline)
     c_pc = _per_class_f1(current)
@@ -160,18 +177,26 @@ def compare_reports(
         regressed=(bof1 - cof1) > max_f1_drop,
     )
 
-    b_agg = baseline.get("aggregate", {})
-    c_agg = current.get("aggregate", {})
+    b_quality = _quality_signals_section(baseline)
+    c_quality = _quality_signals_section(current)
     passed = not overall.regressed and not any(d.regressed for d in per_class)
     return GateResult(
         passed=passed,
         per_class=per_class,
         overall=overall,
         max_f1_drop=max_f1_drop,
-        baseline_flip_rate=float(b_agg.get("flip_rate", 0.0)),
-        current_flip_rate=float(c_agg.get("flip_rate", 0.0)),
-        baseline_fn_flag_rate=float(b_agg.get("fn_flag_rate", 0.0)),
-        current_fn_flag_rate=float(c_agg.get("fn_flag_rate", 0.0)),
+        baseline_flip_rate=float(
+            b_quality.get("verifier_flip_rate", b_quality.get("flip_rate", 0.0))
+        ),
+        current_flip_rate=float(
+            c_quality.get("verifier_flip_rate", c_quality.get("flip_rate", 0.0))
+        ),
+        baseline_fn_flag_rate=float(
+            b_quality.get("false_negative_flag_rate", b_quality.get("fn_flag_rate", 0.0))
+        ),
+        current_fn_flag_rate=float(
+            c_quality.get("false_negative_flag_rate", c_quality.get("fn_flag_rate", 0.0))
+        ),
     )
 
 

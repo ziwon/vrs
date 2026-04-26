@@ -3,21 +3,36 @@
 Measures cascade quality against labeled datasets so every other tuning
 knob (thresholds, prompts, verifier model, tracking) stops being guesswork.
 
-Current scope (Step 1.A):
+Current scope:
   * Dataclasses for ground-truth events and eval results (``schemas``).
   * Per-class P/R/F1 + verifier-flip rate + FN-flag rate (``metrics``).
-  * One concrete dataset adapter: a directory of mp4 files with sidecar
-    JSON labels (``datasets.labeled_dir``).
+  * Stable, versioned ``EvalReport`` JSON contract (``report``).
+  * Harness that iterates a dataset → runs the cascade → scores
+    (``harness``), with the labeled-directory adapter under ``datasets``.
+  * Regression gate that compares two reports and exits non-zero on F1
+    drops beyond a tolerance (``ci``, run as ``python -m vrs.eval.ci``).
 
 Upcoming:
-  * ``harness.py``  — iterate dataset → run cascade → score.
   * ``datasets/dfire.py`` and ``datasets/le2i.py`` — real public datasets.
-  * ``ci.py``       — regression gate: fail on F1 delta < -0.02.
+  * Detector-only evaluation mode reusing the same report schema.
 """
 from __future__ import annotations
 
 from .harness import HarnessResult, evaluate
 from .metrics import aggregate_scores, score_alerts_against_truth
+from .report import (
+    EvalReport,
+    PerVideoReport,
+    ReportClassMetrics,
+    ReportLatency,
+    ReportMetrics,
+    ReportModel,
+    ReportModels,
+    ReportQualitySignals,
+    ReportRun,
+    ReportRuntime,
+    SCHEMA_VERSION,
+)
 from .schemas import ClassMetrics, EvalItem, GroundTruthEvent, RunScore
 
 # Note: ``ci`` is intentionally not re-exported here — it is a tool module
@@ -27,10 +42,21 @@ from .schemas import ClassMetrics, EvalItem, GroundTruthEvent, RunScore
 
 __all__ = [
     "ClassMetrics",
+    "EvalReport",
     "EvalItem",
     "GroundTruthEvent",
     "HarnessResult",
+    "PerVideoReport",
+    "ReportClassMetrics",
+    "ReportLatency",
+    "ReportMetrics",
+    "ReportModel",
+    "ReportModels",
+    "ReportQualitySignals",
+    "ReportRun",
+    "ReportRuntime",
     "RunScore",
+    "SCHEMA_VERSION",
     "aggregate_scores",
     "evaluate",
     "score_alerts_against_truth",

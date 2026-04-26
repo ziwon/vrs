@@ -2,15 +2,19 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from vrs.eval import (
     ClassMetrics,
+    EvalReport,
     EvalItem,
     GroundTruthEvent,
+    HarnessResult,
     RunScore,
+    SCHEMA_VERSION,
     score_alerts_against_truth,
 )
 from vrs.eval.datasets import LabeledDirDataset
@@ -240,6 +244,56 @@ def test_harness_scores_per_video_and_aggregates(tmp_path: Path):
     assert "aggregate" in blob and "per_video" in blob
 
 
+def test_eval_report_round_trip_is_stable():
+    score = score_alerts_against_truth(
+        [
+            _alert("smoke", 8.0, true_alert=False, fn_cls="smoke"),
+            _alert("fire", 2.0, true_alert=True),
+        ],
+        [
+            _event("fire", 1.0, 3.0),
+            _event("smoke", 7.0, 9.0),
+        ],
+        tolerance_s=0.0,
+    )
+    result = HarnessResult(
+        aggregate=score,
+        per_video=[
+            (Path("b.mp4"), score),
+            (Path("a.mp4"), score),
+        ],
+    )
+    report = EvalReport.from_harness_result(
+        result,
+        dataset="fixtures/mini-dataset",
+        config_path="configs/default.yaml",
+        policy_path="configs/policies/safety.yaml",
+        config={
+            "detector": {"backend": "ultralytics", "model": "yoloe-11l-seg.pt"},
+            "verifier": {
+                "enabled": True,
+                "backend": "transformers",
+                "model_id": "nvidia/Cosmos-Reason2-2B",
+            },
+        },
+        created_at=datetime(2026, 4, 26, 0, 0, tzinfo=timezone.utc),
+    )
+
+    assert report.schema_version == SCHEMA_VERSION
+    assert report.run.mode == "full_cascade"
+    assert report.run.run_id == "2026-04-26-mini-dataset-yoloe-11l-seg-cosmos-reason2-2b"
+    assert [entry.video for entry in report.per_video] == ["a.mp4", "b.mp4"]
+    assert report.metrics.overall.tp == 1
+    assert report.metrics.per_class["fire"].f1 == pytest.approx(1.0)
+    assert report.quality_signals.verifier_flip_rate == pytest.approx(0.5)
+    assert report.quality_signals.false_negative_flag_rate == pytest.approx(0.5)
+
+    payload = report.to_dict()
+    assert list(payload["metrics"]["per_class"].keys()) == ["fire", "smoke"]
+    assert EvalReport.from_dict(payload) == report
+    assert json.loads(report.to_json()) == payload
+
+
 def _report(per_class: dict[str, float], overall_f1: float = 0.0,
             flip_rate: float = 0.0, fn_flag_rate: float = 0.0) -> dict:
     """Minimal report.json-shaped fixture — f1-only per class, all other
@@ -317,6 +371,79 @@ def test_gate_treats_missing_class_in_current_as_regression():
     assert smoke.regressed is True
     assert "missing" in smoke.note
     assert result.passed is False
+
+
+def _schema_v1_report(
+    per_class: dict[str, float],
+    *,
+    overall_f1: float = 0.0,
+    flip_rate: float = 0.0,
+    fn_flag_rate: float = 0.0,
+) -> dict:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "run": {
+            "run_id": "2026-04-26-mini-dataset-yoloe-11l-seg-cosmos-reason2-2b",
+            "created_at": "2026-04-26T00:00:00Z",
+            "dataset": "mini-dataset",
+            "mode": "full_cascade",
+            "policy_path": "configs/policies/safety.yaml",
+            "config_path": "configs/default.yaml",
+        },
+        "models": {
+            "detector": {"backend": "ultralytics", "model": "yoloe-11l-seg.pt"},
+            "verifier": {"backend": "transformers", "model": "nvidia/Cosmos-Reason2-2B"},
+        },
+        "metrics": {
+            "per_class": {
+                cls: {"tp": 0, "fp": 0, "fn": 0,
+                      "precision": 0.0, "recall": 0.0, "f1": f1}
+                for cls, f1 in per_class.items()
+            },
+            "overall": {"tp": 0, "fp": 0, "fn": 0,
+                        "precision": 0.0, "recall": 0.0, "f1": overall_f1},
+        },
+        "latency": {
+            "detector_p50_ms": None,
+            "detector_p95_ms": None,
+            "verifier_p50_ms": None,
+            "verifier_p95_ms": None,
+        },
+        "runtime": {
+            "python": None,
+            "torch": None,
+            "cuda": None,
+            "gpu_name": None,
+            "peak_vram_mb": None,
+        },
+        "quality_signals": {
+            "verifier_flip_rate": flip_rate,
+            "false_negative_flag_rate": fn_flag_rate,
+            "malformed_json_rate": None,
+            "queue_drops": None,
+        },
+        "per_video": [],
+    }
+
+
+def test_gate_reads_schema_v1_reports():
+    from vrs.eval.ci import compare_reports
+    baseline = _schema_v1_report({"fire": 0.80}, overall_f1=0.80, flip_rate=0.10)
+    current = _schema_v1_report({"fire": 0.78}, overall_f1=0.78, flip_rate=0.12)
+    result = compare_reports(baseline, current, max_f1_drop=0.05)
+    assert result.passed is True
+    assert result.baseline_flip_rate == pytest.approx(0.10)
+    assert result.current_flip_rate == pytest.approx(0.12)
+
+
+def test_gate_supports_legacy_vs_schema_v1_reports():
+    from vrs.eval.ci import compare_reports
+    baseline = _report({"fire": 0.80}, overall_f1=0.80, flip_rate=0.10, fn_flag_rate=0.01)
+    current = _schema_v1_report({"fire": 0.70}, overall_f1=0.70, flip_rate=0.20, fn_flag_rate=0.03)
+    result = compare_reports(baseline, current, max_f1_drop=0.05)
+    assert result.passed is False
+    assert result.overall.regressed is True
+    assert result.current_fn_flag_rate == pytest.approx(0.03)
 
 
 def test_gate_welcomes_new_class_in_current():

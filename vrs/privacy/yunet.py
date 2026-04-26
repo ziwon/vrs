@@ -14,11 +14,11 @@ Download::
 The 2023-March checkpoint is the current stable; newer revisions drop in
 without code changes.
 """
+
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List, Optional
 
 import numpy as np
 
@@ -38,7 +38,7 @@ class YuNetFaceDetector:
 
     def __init__(
         self,
-        model_path: Optional[str | Path] = None,
+        model_path: str | Path | None = None,
         input_size: int = 320,
         score_threshold: float = 0.6,
         nms_threshold: float = 0.3,
@@ -76,7 +76,7 @@ class YuNetFaceDetector:
             int(top_k),
         )
 
-    def __call__(self, bgr: np.ndarray) -> List[FaceBox]:
+    def __call__(self, bgr: np.ndarray) -> list[FaceBox]:
         if bgr.size == 0:
             return []
         h, w = bgr.shape[:2]
@@ -86,8 +86,9 @@ class YuNetFaceDetector:
         scale = self.input_size / max(h, w)
         if scale < 1.0:
             import cv2
-            new_w = int(round(w * scale))
-            new_h = int(round(h * scale))
+
+            new_w = round(w * scale)
+            new_h = round(h * scale)
             resized = cv2.resize(bgr, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
         else:
             resized = bgr
@@ -100,7 +101,7 @@ class YuNetFaceDetector:
 
         inv_scale = 1.0 / scale if scale < 1.0 else 1.0
 
-        out: List[FaceBox] = []
+        out: list[FaceBox] = []
         for row in faces:
             # YuNet layout: [x, y, w, h, landmark xs/ys, score]. We only
             # need the bbox; landmarks are ignored because the blur is
@@ -109,10 +110,10 @@ class YuNetFaceDetector:
             score = float(row[-1])
             if score < self.score_threshold:
                 continue
-            ax = int(round(max(0.0, x * inv_scale)))
-            ay = int(round(max(0.0, y * inv_scale)))
-            aw = int(round(fw * inv_scale))
-            ah = int(round(fh * inv_scale))
+            ax = round(max(0.0, x * inv_scale))
+            ay = round(max(0.0, y * inv_scale))
+            aw = round(fw * inv_scale)
+            ah = round(fh * inv_scale)
             # clamp to image bounds
             aw = max(1, min(aw, w - ax))
             ah = max(1, min(ah, h - ay))

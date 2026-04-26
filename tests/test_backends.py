@@ -4,6 +4,7 @@ Structural tests only — nothing GPU-bound. The vLLM backend is exercised
 via a fake ``vllm`` module substituted into ``sys.modules`` so we can
 assert Protocol conformance and wiring without installing vLLM or
 spinning up a GPU."""
+
 from __future__ import annotations
 
 import sys
@@ -24,6 +25,7 @@ def _fake_vllm_module(captured: dict):
     class _FakeLLM:
         def __init__(self, **kwargs):
             captured["llm_kwargs"] = kwargs
+
         def chat(self, messages, sampling_params):
             captured["messages"] = messages
             captured["sampling_params"] = sampling_params
@@ -31,11 +33,17 @@ def _fake_vllm_module(captured: dict):
             class _Out:
                 def __init__(self, text):
                     self.text = text
+
             class _Result:
                 def __init__(self, text):
                     self.outputs = [_Out(text)]
-            return [_Result('{"true_alert": true, "confidence": 0.9, '
-                            '"false_negative_class": null, "rationale": "ok"}')]
+
+            return [
+                _Result(
+                    '{"true_alert": true, "confidence": 0.9, '
+                    '"false_negative_class": null, "rationale": "ok"}'
+                )
+            ]
 
     class _FakeSamplingParams:
         def __init__(self, **kwargs):
@@ -57,6 +65,7 @@ def _fake_vllm_module(captured: dict):
 
 # ─── factory ──────────────────────────────────────────────────────────
 
+
 def test_build_cosmos_backend_rejects_unknown():
     with pytest.raises(ValueError, match="unknown verifier backend"):
         build_cosmos_backend(object(), backend="banana")
@@ -70,15 +79,17 @@ def test_build_cosmos_backend_trtllm_is_explicitly_not_implemented():
 def test_known_backends_set_matches_factory_branches():
     """If we add a backend name we must also update the _KNOWN_BACKENDS
     advertisement — this pin catches silent drift."""
-    assert _KNOWN_BACKENDS == {"transformers", "vllm", "trtllm"}
+    assert {"transformers", "vllm", "trtllm"} == _KNOWN_BACKENDS
 
 
 # ─── vLLM backend ─────────────────────────────────────────────────────
+
 
 def test_vllm_backend_raises_clean_importerror_when_vllm_missing(monkeypatch):
     # simulate missing dep
     monkeypatch.setitem(sys.modules, "vllm", None)
     from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
+
     with pytest.raises(ImportError, match="vLLM backend requires"):
         VLLMCosmosBackend(cfg=object())
 
@@ -97,8 +108,13 @@ def test_vllm_backend_conforms_to_protocol(monkeypatch):
     from vrs.runtime.cosmos_loader import CosmosConfig
     from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
 
-    cfg = CosmosConfig(model_id="nvidia/Cosmos-Reason2-2B", dtype="bf16",
-                       max_new_tokens=128, temperature=0.2, clip_fps=4)
+    cfg = CosmosConfig(
+        model_id="nvidia/Cosmos-Reason2-2B",
+        dtype="bf16",
+        max_new_tokens=128,
+        temperature=0.2,
+        clip_fps=4,
+    )
     backend = VLLMCosmosBackend(cfg)
 
     # Protocol conformance — isinstance works because CosmosBackend is
@@ -134,10 +150,14 @@ def test_vllm_backend_passes_schema_as_guided_decoding(monkeypatch):
     from vrs.runtime.cosmos_loader import CosmosConfig
     from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
 
-    backend = VLLMCosmosBackend(CosmosConfig(
-        model_id="nvidia/Cosmos-Reason2-2B", dtype="bf16",
-        max_new_tokens=64, temperature=0.1,
-    ))
+    backend = VLLMCosmosBackend(
+        CosmosConfig(
+            model_id="nvidia/Cosmos-Reason2-2B",
+            dtype="bf16",
+            max_new_tokens=64,
+            temperature=0.1,
+        )
+    )
     schema = {"type": "object", "properties": {"true_alert": {"type": "boolean"}}}
     frames = [np.zeros((8, 8, 3), dtype=np.uint8)]
 
@@ -165,9 +185,14 @@ def test_vllm_backend_empty_frames_raises():
         from vrs.runtime.cosmos_loader import CosmosConfig
         from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
 
-        backend = VLLMCosmosBackend(CosmosConfig(
-            model_id="x", dtype="bf16", max_new_tokens=1, temperature=0.0,
-        ))
+        backend = VLLMCosmosBackend(
+            CosmosConfig(
+                model_id="x",
+                dtype="bf16",
+                max_new_tokens=1,
+                temperature=0.0,
+            )
+        )
         with pytest.raises(ValueError, match="at least one frame"):
             backend.chat_video("sys", "user", [], response_schema=None)
     finally:
@@ -176,6 +201,7 @@ def test_vllm_backend_empty_frames_raises():
 
 
 # ─── verifier integrates cleanly through the Protocol ─────────────────
+
 
 def test_alert_verifier_only_depends_on_chat_video_surface():
     """Protocol contract: AlertVerifier must accept anything with a
@@ -188,25 +214,39 @@ def test_alert_verifier_only_depends_on_chat_video_surface():
     class _StubBackend:
         def __init__(self):
             self.last_schema = None
-        def chat_video(self, system, user, frames, *, clip_fps=None,
-                       response_schema=None):
-            self.last_schema = response_schema
-            return ('{"true_alert": true, "confidence": 0.8, '
-                    '"false_negative_class": null, "rationale": "ok"}')
 
-    policy = WatchPolicy([
-        WatchItem(name="fire", detector_prompts=["fire"], verifier_prompt="flames",
-                  severity="critical", min_score=0.3, min_persist_frames=2),
-    ])
+        def chat_video(self, system, user, frames, *, clip_fps=None, response_schema=None):
+            self.last_schema = response_schema
+            return (
+                '{"true_alert": true, "confidence": 0.8, '
+                '"false_negative_class": null, "rationale": "ok"}'
+            )
+
+    policy = WatchPolicy(
+        [
+            WatchItem(
+                name="fire",
+                detector_prompts=["fire"],
+                verifier_prompt="flames",
+                severity="critical",
+                min_score=0.3,
+                min_persist_frames=2,
+            ),
+        ]
+    )
     stub = _StubBackend()
     verifier = AlertVerifier(cosmos=stub, policy=policy)
 
     fake_frame = np.zeros((8, 8, 3), dtype=np.uint8)
     cand = CandidateAlert(
-        class_name="fire", severity="critical",
-        start_pts_s=1.0, peak_pts_s=2.0, peak_frame_index=8,
+        class_name="fire",
+        severity="critical",
+        start_pts_s=1.0,
+        peak_pts_s=2.0,
+        peak_frame_index=8,
         peak_detections=[Detection(class_name="fire", score=0.9, xyxy=(0, 0, 1, 1))],
-        keyframes=[fake_frame], keyframe_pts=[2.0],
+        keyframes=[fake_frame],
+        keyframe_pts=[2.0],
     )
     result = verifier.verify(cand)
 

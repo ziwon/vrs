@@ -1,28 +1,28 @@
 """Eval-harness unit tests — pure Python, no GPU / video deps."""
+
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from vrs.eval import (
+    SCHEMA_VERSION,
     ClassMetrics,
     EvalReport,
-    EvalItem,
     GroundTruthEvent,
     HarnessResult,
-    RunScore,
-    SCHEMA_VERSION,
     score_alerts_against_truth,
 )
 from vrs.eval.datasets import LabeledDirDataset
 from vrs.eval.metrics import aggregate_scores
 
 
-def _alert(class_name: str, peak_pts_s: float, *, true_alert: bool = True,
-           fn_cls: str | None = None) -> dict:
+def _alert(
+    class_name: str, peak_pts_s: float, *, true_alert: bool = True, fn_cls: str | None = None
+) -> dict:
     return {
         "class_name": class_name,
         "peak_pts_s": peak_pts_s,
@@ -36,6 +36,7 @@ def _event(cls: str, start: float, end: float) -> GroundTruthEvent:
 
 
 # ─── ClassMetrics ──────────────────────────────────────────────────────
+
 
 def test_class_metrics_handles_zero_denominators():
     cm = ClassMetrics()
@@ -53,8 +54,9 @@ def test_class_metrics_f1_from_p_and_r():
 
 # ─── matching ─────────────────────────────────────────────────────────
 
+
 def test_score_basic_tp_fp_fn():
-    alerts = [_alert("fire", 3.0), _alert("fire", 20.0)]    # 2nd is FP
+    alerts = [_alert("fire", 3.0), _alert("fire", 20.0)]  # 2nd is FP
     events = [_event("fire", 2.0, 5.0), _event("fire", 40.0, 45.0)]  # 2nd unmatched → FN
     score = score_alerts_against_truth(alerts, events, tolerance_s=0.0)
     fire = score.per_class["fire"]
@@ -96,7 +98,7 @@ def test_score_ignores_verifier_flipped_alerts_for_prf():
     truth — they are only reflected in flip_rate."""
     alerts = [
         _alert("fire", 3.0, true_alert=True),
-        _alert("fire", 3.5, true_alert=False),   # verifier flipped — shouldn't become FP
+        _alert("fire", 3.5, true_alert=False),  # verifier flipped — shouldn't become FP
     ]
     events = [_event("fire", 2.0, 5.0)]
     score = score_alerts_against_truth(alerts, events, tolerance_s=0.0)
@@ -141,12 +143,17 @@ def test_score_restricted_classes_excludes_others():
 
 # ─── aggregation ──────────────────────────────────────────────────────
 
+
 def test_aggregate_scores_sums_counts_and_recomputes_ratios():
     a = score_alerts_against_truth(
-        [_alert("fire", 3.0)], [_event("fire", 2.0, 5.0)], tolerance_s=0.0,
+        [_alert("fire", 3.0)],
+        [_event("fire", 2.0, 5.0)],
+        tolerance_s=0.0,
     )
     b = score_alerts_against_truth(
-        [_alert("fire", 99.0)], [_event("fire", 10.0, 12.0)], tolerance_s=0.0,
+        [_alert("fire", 99.0)],
+        [_event("fire", 10.0, 12.0)],
+        tolerance_s=0.0,
     )
     agg = aggregate_scores([a, b])
     fire = agg.per_class["fire"]
@@ -156,13 +163,14 @@ def test_aggregate_scores_sums_counts_and_recomputes_ratios():
 
 # ─── LabeledDirDataset ────────────────────────────────────────────────
 
+
 def test_labeled_dir_yields_items_with_events(tmp_path: Path):
     # create two fake mp4s (content doesn't matter — adapter never decodes)
     (tmp_path / "a.mp4").write_bytes(b"\x00" * 32)
     (tmp_path / "b.mp4").write_bytes(b"\x00" * 32)
-    (tmp_path / "a.json").write_text(json.dumps({
-        "events": [{"class": "fire", "start_s": 1.0, "end_s": 4.0}]
-    }))
+    (tmp_path / "a.json").write_text(
+        json.dumps({"events": [{"class": "fire", "start_s": 1.0, "end_s": 4.0}]})
+    )
     # b.mp4 has no sidecar → empty events list (quiet footage)
 
     items = list(LabeledDirDataset(tmp_path))
@@ -178,8 +186,10 @@ def test_labeled_dir_rejects_nonexistent_root(tmp_path: Path):
 
 # ─── harness integration (stubbed pipeline) ────────────────────────────
 
+
 class _StubPipeline:
     """Pipeline stand-in: writes a caller-supplied alerts.jsonl in its out dir."""
+
     def __init__(self, out_dir: Path, alerts_by_video: dict[str, list[dict]]):
         self.out_dir = Path(out_dir)
         self._alerts_by_video = alerts_by_video
@@ -200,19 +210,21 @@ def test_harness_scores_per_video_and_aggregates(tmp_path: Path):
     # Two videos: one with a correctly-flagged fire, one with a flipped alert
     # whose ground-truth smoke event is never reported.
     (root / "v1.mp4").write_bytes(b"\0")
-    (root / "v1.json").write_text(json.dumps({
-        "events": [{"class": "fire", "start_s": 1.0, "end_s": 3.0}]
-    }))
+    (root / "v1.json").write_text(
+        json.dumps({"events": [{"class": "fire", "start_s": 1.0, "end_s": 3.0}]})
+    )
     (root / "v2.mp4").write_bytes(b"\0")
-    (root / "v2.json").write_text(json.dumps({
-        "events": [{"class": "smoke", "start_s": 5.0, "end_s": 8.0}]
-    }))
+    (root / "v2.json").write_text(
+        json.dumps({"events": [{"class": "smoke", "start_s": 5.0, "end_s": 8.0}]})
+    )
 
     alerts_per_video = {
         "v1": [_alert("fire", 2.0, true_alert=True)],
         "v2": [_alert("fire", 6.0, true_alert=False, fn_cls="smoke")],
     }
-    factory = lambda od: _StubPipeline(od, alerts_per_video)
+
+    def factory(od):
+        return _StubPipeline(od, alerts_per_video)
 
     result = evaluate(
         dataset=LabeledDirDataset(root),
@@ -276,7 +288,7 @@ def test_eval_report_round_trip_is_stable():
                 "model_id": "nvidia/Cosmos-Reason2-2B",
             },
         },
-        created_at=datetime(2026, 4, 26, 0, 0, tzinfo=timezone.utc),
+        created_at=datetime(2026, 4, 26, 0, 0, tzinfo=UTC),
     )
 
     assert report.schema_version == SCHEMA_VERSION
@@ -294,19 +306,28 @@ def test_eval_report_round_trip_is_stable():
     assert json.loads(report.to_json()) == payload
 
 
-def _report(per_class: dict[str, float], overall_f1: float = 0.0,
-            flip_rate: float = 0.0, fn_flag_rate: float = 0.0) -> dict:
+def _report(
+    per_class: dict[str, float],
+    overall_f1: float = 0.0,
+    flip_rate: float = 0.0,
+    fn_flag_rate: float = 0.0,
+) -> dict:
     """Minimal report.json-shaped fixture — f1-only per class, all other
     ClassMetrics fields zeroed out since the gate only reads f1."""
     return {
         "aggregate": {
             "per_class": {
-                cls: {"tp": 0, "fp": 0, "fn": 0,
-                      "precision": 0.0, "recall": 0.0, "f1": f1}
+                cls: {"tp": 0, "fp": 0, "fn": 0, "precision": 0.0, "recall": 0.0, "f1": f1}
                 for cls, f1 in per_class.items()
             },
-            "overall": {"tp": 0, "fp": 0, "fn": 0,
-                        "precision": 0.0, "recall": 0.0, "f1": overall_f1},
+            "overall": {
+                "tp": 0,
+                "fp": 0,
+                "fn": 0,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": overall_f1,
+            },
             "flip_rate": flip_rate,
             "fn_flag_rate": fn_flag_rate,
         },
@@ -316,8 +337,10 @@ def _report(per_class: dict[str, float], overall_f1: float = 0.0,
 
 # ─── CI regression gate ────────────────────────────────────────────────
 
+
 def test_gate_passes_when_reports_are_equal():
     from vrs.eval.ci import compare_reports
+
     r = _report({"fire": 0.80, "smoke": 0.70}, overall_f1=0.75)
     result = compare_reports(r, r, max_f1_drop=0.02)
     assert result.passed is True
@@ -326,6 +349,7 @@ def test_gate_passes_when_reports_are_equal():
 
 def test_gate_passes_on_improvement():
     from vrs.eval.ci import compare_reports
+
     baseline = _report({"fire": 0.70}, overall_f1=0.70)
     current = _report({"fire": 0.85}, overall_f1=0.85)
     assert compare_reports(baseline, current).passed is True
@@ -333,13 +357,15 @@ def test_gate_passes_on_improvement():
 
 def test_gate_passes_within_tolerance():
     from vrs.eval.ci import compare_reports
+
     baseline = _report({"fire": 0.80}, overall_f1=0.80)
-    current = _report({"fire": 0.785}, overall_f1=0.785)   # drop of 0.015 < 0.02
+    current = _report({"fire": 0.785}, overall_f1=0.785)  # drop of 0.015 < 0.02
     assert compare_reports(baseline, current, max_f1_drop=0.02).passed is True
 
 
 def test_gate_fails_on_per_class_regression():
     from vrs.eval.ci import compare_reports
+
     baseline = _report({"fire": 0.80, "smoke": 0.70}, overall_f1=0.75)
     current = _report({"fire": 0.50, "smoke": 0.70}, overall_f1=0.60)
     result = compare_reports(baseline, current, max_f1_drop=0.02)
@@ -353,8 +379,9 @@ def test_gate_fails_on_overall_regression_even_if_per_class_pass():
     """Per-class values are rounded in the report but overall still shifts;
     the gate must look at overall independently."""
     from vrs.eval.ci import compare_reports
+
     baseline = _report({"fire": 0.80}, overall_f1=0.80)
-    current = _report({"fire": 0.80}, overall_f1=0.60)    # overall dropped 0.20
+    current = _report({"fire": 0.80}, overall_f1=0.60)  # overall dropped 0.20
     result = compare_reports(baseline, current, max_f1_drop=0.02)
     assert result.passed is False
     assert result.overall.regressed is True
@@ -364,6 +391,7 @@ def test_gate_treats_missing_class_in_current_as_regression():
     """A class present in baseline but absent from current → implicit F1=0 →
     regression (unless baseline had F1=0 too)."""
     from vrs.eval.ci import compare_reports
+
     baseline = _report({"fire": 0.80, "smoke": 0.70}, overall_f1=0.75)
     current = _report({"fire": 0.80}, overall_f1=0.80)
     result = compare_reports(baseline, current)
@@ -396,12 +424,17 @@ def _schema_v1_report(
         },
         "metrics": {
             "per_class": {
-                cls: {"tp": 0, "fp": 0, "fn": 0,
-                      "precision": 0.0, "recall": 0.0, "f1": f1}
+                cls: {"tp": 0, "fp": 0, "fn": 0, "precision": 0.0, "recall": 0.0, "f1": f1}
                 for cls, f1 in per_class.items()
             },
-            "overall": {"tp": 0, "fp": 0, "fn": 0,
-                        "precision": 0.0, "recall": 0.0, "f1": overall_f1},
+            "overall": {
+                "tp": 0,
+                "fp": 0,
+                "fn": 0,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": overall_f1,
+            },
         },
         "latency": {
             "detector_p50_ms": None,
@@ -428,6 +461,7 @@ def _schema_v1_report(
 
 def test_gate_reads_schema_v1_reports():
     from vrs.eval.ci import compare_reports
+
     baseline = _schema_v1_report({"fire": 0.80}, overall_f1=0.80, flip_rate=0.10)
     current = _schema_v1_report({"fire": 0.78}, overall_f1=0.78, flip_rate=0.12)
     result = compare_reports(baseline, current, max_f1_drop=0.05)
@@ -438,6 +472,7 @@ def test_gate_reads_schema_v1_reports():
 
 def test_gate_supports_legacy_vs_schema_v1_reports():
     from vrs.eval.ci import compare_reports
+
     baseline = _report({"fire": 0.80}, overall_f1=0.80, flip_rate=0.10, fn_flag_rate=0.01)
     current = _schema_v1_report({"fire": 0.70}, overall_f1=0.70, flip_rate=0.20, fn_flag_rate=0.03)
     result = compare_reports(baseline, current, max_f1_drop=0.05)
@@ -450,6 +485,7 @@ def test_gate_welcomes_new_class_in_current():
     """A class that appears only in the current report is informational,
     never a regression."""
     from vrs.eval.ci import compare_reports
+
     baseline = _report({"fire": 0.80}, overall_f1=0.80)
     current = _report({"fire": 0.80, "weapon": 0.50}, overall_f1=0.80)
     result = compare_reports(baseline, current)
@@ -461,6 +497,7 @@ def test_gate_welcomes_new_class_in_current():
 
 def test_gate_respects_classes_filter():
     from vrs.eval.ci import compare_reports
+
     baseline = _report({"fire": 0.80, "smoke": 0.70}, overall_f1=0.75)
     current = _report({"fire": 0.80, "smoke": 0.30}, overall_f1=0.75)
     # smoke tanked but we're only gating on fire → pass
@@ -471,12 +508,14 @@ def test_gate_respects_classes_filter():
 
 def test_gate_rejects_malformed_report():
     from vrs.eval.ci import compare_reports
+
     with pytest.raises(ValueError):
         compare_reports({}, _report({"fire": 0.8}))
 
 
 def test_gate_cli_exit_codes(tmp_path: Path):
     import json as _json
+
     from vrs.eval.ci import main as ci_main
 
     baseline = tmp_path / "baseline.json"
@@ -489,8 +528,9 @@ def test_gate_cli_exit_codes(tmp_path: Path):
 
     assert ci_main(["--baseline", str(baseline), "--current", str(current_pass)]) == 0
     assert ci_main(["--baseline", str(baseline), "--current", str(current_fail)]) == 1
-    assert ci_main(["--baseline", str(baseline),
-                    "--current", str(tmp_path / "nonexistent.json")]) == 2
+    assert (
+        ci_main(["--baseline", str(baseline), "--current", str(tmp_path / "nonexistent.json")]) == 2
+    )
 
 
 def test_harness_survives_a_failing_pipeline_run(tmp_path: Path):
@@ -501,9 +541,9 @@ def test_harness_survives_a_failing_pipeline_run(tmp_path: Path):
     root = tmp_path / "dataset"
     root.mkdir()
     (root / "good.mp4").write_bytes(b"\0")
-    (root / "good.json").write_text(json.dumps({
-        "events": [{"class": "fire", "start_s": 1.0, "end_s": 3.0}]
-    }))
+    (root / "good.json").write_text(
+        json.dumps({"events": [{"class": "fire", "start_s": 1.0, "end_s": 3.0}]})
+    )
     (root / "bad.mp4").write_bytes(b"\0")
     (root / "bad.json").write_text(json.dumps({"events": []}))
 
@@ -514,6 +554,7 @@ def test_harness_survives_a_failing_pipeline_run(tmp_path: Path):
     class _GoodOrBad:
         def __init__(self, od: Path):
             self.od = Path(od)
+
         def run(self, source: str) -> None:
             if Path(source).stem == "bad":
                 raise RuntimeError("decoder exploded")
@@ -526,6 +567,6 @@ def test_harness_survives_a_failing_pipeline_run(tmp_path: Path):
         out_dir=tmp_path / "out",
         tolerance_s=0.5,
     )
-    assert len(result.per_video) == 2                 # both items scored
+    assert len(result.per_video) == 2  # both items scored
     assert result.aggregate.per_class["fire"].tp == 1  # good clip still scored
-    assert result.aggregate.n_alerts_total == 1        # bad clip contributed no alerts
+    assert result.aggregate.n_alerts_total == 1  # bad clip contributed no alerts

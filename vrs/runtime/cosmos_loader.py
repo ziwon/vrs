@@ -16,10 +16,10 @@ We expose a ``chat_video`` method that takes a list of BGR frames + a system /
 user prompt and returns the model's raw text. Frame packing is handled here so
 the verifier code stays focused on prompt design.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
 
 import numpy as np
 import torch
@@ -28,21 +28,21 @@ import torch
 @dataclass
 class CosmosConfig:
     model_id: str = "nvidia/Cosmos-Reason2-2B"
-    dtype: str = "bf16"           # bf16 | fp16 | w4a16
+    dtype: str = "bf16"  # bf16 | fp16 | w4a16
     device: str = "cuda"
     max_new_tokens: int = 1024
     temperature: float = 0.2
-    clip_fps: int = 4             # Cosmos-Reason2-2B was trained at FPS=4
+    clip_fps: int = 4  # Cosmos-Reason2-2B was trained at FPS=4
 
 
 def _torch_dtype(name: str) -> torch.dtype:
     return {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[name]
 
 
-def _bgr_list_to_pil_rgb(frames_bgr: List[np.ndarray]):
+def _bgr_list_to_pil_rgb(frames_bgr: list[np.ndarray]):
     """Convert a list of OpenCV BGR uint8 frames to PIL RGB images."""
-    import cv2  # noqa: WPS433
-    from PIL import Image  # noqa: WPS433
+    import cv2
+    from PIL import Image
 
     out = []
     for bgr in frames_bgr:
@@ -55,7 +55,8 @@ class CosmosReason2:
     """Thin wrapper that hides the dtype / quant / chat-template choreography."""
 
     def __init__(self, cfg: CosmosConfig):
-        from transformers import AutoProcessor  # noqa: WPS433
+        from transformers import AutoProcessor
+
         try:
             from transformers import AutoModelForImageTextToText as _Model
         except ImportError:
@@ -81,10 +82,10 @@ class CosmosReason2:
         self,
         system_prompt: str,
         user_prompt: str,
-        frames_bgr: List[np.ndarray],
+        frames_bgr: list[np.ndarray],
         *,
         clip_fps: int | None = None,
-        response_schema: Optional[dict] = None,
+        response_schema: dict | None = None,
     ) -> str:
         """One multi-modal turn over a short video clip; returns the completion text.
 
@@ -155,6 +156,7 @@ class CosmosReason2:
         isn't installed (caller relies on the parser fallback).
         """
         from ..verifier.constrained import build_logits_processor  # avoid cycle
+
         tokenizer = getattr(self.processor, "tokenizer", None)
         if tokenizer is None:
             return None

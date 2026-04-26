@@ -1,16 +1,16 @@
 """Run VRS over N concurrent RTSP / mp4 sources on a single GPU.
 
 Example:
-    python scripts/run_multistream.py \
+    uv run scripts/run_multistream.py \
         --config  configs/default.yaml \
         --policy  configs/policies/safety.yaml \
         --streams configs/multistream.yaml \
         --out     runs/live
 """
+
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 from vrs import setup_logging
 from vrs.multistream import build_multistream_pipeline
@@ -23,8 +23,12 @@ def main() -> None:
     p.add_argument("--policy", default="configs/policies/safety.yaml")
     p.add_argument("--streams", default="configs/multistream.yaml")
     p.add_argument("--out", default="runs/live", help="base output directory (per-stream subdirs)")
-    p.add_argument("--max-runtime-s", type=float, default=None,
-                   help="stop after N seconds (useful for offline runs)")
+    p.add_argument(
+        "--max-runtime-s",
+        type=float,
+        default=None,
+        help="stop after N seconds (useful for offline runs)",
+    )
     args = p.parse_args()
 
     pipeline = build_multistream_pipeline(

@@ -4,6 +4,7 @@ The report object is intentionally decoupled from the scoring internals so the
 JSON emitted by ``scripts/eval.py`` stays stable even as the harness gains new
 dataset adapters or scoring modes.
 """
+
 from __future__ import annotations
 
 import json
@@ -11,13 +12,12 @@ import platform
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from .harness import HarnessResult
 from .schemas import ClassMetrics, RunScore
-
 
 SCHEMA_VERSION = "vrs.eval.report.v1"
 
@@ -37,7 +37,7 @@ def _slug(value: str | None, *, fallback: str) -> str:
 
 
 def _utc_timestamp(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return dt.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
@@ -50,7 +50,7 @@ class ReportClassMetrics:
     f1: float = 0.0
 
     @classmethod
-    def from_class_metrics(cls, metrics: ClassMetrics) -> "ReportClassMetrics":
+    def from_class_metrics(cls, metrics: ClassMetrics) -> ReportClassMetrics:
         return cls(
             tp=int(metrics.tp),
             fp=int(metrics.fp),
@@ -61,7 +61,7 @@ class ReportClassMetrics:
         )
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ReportClassMetrics":
+    def from_dict(cls, data: Mapping[str, Any]) -> ReportClassMetrics:
         return cls(
             tp=int(data.get("tp", 0)),
             fp=int(data.get("fp", 0)),
@@ -85,10 +85,10 @@ class ReportClassMetrics:
 @dataclass(frozen=True)
 class ReportMetrics:
     overall: ReportClassMetrics = field(default_factory=ReportClassMetrics)
-    per_class: Dict[str, ReportClassMetrics] = field(default_factory=dict)
+    per_class: dict[str, ReportClassMetrics] = field(default_factory=dict)
 
     @classmethod
-    def from_run_score(cls, score: RunScore) -> "ReportMetrics":
+    def from_run_score(cls, score: RunScore) -> ReportMetrics:
         return cls(
             overall=ReportClassMetrics.from_class_metrics(score.overall()),
             per_class={
@@ -98,7 +98,7 @@ class ReportMetrics:
         )
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ReportMetrics":
+    def from_dict(cls, data: Mapping[str, Any]) -> ReportMetrics:
         return cls(
             overall=ReportClassMetrics.from_dict(data.get("overall", {})),
             per_class={
@@ -110,10 +110,7 @@ class ReportMetrics:
     def to_dict(self) -> dict:
         return {
             "overall": self.overall.to_dict(),
-            "per_class": {
-                name: self.per_class[name].to_dict()
-                for name in sorted(self.per_class)
-            },
+            "per_class": {name: self.per_class[name].to_dict() for name in sorted(self.per_class)},
         }
 
 
@@ -125,7 +122,7 @@ class ReportLatency:
     verifier_p95_ms: float | None = None
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ReportLatency":
+    def from_dict(cls, data: Mapping[str, Any]) -> ReportLatency:
         return cls(
             detector_p50_ms=_round_metric(data.get("detector_p50_ms")),
             detector_p95_ms=_round_metric(data.get("detector_p95_ms")),
@@ -151,11 +148,11 @@ class ReportRuntime:
     peak_vram_mb: float | None = None
 
     @classmethod
-    def current(cls) -> "ReportRuntime":
+    def current(cls) -> ReportRuntime:
         return cls(python=platform.python_version())
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ReportRuntime":
+    def from_dict(cls, data: Mapping[str, Any]) -> ReportRuntime:
         return cls(
             python=data.get("python"),
             torch=data.get("torch"),
@@ -182,14 +179,14 @@ class ReportQualitySignals:
     queue_drops: int | None = None
 
     @classmethod
-    def from_run_score(cls, score: RunScore) -> "ReportQualitySignals":
+    def from_run_score(cls, score: RunScore) -> ReportQualitySignals:
         return cls(
             verifier_flip_rate=_round_metric(score.flip_rate),
             false_negative_flag_rate=_round_metric(score.fn_flag_rate),
         )
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ReportQualitySignals":
+    def from_dict(cls, data: Mapping[str, Any]) -> ReportQualitySignals:
         queue_drops = data.get("queue_drops")
         return cls(
             verifier_flip_rate=_round_metric(data.get("verifier_flip_rate")),
@@ -213,7 +210,7 @@ class ReportModel:
     model: str
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ReportModel":
+    def from_dict(cls, data: Mapping[str, Any]) -> ReportModel:
         return cls(
             backend=str(data.get("backend", "")),
             model=str(data.get("model", "")),
@@ -232,7 +229,7 @@ class ReportModels:
     verifier: ReportModel | None = None
 
     @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> "ReportModels":
+    def from_config(cls, config: Mapping[str, Any]) -> ReportModels:
         det_cfg = config.get("detector") or {}
         ver_cfg = config.get("verifier") or {}
 
@@ -253,7 +250,7 @@ class ReportModels:
         return cls(detector=detector, verifier=verifier)
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ReportModels":
+    def from_dict(cls, data: Mapping[str, Any]) -> ReportModels:
         detector = data.get("detector")
         verifier = data.get("verifier")
         return cls(
@@ -288,13 +285,18 @@ class ReportRun:
         verifier_enabled: bool,
         created_at: datetime | None = None,
         run_id: str | None = None,
-    ) -> "ReportRun":
-        created = created_at or datetime.now(timezone.utc)
-        detector_slug = _slug(models.detector.model if models.detector else None, fallback="detector")
-        verifier_slug = _slug(models.verifier.model if models.verifier else None, fallback="detector-only")
+    ) -> ReportRun:
+        created = created_at or datetime.now(UTC)
+        detector_slug = _slug(
+            models.detector.model if models.detector else None, fallback="detector"
+        )
+        verifier_slug = _slug(
+            models.verifier.model if models.verifier else None, fallback="detector-only"
+        )
         dataset_name = Path(dataset).name
         return cls(
-            run_id=run_id or f"{created.date().isoformat()}-{_slug(dataset_name, fallback='dataset')}-{detector_slug}-{verifier_slug}",
+            run_id=run_id
+            or f"{created.date().isoformat()}-{_slug(dataset_name, fallback='dataset')}-{detector_slug}-{verifier_slug}",
             created_at=_utc_timestamp(created),
             dataset=dataset_name,
             mode="full_cascade" if verifier_enabled else "detector_only",
@@ -303,7 +305,7 @@ class ReportRun:
         )
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ReportRun":
+    def from_dict(cls, data: Mapping[str, Any]) -> ReportRun:
         return cls(
             run_id=str(data.get("run_id", "")),
             created_at=str(data.get("created_at", "")),
@@ -331,7 +333,7 @@ class PerVideoReport:
     quality_signals: ReportQualitySignals
 
     @classmethod
-    def from_run_score(cls, video: str | Path, score: RunScore) -> "PerVideoReport":
+    def from_run_score(cls, video: str | Path, score: RunScore) -> PerVideoReport:
         return cls(
             video=str(video),
             metrics=ReportMetrics.from_run_score(score),
@@ -339,7 +341,7 @@ class PerVideoReport:
         )
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "PerVideoReport":
+    def from_dict(cls, data: Mapping[str, Any]) -> PerVideoReport:
         return cls(
             video=str(data.get("video", "")),
             metrics=ReportMetrics.from_dict(data.get("metrics", {})),
@@ -376,7 +378,7 @@ class EvalReport:
         config: Mapping[str, Any] | None = None,
         created_at: datetime | None = None,
         run_id: str | None = None,
-    ) -> "EvalReport":
+    ) -> EvalReport:
         cfg = dict(config or {})
         models = ReportModels.from_config(cfg)
         verifier_enabled = bool((cfg.get("verifier") or {}).get("enabled", True))
@@ -404,7 +406,7 @@ class EvalReport:
         )
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "EvalReport":
+    def from_dict(cls, data: Mapping[str, Any]) -> EvalReport:
         return cls(
             schema_version=str(data.get("schema_version", SCHEMA_VERSION)),
             run=ReportRun.from_dict(data.get("run", {})),
@@ -413,14 +415,11 @@ class EvalReport:
             latency=ReportLatency.from_dict(data.get("latency", {})),
             runtime=ReportRuntime.from_dict(data.get("runtime", {})),
             quality_signals=ReportQualitySignals.from_dict(data.get("quality_signals", {})),
-            per_video=tuple(
-                PerVideoReport.from_dict(item)
-                for item in data.get("per_video", [])
-            ),
+            per_video=tuple(PerVideoReport.from_dict(item) for item in data.get("per_video", [])),
         )
 
     @classmethod
-    def load(cls, path: str | Path) -> "EvalReport":
+    def load(cls, path: str | Path) -> EvalReport:
         return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
 
     def to_dict(self) -> dict:

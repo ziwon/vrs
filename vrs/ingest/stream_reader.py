@@ -7,10 +7,11 @@ distribution and to keep the GPU lightly loaded).
 Optional ROI polygon mask; pixels outside are zeroed (frame size unchanged so
 detector input shape is stable).
 """
+
 from __future__ import annotations
 
-from typing import Iterator, List, Optional, Tuple
 import time
+from collections.abc import Iterator
 
 import cv2
 import numpy as np
@@ -23,17 +24,15 @@ class StreamReader:
         self,
         source: str,
         target_fps: float = 4.0,
-        roi_polygon: Optional[List[Tuple[float, float]]] = None,
+        roi_polygon: list[tuple[float, float]] | None = None,
         reconnect_s: float = 2.0,
     ):
         self.source = source
         self.target_fps = float(target_fps)
-        self.roi_polygon = (
-            np.array(roi_polygon, dtype=np.int32) if roi_polygon else None
-        )
+        self.roi_polygon = np.array(roi_polygon, dtype=np.int32) if roi_polygon else None
         self.reconnect_s = reconnect_s
 
-        self._cap: Optional[cv2.VideoCapture] = None
+        self._cap: cv2.VideoCapture | None = None
         self._native_fps: float = 0.0
         self._is_live = self._looks_like_live(source)
 
@@ -62,7 +61,7 @@ class StreamReader:
         assert self._cap is not None
 
         native_fps = max(self._native_fps, 1.0)
-        step = max(1, int(round(native_fps / max(self.target_fps, 0.1))))
+        step = max(1, round(native_fps / max(self.target_fps, 0.1)))
 
         src_idx = 0
         out_idx = 0
@@ -86,9 +85,7 @@ class StreamReader:
                 continue
 
             frame = self._apply_roi(frame)
-            pts_s = (
-                time.monotonic() - t_start if self._is_live else src_idx / native_fps
-            )
+            pts_s = time.monotonic() - t_start if self._is_live else src_idx / native_fps
             yield Frame(index=out_idx, pts_s=pts_s, image=frame)
             out_idx += 1
             src_idx += 1

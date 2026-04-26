@@ -1,9 +1,10 @@
 """Append-only JSONL writer for VerifiedAlert records."""
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import IO, Optional
+from typing import IO
 
 from ..schemas import VerifiedAlert
 
@@ -12,9 +13,9 @@ class JsonlSink:
     def __init__(self, path: str | Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._fp: Optional[IO[str]] = None
+        self._fp: IO[str] | None = None
 
-    def __enter__(self) -> "JsonlSink":
+    def __enter__(self) -> JsonlSink:
         self._fp = self.path.open("a", encoding="utf-8")
         return self
 

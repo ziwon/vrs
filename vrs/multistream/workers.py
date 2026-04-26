@@ -12,18 +12,18 @@ Ownership rules:
 All communication is through ``BoundedQueue``s — producers never block the
 RTSP read thread when a downstream worker is slow.
 """
+
 from __future__ import annotations
 
 import logging
 import threading
-import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from ..policy import WatchPolicy
 from ..schemas import CandidateAlert, Detection, Frame, VerifiedAlert
-from .queues import BoundedQueue, DropPolicy
+from .queues import BoundedQueue
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # threads actually run. This keeps the unit tests import-clean on CPU-only
 # boxes that have neither OpenCV nor Torch/Ultralytics installed.
 if TYPE_CHECKING:
-    from ..triage import Detector, EventStateQueue
+    from ..triage import Detector
     from ..verifier import AlertVerifier
     from .readers import Reader
 
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
 # ──────────────────────────────────────────────────────────────────────
 # items that flow between workers
 # ──────────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class _FrameMsg:
@@ -54,15 +55,16 @@ class _CandidateMsg:
 
 @dataclass
 class _SinkMsg:
-    kind: str                          # "frame" | "alert"
-    frame: Optional[Frame] = None
-    detections: Optional[List[Detection]] = None
-    verified: Optional[VerifiedAlert] = None
+    kind: str  # "frame" | "alert"
+    frame: Frame | None = None
+    detections: list[Detection] | None = None
+    verified: VerifiedAlert | None = None
 
 
 # ──────────────────────────────────────────────────────────────────────
 # decoder — one thread per RTSP/mp4 source
 # ──────────────────────────────────────────────────────────────────────
+
 
 class DecoderThread(threading.Thread):
     def __init__(
@@ -84,13 +86,14 @@ class DecoderThread(threading.Thread):
                 if self.stop_event.is_set():
                     break
                 self.frame_q.put(_FrameMsg(self.stream_id, frame))
-        except Exception as e:  # noqa: BLE001 — log and exit
+        except Exception as e:
             logger.error("decoder[%s] terminated: %s", self.stream_id, e)
 
 
 # ──────────────────────────────────────────────────────────────────────
 # detector — one shared thread, batched YOLOE across streams
 # ──────────────────────────────────────────────────────────────────────
+
 
 class DetectorWorker(threading.Thread):
     def __init__(
@@ -99,14 +102,14 @@ class DetectorWorker(threading.Thread):
         policy: WatchPolicy,
         frame_q: BoundedQueue,
         candidate_q: BoundedQueue,
-        sink_queues: Dict[str, BoundedQueue],
-        stream_ids: List[str],
+        sink_queues: dict[str, BoundedQueue],
+        stream_ids: list[str],
         stop_event: threading.Event,
         batch_size: int = 4,
         batch_timeout_ms: int = 30,
-        event_state_cfg: Optional[dict] = None,
-        verifier_cfg: Optional[dict] = None,
-        tracker_cfg: Optional[dict] = None,
+        event_state_cfg: dict | None = None,
+        verifier_cfg: dict | None = None,
+        tracker_cfg: dict | None = None,
         target_fps: float = 4.0,
     ):
         super().__init__(name="detector", daemon=True)
@@ -128,7 +131,7 @@ class DetectorWorker(threading.Thread):
         es_cfg = event_state_cfg or {}
         ver_cfg = verifier_cfg or {}
         ver_enabled = bool(ver_cfg.get("enabled", True))
-        self._event_states: Dict[str, Any] = {
+        self._event_states: dict[str, Any] = {
             sid: EventStateQueue(
                 policy=policy,
                 window=int(es_cfg.get("window", 8)),
@@ -141,14 +144,12 @@ class DetectorWorker(threading.Thread):
         }
         # Trackers are stateful; one instance per stream so track ids can't
         # collide across cameras.
-        self._trackers: Dict[str, Any] = {
-            sid: build_tracker(tracker_cfg) for sid in stream_ids
-        }
+        self._trackers: dict[str, Any] = {sid: build_tracker(tracker_cfg) for sid in stream_ids}
 
     def run(self) -> None:
         while not self.stop_event.is_set():
             try:
-                msgs: List[_FrameMsg] = self.frame_q.get_batch(
+                msgs: list[_FrameMsg] = self.frame_q.get_batch(
                     max_items=self.batch_size,
                     timeout=self.batch_timeout,
                 )
@@ -161,12 +162,12 @@ class DetectorWorker(threading.Thread):
             frames = [m.frame for m in msgs]
             try:
                 all_dets = self.detector.batch(frames)
-            except Exception as e:  # noqa: BLE001 — don't kill the worker on one bad batch
+            except Exception as e:
                 logger.warning("detector batch failed: %s", e)
                 continue
 
             # --- per-stream tracking + event-state + sink fanout ---
-            for msg, dets in zip(msgs, all_dets):
+            for msg, dets in zip(msgs, all_dets, strict=True):
                 sid = msg.stream_id
                 tracker = self._trackers.get(sid)
                 if tracker is not None:
@@ -188,14 +189,15 @@ class DetectorWorker(threading.Thread):
 # verifier — one shared thread, Cosmos-Reason2-2B
 # ──────────────────────────────────────────────────────────────────────
 
+
 class VerifierWorker(threading.Thread):
     def __init__(
         self,
-        verifier: Optional[AlertVerifier],
+        verifier: AlertVerifier | None,
         candidate_q: BoundedQueue,
-        sink_queues: Dict[str, BoundedQueue],
+        sink_queues: dict[str, BoundedQueue],
         stop_event: threading.Event,
-        calibrator: Optional[Any] = None,
+        calibrator: Any | None = None,
     ):
         super().__init__(name="verifier", daemon=True)
         self.verifier = verifier
@@ -231,23 +233,31 @@ class VerifierWorker(threading.Thread):
             if self.calibrator is not None:
                 try:
                     self.calibrator.record(msg.stream_id, verified)
-                except Exception as e:  # noqa: BLE001 — calibration must never take the worker down
+                except Exception as e:
                     logger.warning("calibrator.record failed on [%s]: %s", msg.stream_id, e)
 
             # mirror the single-stream log line
             tag = "TRUE " if verified.true_alert else "FALSE"
-            extra = f"  (fn={verified.false_negative_class})" if verified.false_negative_class else ""
+            extra = (
+                f"  (fn={verified.false_negative_class})" if verified.false_negative_class else ""
+            )
             logger.info(
                 "[%s] [%s] t=%7.2fs  class=%-10s  sev=%-8s  conf=%.2f%s   -- %s",
-                msg.stream_id, tag, verified.candidate.peak_pts_s,
-                verified.candidate.class_name, verified.candidate.severity,
-                verified.confidence, extra, verified.rationale,
+                msg.stream_id,
+                tag,
+                verified.candidate.peak_pts_s,
+                verified.candidate.class_name,
+                verified.candidate.severity,
+                verified.confidence,
+                extra,
+                verified.rationale,
             )
 
 
 # ──────────────────────────────────────────────────────────────────────
 # sink — one thread per stream (owns the mp4 writer + jsonl)
 # ──────────────────────────────────────────────────────────────────────
+
 
 class SinkWorker(threading.Thread):
     def __init__(
@@ -264,7 +274,7 @@ class SinkWorker(threading.Thread):
         thumbnails_dir: str = "thumbnails",
         thumbnail_ext: str = "jpg",
         thumbnail_quality: int = 90,
-        privacy_cfg: Optional[dict] = None,
+        privacy_cfg: dict | None = None,
     ):
         super().__init__(name=f"sink[{stream_id}]", daemon=True)
         self.stream_id = stream_id
@@ -286,6 +296,7 @@ class SinkWorker(threading.Thread):
         # Import each sink directly (not via the package __init__) so an
         # annotator-less run doesn't require cv2.
         from ..sinks.jsonl_sink import JsonlSink
+
         jsonl = JsonlSink(self.out_dir / self.jsonl_name)
 
         annotator = None
@@ -293,6 +304,7 @@ class SinkWorker(threading.Thread):
         if self.write_thumbnails:
             from ..privacy import build_face_detector  # lazy — cv2 dep
             from ..sinks.thumbnail_sink import EventThumbnailSink  # cv2 dep
+
             thumbnail_sink = EventThumbnailSink(
                 self.out_dir,
                 dir_name=self.thumbnails_dir,
@@ -305,8 +317,10 @@ class SinkWorker(threading.Thread):
         if self.write_annotated:
             from ..privacy import build_face_detector  # lazy — cv2 dep
             from ..sinks.video_annotator import VideoAnnotator  # cv2 dep
+
             annotator = VideoAnnotator(
-                self.out_dir / self.mp4_name, fps=self.fps,
+                self.out_dir / self.mp4_name,
+                fps=self.fps,
                 face_detector=build_face_detector(self.privacy_cfg),
                 blur_kernel=int(self.privacy_cfg.get("blur_kernel", 31)),
                 blur_margin_pct=float(self.privacy_cfg.get("margin_pct", 0.15)),
@@ -332,22 +346,22 @@ class SinkWorker(threading.Thread):
                         if msg.kind == "frame":
                             if annotator is not None and msg.frame is not None:
                                 annotator.write(msg.frame, msg.detections or [])
-                        elif msg.kind == "alert":
-                            if msg.verified is not None:
-                                if thumbnail_sink is not None:
-                                    thumbnail_sink.write(msg.verified)
-                                jsonl.write(msg.verified)
-                                if annotator is not None:
-                                    annotator.note_alert(msg.verified)
-                    except Exception as e:  # noqa: BLE001 — survive per-message failures
+                        elif msg.kind == "alert" and msg.verified is not None:
+                            if thumbnail_sink is not None:
+                                thumbnail_sink.write(msg.verified)
+                            jsonl.write(msg.verified)
+                            if annotator is not None:
+                                annotator.note_alert(msg.verified)
+                    except Exception as e:
                         logger.warning(
                             "sink[%s] write failed for %s: %s",
-                            self.stream_id, msg.kind, e,
+                            self.stream_id,
+                            msg.kind,
+                            e,
                         )
         finally:
             if annotator is not None:
                 try:
                     annotator.close()
-                except Exception as e:  # noqa: BLE001
-                    logger.warning("sink[%s] annotator close failed: %s",
-                                   self.stream_id, e)
+                except Exception as e:
+                    logger.warning("sink[%s] annotator close failed: %s", self.stream_id, e)

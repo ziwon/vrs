@@ -5,12 +5,12 @@ doesn't need the YuNet ONNX model file. One test constructs a YuNet
 detector against a fake ``cv2.FaceDetectorYN`` to pin the wiring without
 downloading weights.
 """
+
 from __future__ import annotations
 
 import logging
-import sys
 import types
-from pathlib import Path
+from typing import ClassVar
 
 import cv2
 import numpy as np
@@ -23,8 +23,8 @@ from vrs.privacy import (
     build_face_detector,
 )
 
-
 # ─── blur_faces ───────────────────────────────────────────────────────
+
 
 def test_blur_faces_no_faces_is_noop():
     img = np.full((64, 64, 3), 200, dtype=np.uint8)
@@ -42,7 +42,7 @@ def test_blur_faces_actually_blurs_the_roi():
     # smear. Outside stays solid black.
     for y in range(20, 60, 4):
         for x in range(20, 60, 4):
-            img[y:y+2, x:x+2] = 255
+            img[y : y + 2, x : x + 2] = 255
 
     before = img.copy()
     blur_faces(img, [(20, 20, 40, 40)], kernel=11, margin_pct=0.0)
@@ -77,7 +77,7 @@ def test_blur_faces_bumps_even_kernel_to_odd():
     img = np.full((40, 40, 3), 100, dtype=np.uint8)
     # Checkerboard so the blur has gradient to smear
     img[::2, ::2] = 200
-    blur_faces(img, [(5, 5, 30, 30)], kernel=10, margin_pct=0.0)   # even
+    blur_faces(img, [(5, 5, 30, 30)], kernel=10, margin_pct=0.0)  # even
     # No exception = acceptance; correctness is covered by the other test
 
 
@@ -91,6 +91,7 @@ def test_blur_faces_rejects_invalid_params():
 
 # ─── NullFaceDetector + factory ───────────────────────────────────────
 
+
 def test_null_face_detector_returns_empty():
     det = NullFaceDetector()
     assert det(np.zeros((32, 32, 3), dtype=np.uint8)) == []
@@ -101,8 +102,7 @@ def test_factory_returns_null_when_disabled():
     assert isinstance(build_face_detector(None), NullFaceDetector)
     assert isinstance(build_face_detector({}), NullFaceDetector)
     assert isinstance(build_face_detector({"enabled": False}), NullFaceDetector)
-    assert isinstance(build_face_detector({"enabled": True, "backend": "none"}),
-                      NullFaceDetector)
+    assert isinstance(build_face_detector({"enabled": True, "backend": "none"}), NullFaceDetector)
 
 
 def test_factory_rejects_unknown_backend():
@@ -116,27 +116,33 @@ def test_factory_degrades_to_null_on_yunet_setup_failure(tmp_path, caplog):
     see it in the logs. Safer than refusing to run, which would take a
     whole deployment down on a config typo."""
     with caplog.at_level(logging.WARNING, logger="vrs.privacy.detectors"):
-        det = build_face_detector({
-            "enabled": True,
-            "backend": "yunet",
-            "model": str(tmp_path / "nonexistent.onnx"),
-        })
+        det = build_face_detector(
+            {
+                "enabled": True,
+                "backend": "yunet",
+                "model": str(tmp_path / "nonexistent.onnx"),
+            }
+        )
     assert isinstance(det, NullFaceDetector)
-    assert any("YuNet face detector setup failed" in r.getMessage()
-               for r in caplog.records)
+    assert any("YuNet face detector setup failed" in r.getMessage() for r in caplog.records)
 
 
 # ─── YuNet — wiring pinned via a fake cv2.FaceDetectorYN ──────────────
 
+
 class _FakeYuNet:
     """Stand-in for cv2.FaceDetectorYN — records config + returns canned faces."""
-    instances = []
+
+    instances: ClassVar[list] = []
+
     def __init__(self, faces_out=None):
         self.faces_out = faces_out if faces_out is not None else np.zeros((0, 15), dtype=np.float32)
         self.input_sizes = []
         _FakeYuNet.instances.append(self)
+
     def setInputSize(self, size):
         self.input_sizes.append(size)
+
     def detect(self, bgr):
         return (True, self.faces_out)
 
@@ -147,10 +153,13 @@ def fake_yunet(monkeypatch):
     YuNetFaceDetector without the real ONNX model."""
     _FakeYuNet.instances.clear()
     calls = {"create_args": []}
+
     def _create(model, config, input_size, score_threshold, nms_threshold, top_k):
-        calls["create_args"].append((model, config, input_size,
-                                      score_threshold, nms_threshold, top_k))
+        calls["create_args"].append(
+            (model, config, input_size, score_threshold, nms_threshold, top_k)
+        )
         return _FakeYuNet()
+
     fake_cls = types.SimpleNamespace(create=_create)
     monkeypatch.setattr(cv2, "FaceDetectorYN", fake_cls, raising=False)
     return calls
@@ -158,12 +167,14 @@ def fake_yunet(monkeypatch):
 
 def test_yunet_detector_rejects_missing_model_arg():
     from vrs.privacy.yunet import YuNetFaceDetector
-    with pytest.raises(ValueError, match="requires `privacy.model`"):
+
+    with pytest.raises(ValueError, match=r"requires `privacy\.model`"):
         YuNetFaceDetector(model_path=None)
 
 
 def test_yunet_detector_rejects_missing_model_file(tmp_path):
     from vrs.privacy.yunet import YuNetFaceDetector
+
     with pytest.raises(FileNotFoundError, match="YuNet model not found"):
         YuNetFaceDetector(model_path=tmp_path / "nope.onnx")
 
@@ -176,8 +187,11 @@ def test_yunet_detector_constructs_and_passes_config(fake_yunet, tmp_path):
     model.write_bytes(b"\x00" * 16)
 
     det = YuNetFaceDetector(
-        model_path=model, input_size=256,
-        score_threshold=0.7, nms_threshold=0.25, top_k=100,
+        model_path=model,
+        input_size=256,
+        score_threshold=0.7,
+        nms_threshold=0.25,
+        top_k=100,
     )
     assert isinstance(det, FaceDetector)
     args = fake_yunet["create_args"][0]
@@ -198,23 +212,23 @@ def test_yunet_scales_boxes_back_to_original_resolution(fake_yunet, tmp_path):
 
     det = YuNetFaceDetector(model_path=model, input_size=160)
     # One face at (32, 32, 16, 16) in the *downscaled* frame
-    face_row = np.array([[32, 32, 16, 16,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9]],
-                        dtype=np.float32)
+    face_row = np.array([[32, 32, 16, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9]], dtype=np.float32)
     _FakeYuNet.instances[0].faces_out = face_row
 
-    # Source frame is 640×480 → scale = 160/640 = 0.25 → inv_scale = 4
+    # Source frame is 640x480 -> scale = 160/640 = 0.25 -> inv_scale = 4
     bgr = np.zeros((480, 640, 3), dtype=np.uint8)
     boxes = det(bgr)
     assert len(boxes) == 1
     x, y, w, h = boxes[0]
-    assert x == pytest.approx(128, abs=1)    # 32 * 4
+    assert x == pytest.approx(128, abs=1)  # 32 * 4
     assert y == pytest.approx(128, abs=1)
-    assert w == pytest.approx(64, abs=1)     # 16 * 4
+    assert w == pytest.approx(64, abs=1)  # 16 * 4
     assert h == pytest.approx(64, abs=1)
 
 
 def test_yunet_returns_empty_on_no_faces(fake_yunet, tmp_path):
     from vrs.privacy.yunet import YuNetFaceDetector
+
     model = tmp_path / "fake.onnx"
     model.write_bytes(b"\x00" * 16)
     det = YuNetFaceDetector(model_path=model, input_size=160)
@@ -225,6 +239,7 @@ def test_yunet_returns_empty_on_no_faces(fake_yunet, tmp_path):
 def test_yunet_handles_empty_image():
     """size == 0 image short-circuits rather than calling into cv2."""
     from vrs.privacy.yunet import YuNetFaceDetector
+
     # bypass __init__ so we don't need a model file for this edge-case
     det = object.__new__(YuNetFaceDetector)
     boxes = det(np.zeros((0, 0, 3), dtype=np.uint8))
@@ -232,6 +247,7 @@ def test_yunet_handles_empty_image():
 
 
 # ─── VideoAnnotator integration ───────────────────────────────────────
+
 
 def test_video_annotator_runs_blur_before_drawing_overlays(tmp_path, monkeypatch):
     """The annotator must blur raw pixels *before* it draws detector
@@ -244,11 +260,19 @@ def test_video_annotator_runs_blur_before_drawing_overlays(tmp_path, monkeypatch
     from vrs.sinks.video_annotator import VideoAnnotator
 
     captured_frames = []
+
     class _FakeWriter:
-        def __init__(self, *a, **kw): pass
-        def isOpened(self): return True
-        def write(self, img): captured_frames.append(img.copy())
-        def release(self): pass
+        def __init__(self, *a, **kw):
+            pass
+
+        def isOpened(self):
+            return True
+
+        def write(self, img):
+            captured_frames.append(img.copy())
+
+        def release(self):
+            pass
 
     # Patch VideoWriter so the test doesn't write an mp4
     monkeypatch.setattr(cv2, "VideoWriter", lambda *a, **kw: _FakeWriter())
@@ -266,9 +290,9 @@ def test_video_annotator_runs_blur_before_drawing_overlays(tmp_path, monkeypatch
         img[y, 10:40] = 255 if (y % 4 < 2) else 0
     frame = Frame(index=0, pts_s=0.0, image=img.copy())
 
-    ann = VideoAnnotator(tmp_path / "a.mp4", fps=4.0,
-                         face_detector=_StubDet(), blur_kernel=11,
-                         blur_margin_pct=0.0)
+    ann = VideoAnnotator(
+        tmp_path / "a.mp4", fps=4.0, face_detector=_StubDet(), blur_kernel=11, blur_margin_pct=0.0
+    )
     ann.write(frame, detections=[])
     ann.close()
 
@@ -293,18 +317,27 @@ def test_video_annotator_with_null_detector_leaves_pixels_untouched(tmp_path, mo
     from vrs.sinks.video_annotator import VideoAnnotator
 
     captured = []
+
     class _FakeWriter:
-        def __init__(self, *a, **kw): pass
-        def isOpened(self): return True
-        def write(self, img): captured.append(img.copy())
-        def release(self): pass
+        def __init__(self, *a, **kw):
+            pass
+
+        def isOpened(self):
+            return True
+
+        def write(self, img):
+            captured.append(img.copy())
+
+        def release(self):
+            pass
+
     monkeypatch.setattr(cv2, "VideoWriter", lambda *a, **kw: _FakeWriter())
 
     img = np.full((80, 80, 3), 50, dtype=np.uint8)
     img[10:40, 10:40] = 200
     frame = Frame(index=0, pts_s=0.0, image=img.copy())
 
-    ann = VideoAnnotator(tmp_path / "a.mp4", fps=4.0)   # default NullFaceDetector
+    ann = VideoAnnotator(tmp_path / "a.mp4", fps=4.0)  # default NullFaceDetector
     ann.write(frame, detections=[])
     ann.close()
 

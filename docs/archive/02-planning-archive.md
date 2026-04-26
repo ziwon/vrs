@@ -160,7 +160,7 @@ Current state:
 
 Result:
 
-- `python scripts/run_multistream.py --streams configs/multistream.yaml` fails
+- `uv run scripts/run_multistream.py --streams configs/multistream.yaml` fails
   before the pipeline starts.
 
 This is the most concrete functional bug in the repo today. The fix is simple:
@@ -359,7 +359,7 @@ it through `CosmosReason2.chat_video(..., logits_processors=…)` to
 `model.generate()`. When `xgrammar` is absent, the verifier falls back to
 unconstrained generation + the existing balanced-brace parser, and logs
 an INFO message once per process pointing at the `constrained` extra
-(`pip install 'vrs[constrained]'`). Any setup error inside xgrammar is
+(`uv sync --extra constrained`). Any setup error inside xgrammar is
 downgraded to a WARNING and triggers the same fallback — the verifier
 never crashes on constrained-decoding issues.
 

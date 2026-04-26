@@ -22,6 +22,7 @@ See ``yunet.py`` for the implementation. The Protocol below is small on
 purpose — new backends (RetinaFace, MediaPipe) only need to expose
 ``__call__(bgr) -> List[Tuple]``.
 """
+
 from __future__ import annotations
 
 from .blur import blur_faces

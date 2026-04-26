@@ -10,7 +10,7 @@ Backends shipped:
 * ``transformers`` — the ``CosmosReason2`` class in ``cosmos_loader``.
   Default and well-tested.
 * ``vllm`` — higher generation throughput via paged KV cache + in-flight
-  batching. Optional dep (``pip install 'vrs[vllm]'``); implementation
+  batching. Optional dep (``uv sync --extra vllm``); implementation
   lives in ``vllm_cosmos``.
 * ``trtllm`` — reserved (a future addition that produces the biggest
   latency win when paired with speculative decoding).
@@ -20,10 +20,10 @@ through ``chat_video`` so each backend can map it to its native
 constraint surface (xgrammar logits processor for transformers,
 ``GuidedDecodingParams`` for vLLM, constraint engines in TRT-LLM).
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
@@ -31,14 +31,15 @@ import numpy as np
 @runtime_checkable
 class CosmosBackend(Protocol):
     """Minimum surface the verifier needs from a Cosmos runtime."""
+
     def chat_video(
         self,
         system_prompt: str,
         user_prompt: str,
-        frames_bgr: List[np.ndarray],
+        frames_bgr: list[np.ndarray],
         *,
-        clip_fps: Optional[int] = None,
-        response_schema: Optional[Dict[str, Any]] = None,
+        clip_fps: int | None = None,
+        response_schema: dict[str, Any] | None = None,
     ) -> str:
         """One multi-modal turn over a short video clip. Returns completion text.
 
@@ -68,15 +69,15 @@ def build_cosmos_backend(cfg, backend: str = "transformers") -> CosmosBackend:
         # Local import — avoids circular dep (cosmos_loader imports from here
         # for Protocol registration only at type-check time).
         from .cosmos_loader import CosmosReason2
+
         return CosmosReason2(cfg)
     if name == "vllm":
         from .vllm_cosmos import VLLMCosmosBackend
+
         return VLLMCosmosBackend(cfg)
     if name == "trtllm":
         raise NotImplementedError(
             "the trtllm backend is a planned follow-on once the vllm path "
             "is validated end-to-end; track the #10 roadmap item."
         )
-    raise ValueError(
-        f"unknown verifier backend: {backend!r}. Valid: {sorted(_KNOWN_BACKENDS)}"
-    )
+    raise ValueError(f"unknown verifier backend: {backend!r}. Valid: {sorted(_KNOWN_BACKENDS)}")

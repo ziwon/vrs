@@ -4,6 +4,7 @@ One shared YOLOE detector (fast path) and one shared Cosmos-Reason2-2B
 verifier (slow path) serve every stream. Bounded queues provide backpressure
 so any one noisy camera can't starve the others.
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
@@ -23,7 +24,7 @@ from ..runtime import CosmosConfig, build_cosmos_backend
 from ..triage import YOLOEConfig, build_detector
 from ..verifier import AlertVerifier
 from .queues import BoundedQueue, DropPolicy
-from .readers import Reader, build_reader
+from .readers import build_reader
 from .workers import DecoderThread, DetectorWorker, SinkWorker, VerifierWorker
 
 logger = logging.getLogger(__name__)
@@ -33,14 +34,15 @@ logger = logging.getLogger(__name__)
 # config
 # ──────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class StreamSpec:
     id: str
-    source: str                  # rtsp://... or mp4 path
-    roi_polygon: Optional[List] = None
+    source: str  # rtsp://... or mp4 path
+    roi_polygon: list | None = None
 
     @staticmethod
-    def from_dict(d: dict) -> "StreamSpec":
+    def from_dict(d: dict) -> StreamSpec:
         return StreamSpec(
             id=str(d["id"]),
             source=str(d.get("rtsp") or d.get("source") or d.get("video")),
@@ -67,8 +69,8 @@ def _validate_multistream_spec(cfg: dict, path: str = "<streams>") -> None:
             )
 
 
-def load_multistream_spec(path: str | Path) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
+def load_multistream_spec(path: str | Path) -> dict[str, Any]:
+    with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
     _validate_multistream_spec(cfg, str(path))
     return cfg
@@ -78,12 +80,13 @@ def load_multistream_spec(path: str | Path) -> Dict[str, Any]:
 # pipeline
 # ──────────────────────────────────────────────────────────────────────
 
+
 class MultiStreamPipeline:
     def __init__(
         self,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         policy: WatchPolicy,
-        streams: List[StreamSpec],
+        streams: list[StreamSpec],
         out_dir: str | Path,
     ):
         if not streams:
@@ -116,7 +119,7 @@ class MultiStreamPipeline:
         )
 
         ver_cfg = config["verifier"]
-        self._verifier: Optional[AlertVerifier] = None
+        self._verifier: AlertVerifier | None = None
         if ver_cfg.get("enabled", True):
             cosmos = build_cosmos_backend(
                 CosmosConfig(
@@ -154,9 +157,10 @@ class MultiStreamPipeline:
             maxsize=int(ms_cfg.get("verifier_queue_size", 16)),
             policy=DropPolicy(ms_cfg.get("verifier_drop_policy", "drop_oldest")),
         )
-        self._sink_qs: Dict[str, BoundedQueue] = {
-            s.id: BoundedQueue(maxsize=int(ms_cfg.get("sink_queue_size", 32)),
-                               policy=DropPolicy.DROP_OLDEST)
+        self._sink_qs: dict[str, BoundedQueue] = {
+            s.id: BoundedQueue(
+                maxsize=int(ms_cfg.get("sink_queue_size", 32)), policy=DropPolicy.DROP_OLDEST
+            )
             for s in streams
         }
 
@@ -169,10 +173,10 @@ class MultiStreamPipeline:
         self._privacy_cfg = config.get("privacy") or {}
         self._sink_cfg = config["sink"]
 
-        self._decoders: List[DecoderThread] = []
-        self._sinks: List[SinkWorker] = []
-        self._detector_worker: Optional[DetectorWorker] = None
-        self._verifier_worker: Optional[VerifierWorker] = None
+        self._decoders: list[DecoderThread] = []
+        self._sinks: list[SinkWorker] = []
+        self._detector_worker: DetectorWorker | None = None
+        self._verifier_worker: VerifierWorker | None = None
 
     # ---- lifecycle --------------------------------------------------
 
@@ -245,7 +249,7 @@ class MultiStreamPipeline:
                 )
             )
 
-    def run(self, max_runtime_s: Optional[float] = None) -> None:
+    def run(self, max_runtime_s: float | None = None) -> None:
         """Start all workers and block until stop() or max_runtime_s."""
         self._build_threads()
 
@@ -259,9 +263,10 @@ class MultiStreamPipeline:
             d.start()
 
         # graceful SIGINT
-        def _handler(signum, frame):  # noqa: ARG001
+        def _handler(signum, frame):
             logger.info("shutting down (signal %s)…", signum)
             self.stop()
+
         try:
             signal.signal(signal.SIGINT, _handler)
             signal.signal(signal.SIGTERM, _handler)
@@ -306,7 +311,7 @@ class MultiStreamPipeline:
 
         # best-effort join — name anything that exceeds its timeout so a hung
         # shutdown is debuggable from the log alone.
-        hung: List[str] = []
+        hung: list[str] = []
         for d in self._decoders:
             self._join_or_track_hung(d, timeout=2.0, hung=hung)
         if self._detector_worker:
@@ -326,22 +331,23 @@ class MultiStreamPipeline:
         if hung:
             logger.warning(
                 "shutdown left %d thread(s) still alive past their join timeout: %s",
-                len(hung), ", ".join(hung),
+                len(hung),
+                ", ".join(hung),
             )
 
         if self._calibrator is not None:
             self._calibrator.close()
 
     @staticmethod
-    def _join_or_track_hung(thread: threading.Thread, timeout: float, hung: List[str]) -> None:
+    def _join_or_track_hung(thread: threading.Thread, timeout: float, hung: list[str]) -> None:
         thread.join(timeout=timeout)
         if thread.is_alive():
             hung.append(f"{thread.name}(>{timeout:g}s)")
 
     # ---- backpressure diagnostics -----------------------------------
 
-    def _drop_counters(self) -> Dict[str, int]:
-        out: Dict[str, int] = {
+    def _drop_counters(self) -> dict[str, int]:
+        out: dict[str, int] = {
             "frame_q": self._frame_q.puts_dropped,
             "candidate_q": self._candidate_q.puts_dropped,
         }
@@ -350,11 +356,9 @@ class MultiStreamPipeline:
         return out
 
     @staticmethod
-    def _log_drop_deltas(prev: Dict[str, int], cur: Dict[str, int]) -> None:
+    def _log_drop_deltas(prev: dict[str, int], cur: dict[str, int]) -> None:
         deltas = [
-            (name, cur[name] - prev.get(name, 0))
-            for name in cur
-            if cur[name] > prev.get(name, 0)
+            (name, cur[name] - prev.get(name, 0)) for name in cur if cur[name] > prev.get(name, 0)
         ]
         if not deltas:
             return
@@ -366,7 +370,10 @@ class MultiStreamPipeline:
     def queue_stats(self) -> dict:
         return {
             "frame_q": {"size": self._frame_q.qsize(), "dropped": self._frame_q.puts_dropped},
-            "candidate_q": {"size": self._candidate_q.qsize(), "dropped": self._candidate_q.puts_dropped},
+            "candidate_q": {
+                "size": self._candidate_q.qsize(),
+                "dropped": self._candidate_q.puts_dropped,
+            },
             "sink_q": {
                 sid: {"size": q.qsize(), "dropped": q.puts_dropped}
                 for sid, q in self._sink_qs.items()
@@ -377,6 +384,7 @@ class MultiStreamPipeline:
 # ──────────────────────────────────────────────────────────────────────
 # builder
 # ──────────────────────────────────────────────────────────────────────
+
 
 def build_multistream_pipeline(
     config_path: str | Path,

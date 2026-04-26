@@ -2,7 +2,7 @@
 # tiny.yaml) that supplies ingest / detector / event_state / verifier / sink.
 #
 # Usage:
-#   python scripts/run_multistream.py \
+#   uv run scripts/run_multistream.py \
 #       --config  configs/default.yaml \
 #       --policy  configs/policies/safety.yaml \
 #       --streams configs/multistream.yaml \

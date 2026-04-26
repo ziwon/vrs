@@ -18,10 +18,10 @@ VRS is a two-stage video reasoning pipeline:
 - Output path: JSONL alerts plus event thumbnails by default; annotated MP4 is
   optional for debug/demo runs.
 
-The CPU-testable product surface is in good shape. The `.venv` test run passes:
+The CPU-testable product surface is in good shape. The uv-managed test run passes:
 
 ```text
-.venv/bin/python -m pytest -q
+uv run python -m pytest -q
 168 passed
 ```
 
@@ -132,7 +132,7 @@ is underprovisioned or thresholds are too loose.
 
 Use this before declaring a deployment ready:
 
-1. Run `.venv/bin/python -m pytest -q`.
+1. Run `uv run python -m pytest -q`.
 2. Run `scripts/make_test_clips.py` and `scripts/bench.py` on the target GPU.
 3. Run `scripts/eval.py` against labeled real-world footage.
 4. Record per-class precision, recall, F1, verifier flip rate, queue drops, and

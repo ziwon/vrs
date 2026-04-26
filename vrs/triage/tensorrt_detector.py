@@ -33,13 +33,11 @@ load:
    plain inference-only export). See TAO's object-detection notebooks for
    the ``tao-deploy`` flow. The resulting ``.engine`` drops in identically.
 """
+
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List
-
-import numpy as np
 
 from ..policy import WatchPolicy
 from ..schemas import Detection, Frame
@@ -74,7 +72,7 @@ class TensorRTYOLOEDetector:
         # Import ultralytics *after* path validation so the precondition
         # errors above can be exercised on hosts without ultralytics
         # installed (unit tests care about the validation branches).
-        from ultralytics import YOLO  # noqa: WPS433 — heavy optional dep
+        from ultralytics import YOLO
 
         self.cfg = cfg
         self.policy = policy
@@ -92,10 +90,10 @@ class TensorRTYOLOEDetector:
 
     # ---- detection API -------------------------------------------
 
-    def __call__(self, frame: Frame) -> List[Detection]:
+    def __call__(self, frame: Frame) -> list[Detection]:
         return self.batch([frame])[0]
 
-    def batch(self, frames: List[Frame]) -> List[List[Detection]]:
+    def batch(self, frames: list[Frame]) -> list[list[Detection]]:
         if not frames:
             return []
         images = [f.image for f in frames]
@@ -109,7 +107,7 @@ class TensorRTYOLOEDetector:
             verbose=False,
         )
 
-        out: List[List[Detection]] = []
+        out: list[list[Detection]] = []
         for r in results:
             if r is None or r.boxes is None or len(r.boxes) == 0:
                 out.append([])
@@ -118,8 +116,8 @@ class TensorRTYOLOEDetector:
             confs = r.boxes.conf.detach().cpu().numpy()
             cls_idx = r.boxes.cls.detach().cpu().numpy().astype(int)
 
-            dets: List[Detection] = []
-            for box, conf, ci in zip(xyxy, confs, cls_idx):
+            dets: list[Detection] = []
+            for box, conf, ci in zip(xyxy, confs, cls_idx, strict=True):
                 if ci < 0 or ci >= len(self._prompt_to_event):
                     continue
                 event_name = self._prompt_to_event[ci]

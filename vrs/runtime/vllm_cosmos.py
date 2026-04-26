@@ -1,6 +1,6 @@
 """vLLM-backed Cosmos verifier runtime.
 
-Why vLLM: paged KV cache + in-flight batching give 2-3× higher generation
+Why vLLM: paged KV cache + in-flight batching give 2-3x higher generation
 throughput than ``transformers.generate`` on the same hardware, and the
 server-side continuous-batching model means queued verify requests amortize
 nicely. Qwen3-VL architecture (which Cosmos-Reason2-2B inherits) is
@@ -17,21 +17,23 @@ targets the vLLM ≥ 0.6.5 public API; when you flip a deployment to this
 backend, do a short smoke run and pin the exact version you validated
 against.
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-def _bgr_to_pil(frames_bgr: List[np.ndarray]):
+def _bgr_to_pil(frames_bgr: list[np.ndarray]):
     """Shared with cosmos_loader — kept local so this module doesn't depend
     on the transformers backend being importable."""
     import cv2
     from PIL import Image
+
     out = []
     for bgr in frames_bgr:
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
@@ -51,11 +53,11 @@ class VLLMCosmosBackend:
 
     def __init__(self, cfg):
         try:
-            from vllm import LLM  # noqa: WPS433
+            from vllm import LLM
         except ImportError as e:
             raise ImportError(
                 "vLLM backend requires the 'vllm' package. Install with "
-                "`pip install 'vrs[vllm]'` (or directly: `pip install vllm`). "
+                "`uv sync --extra vllm`. "
                 f"(underlying: {e})"
             ) from e
 
@@ -63,8 +65,7 @@ class VLLMCosmosBackend:
         # Map our dtype names to vLLM's. vLLM does its own W4A16 loading
         # via the model's quantization_config, so we pass-through the
         # model_id and let vLLM pick up the pre-quantized weights.
-        dtype_map = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32",
-                     "w4a16": "auto"}
+        dtype_map = {"bf16": "bfloat16", "fp16": "float16", "fp32": "float32", "w4a16": "auto"}
         llm_kwargs = {
             "model": cfg.model_id,
             "dtype": dtype_map.get(cfg.dtype, "auto"),
@@ -80,15 +81,16 @@ class VLLMCosmosBackend:
         self,
         system_prompt: str,
         user_prompt: str,
-        frames_bgr: List[np.ndarray],
+        frames_bgr: list[np.ndarray],
         *,
-        clip_fps: Optional[int] = None,
-        response_schema: Optional[Dict[str, Any]] = None,
+        clip_fps: int | None = None,
+        response_schema: dict[str, Any] | None = None,
     ) -> str:
         if not frames_bgr:
             raise ValueError("chat_video requires at least one frame")
 
         from vllm import SamplingParams
+
         try:
             from vllm.sampling_params import GuidedDecodingParams
         except ImportError:  # very old vllm — graceful downgrade
@@ -109,7 +111,7 @@ class VLLMCosmosBackend:
             },
         ]
 
-        sp_kwargs: Dict[str, Any] = dict(
+        sp_kwargs: dict[str, Any] = dict(
             max_tokens=int(self.cfg.max_new_tokens),
             temperature=max(float(self.cfg.temperature), 1e-5),
         )

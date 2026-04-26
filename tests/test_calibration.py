@@ -1,4 +1,5 @@
 """Self-calibration Stage A — pure-Python unit tests."""
+
 from __future__ import annotations
 
 import json
@@ -20,10 +21,18 @@ from vrs.schemas import CandidateAlert, Detection, VerifiedAlert
 
 
 def _policy(min_score: float = 0.30) -> WatchPolicy:
-    return WatchPolicy([
-        WatchItem(name="fire", detector_prompts=["fire"], verifier_prompt="flames",
-                  severity="critical", min_score=min_score, min_persist_frames=2),
-    ])
+    return WatchPolicy(
+        [
+            WatchItem(
+                name="fire",
+                detector_prompts=["fire"],
+                verifier_prompt="flames",
+                severity="critical",
+                min_score=min_score,
+                min_persist_frames=2,
+            ),
+        ]
+    )
 
 
 def _entry(dt_s: float = 0.0, flipped: bool = False, fn: bool = False) -> WindowEntry:
@@ -33,20 +42,28 @@ def _entry(dt_s: float = 0.0, flipped: bool = False, fn: bool = False) -> Window
     return WindowEntry(ts_monotonic=dt_s, was_flipped=flipped, had_fn_flag=fn)
 
 
-def _verified(class_name: str = "fire", *, true_alert: bool = True,
-              fn_cls: str | None = None) -> VerifiedAlert:
+def _verified(
+    class_name: str = "fire", *, true_alert: bool = True, fn_cls: str | None = None
+) -> VerifiedAlert:
     cand = CandidateAlert(
-        class_name=class_name, severity="critical",
-        start_pts_s=1.0, peak_pts_s=2.0, peak_frame_index=8,
+        class_name=class_name,
+        severity="critical",
+        start_pts_s=1.0,
+        peak_pts_s=2.0,
+        peak_frame_index=8,
         peak_detections=[Detection(class_name=class_name, score=0.8, xyxy=(0, 0, 1, 1))],
     )
     return VerifiedAlert(
-        candidate=cand, true_alert=true_alert, confidence=0.9,
-        false_negative_class=fn_cls, rationale="stub",
+        candidate=cand,
+        true_alert=true_alert,
+        confidence=0.9,
+        false_negative_class=fn_cls,
+        rationale="stub",
     )
 
 
 # ─── suggest() — pure decision function ───────────────────────────────
+
 
 def test_suggest_returns_none_below_min_sample():
     window = [_entry(i, flipped=True) for i in range(5)]
@@ -65,8 +82,7 @@ def test_suggest_tightens_on_high_flip_rate():
 
 def test_suggest_respects_max_score_cap():
     window = [_entry(i, flipped=True) for i in range(10)]
-    sug = suggest("s", "fire", 0.79, window, min_sample=10, score_delta=0.05,
-                  max_score_cap=0.80)
+    sug = suggest("s", "fire", 0.79, window, min_sample=10, score_delta=0.05, max_score_cap=0.80)
     assert sug is not None
     assert sug.suggested_min_score == pytest.approx(0.80)
 
@@ -83,8 +99,9 @@ def test_suggest_loosen_gated_on_target_alerts_per_hour():
     window = [_entry(now + i, flipped=False) for i in range(10)]
     # Make the elapsed time exactly 1 hour
     window[-1] = _entry(now + 3600.0, flipped=False)
-    sug = suggest("s", "fire", 0.30, window, min_sample=10,
-                  min_flip_rate=0.05, target_alerts_per_hour=100.0)
+    sug = suggest(
+        "s", "fire", 0.30, window, min_sample=10, min_flip_rate=0.05, target_alerts_per_hour=100.0
+    )
     assert sug is not None
     assert sug.direction == "loosen"
     assert sug.suggested_min_score == pytest.approx(0.28)
@@ -103,15 +120,22 @@ def test_suggest_no_loosen_when_alert_rate_above_target():
     now = time.monotonic()
     # 10 alerts over 1 minute of wall time → rate = 600/h
     window = [_entry(now + (i * 6), flipped=False) for i in range(10)]
-    assert suggest("s", "fire", 0.30, window, min_sample=10,
-                   target_alerts_per_hour=100.0) is None
+    assert suggest("s", "fire", 0.30, window, min_sample=10, target_alerts_per_hour=100.0) is None
 
 
 def test_suggest_respects_min_score_cap():
     now = time.monotonic()
     window = [_entry(now + (i * 3600), flipped=False) for i in range(10)]
-    sug = suggest("s", "fire", 0.16, window, min_sample=10, score_delta=0.05,
-                  min_score_cap=0.15, target_alerts_per_hour=1e6)
+    sug = suggest(
+        "s",
+        "fire",
+        0.16,
+        window,
+        min_sample=10,
+        score_delta=0.05,
+        min_score_cap=0.15,
+        target_alerts_per_hour=1e6,
+    )
     assert sug is not None
     assert sug.suggested_min_score == pytest.approx(0.15)
 
@@ -129,10 +153,17 @@ def test_suggest_rejects_bad_params():
 
 def test_suggestion_to_dict_round_trips():
     sug = Suggestion(
-        ts="2026-04-22T00:00:00+00:00", stream_id="cam_lobby", class_name="fire",
-        current_min_score=0.30, suggested_min_score=0.32,
-        direction="tighten", reason="test",
-        flip_rate=0.6, fn_flag_rate=0.1, n_alerts=10, alerts_per_hour=5.0,
+        ts="2026-04-22T00:00:00+00:00",
+        stream_id="cam_lobby",
+        class_name="fire",
+        current_min_score=0.30,
+        suggested_min_score=0.32,
+        direction="tighten",
+        reason="test",
+        flip_rate=0.6,
+        fn_flag_rate=0.1,
+        n_alerts=10,
+        alerts_per_hour=5.0,
     )
     blob = json.dumps(sug.to_dict())
     back = json.loads(blob)
@@ -142,6 +173,7 @@ def test_suggestion_to_dict_round_trips():
 
 
 # ─── Calibrator — stateful wrapper ────────────────────────────────────
+
 
 def test_calibrator_emits_and_clears_window_after_suggestion(tmp_path: Path):
     """After an emission the window is cleared, so the next suggestion
@@ -198,9 +230,15 @@ def test_build_calibrator_disabled_by_default():
 
 def test_build_calibrator_constructs_when_enabled(tmp_path: Path):
     cal = build_calibrator(
-        {"enabled": True, "window_size": 50, "min_sample": 5,
-         "max_flip_rate": 0.25, "score_delta": 0.03},
-        _policy(), tmp_path,
+        {
+            "enabled": True,
+            "window_size": 50,
+            "min_sample": 5,
+            "max_flip_rate": 0.25,
+            "score_delta": 0.03,
+        },
+        _policy(),
+        tmp_path,
     )
     assert isinstance(cal, Calibrator)
     assert cal.window_size == 50
@@ -212,5 +250,5 @@ def test_build_calibrator_constructs_when_enabled(tmp_path: Path):
 def test_calibration_sink_does_not_create_empty_file(tmp_path: Path):
     path = tmp_path / "never_written.jsonl"
     sink = CalibrationSink(path)
-    sink.close()    # close without writing
+    sink.close()  # close without writing
     assert not path.exists()

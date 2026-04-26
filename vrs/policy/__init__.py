@@ -1,3 +1,3 @@
-from .watch_policy import WatchPolicy, WatchItem, load_watch_policy
+from .watch_policy import WatchItem, WatchPolicy, load_watch_policy
 
-__all__ = ["WatchPolicy", "WatchItem", "load_watch_policy"]
+__all__ = ["WatchItem", "WatchPolicy", "load_watch_policy"]

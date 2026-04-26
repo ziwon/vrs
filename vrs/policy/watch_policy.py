@@ -9,14 +9,14 @@ A watch policy lists named events in plain English. Each item has:
   min_score : per-class score floor (overrides config.detector.conf_floor up).
   min_persist_frames : temporal persistence required to raise a CandidateAlert.
 """
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
 
 import yaml
-
 
 _VALID_SEVERITY = {"info", "low", "medium", "high", "critical"}
 
@@ -24,7 +24,7 @@ _VALID_SEVERITY = {"info", "low", "medium", "high", "critical"}
 @dataclass(frozen=True)
 class WatchItem:
     name: str
-    detector_prompts: List[str]
+    detector_prompts: list[str]
     verifier_prompt: str
     severity: str
     min_score: float
@@ -37,11 +37,11 @@ class WatchPolicy:
     def __init__(self, items: Sequence[WatchItem]):
         if not items:
             raise ValueError("WatchPolicy must contain at least one item")
-        self._by_name: Dict[str, WatchItem] = {it.name: it for it in items}
+        self._by_name: dict[str, WatchItem] = {it.name: it for it in items}
 
         # YOLOE consumes a flat vocabulary; remember which prompt → which event
-        self._flat_prompts: List[str] = []
-        self._prompt_to_event: List[str] = []
+        self._flat_prompts: list[str] = []
+        self._prompt_to_event: list[str] = []
         for it in items:
             for p in it.detector_prompts:
                 self._flat_prompts.append(p)
@@ -61,15 +61,15 @@ class WatchPolicy:
     def __getitem__(self, name: str) -> WatchItem:
         return self._by_name[name]
 
-    def get(self, name: str) -> Optional[WatchItem]:
+    def get(self, name: str) -> WatchItem | None:
         return self._by_name.get(name)
 
-    def names(self) -> List[str]:
+    def names(self) -> list[str]:
         return list(self._by_name.keys())
 
     # ---- detector glue ---------------------------------------------
 
-    def yoloe_vocabulary(self) -> List[str]:
+    def yoloe_vocabulary(self) -> list[str]:
         """Flat list of noun phrases to push into YOLOE's class names."""
         return list(self._flat_prompts)
 
@@ -79,7 +79,7 @@ class WatchPolicy:
 
     # ---- verifier glue ---------------------------------------------
 
-    def verifier_definitions(self) -> Dict[str, str]:
+    def verifier_definitions(self) -> dict[str, str]:
         return {it.name: it.verifier_prompt for it in self._by_name.values()}
 
 
@@ -98,9 +98,7 @@ def _validate_item(raw: dict) -> WatchItem:
 
     severity = str(raw.get("severity", "medium")).lower().strip()
     if severity not in _VALID_SEVERITY:
-        raise ValueError(
-            f"watch[{name}].severity={severity!r} not in {_VALID_SEVERITY}"
-        )
+        raise ValueError(f"watch[{name}].severity={severity!r} not in {_VALID_SEVERITY}")
 
     min_score = float(raw.get("min_score", 0.30))
     if not 0.0 <= min_score <= 1.0:
@@ -121,7 +119,7 @@ def _validate_item(raw: dict) -> WatchItem:
 
 
 def load_watch_policy(path: str | Path) -> WatchPolicy:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
     items_raw = raw.get("watch") or []
     if not items_raw:

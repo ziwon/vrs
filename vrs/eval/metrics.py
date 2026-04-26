@@ -14,9 +14,10 @@ the cascade's final output. Raw detector hits that the verifier flipped to
 ``false_alarm`` are *not* treated as FPs against ground truth — they are
 captured separately as ``flip_rate``.
 """
+
 from __future__ import annotations
 
-from typing import Iterable, List, Sequence
+from collections.abc import Iterable, Sequence
 
 from .schemas import ClassMetrics, GroundTruthEvent, RunScore
 
@@ -63,13 +64,10 @@ def score_alerts_against_truth(
     # Per-class greedy match
     for cls in class_set:
         cm = ClassMetrics()
-        cls_events: List[GroundTruthEvent] = [e for e in events if e.class_name == cls]
+        cls_events: list[GroundTruthEvent] = [e for e in events if e.class_name == cls]
         matched = [False] * len(cls_events)
 
-        cls_alerts = [
-            a for a in alerts
-            if a["class_name"] == cls and a.get("true_alert", True)
-        ]
+        cls_alerts = [a for a in alerts if a["class_name"] == cls and a.get("true_alert", True)]
         # Stable ordering by peak_pts_s keeps matching deterministic.
         for alert in sorted(cls_alerts, key=lambda a: float(a["peak_pts_s"])):
             pts = float(alert["peak_pts_s"])

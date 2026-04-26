@@ -17,19 +17,20 @@ thresholds" apart from "thresholds too high, missing cases", so it stays
 silent — tightening on obvious over-firing is the only fully-safe
 default.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 from .schemas import Suggestion, WindowEntry
 
 
 def _iso_ts() -> str:
-    return _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
+    return _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds")
 
 
-def _alerts_per_hour(window: list[WindowEntry]) -> Optional[float]:
+def _alerts_per_hour(window: list[WindowEntry]) -> float | None:
     if len(window) < 2:
         return None
     elapsed = window[-1].ts_monotonic - window[0].ts_monotonic
@@ -50,9 +51,9 @@ def suggest(
     score_delta: float = 0.02,
     min_score_cap: float = 0.15,
     max_score_cap: float = 0.80,
-    target_alerts_per_hour: Optional[float] = None,
-    ts: Optional[str] = None,
-) -> Optional[Suggestion]:
+    target_alerts_per_hour: float | None = None,
+    ts: str | None = None,
+) -> Suggestion | None:
     """Return a Suggestion if the window warrants one, else ``None``."""
     if not 0.0 <= min_flip_rate <= max_flip_rate <= 1.0:
         raise ValueError("must satisfy 0 <= min_flip_rate <= max_flip_rate <= 1")
@@ -75,7 +76,7 @@ def suggest(
     if flip_rate > max_flip_rate:
         new_score = min(current_min_score + score_delta, max_score_cap)
         if new_score <= current_min_score:
-            return None   # already at the ceiling — nothing to suggest
+            return None  # already at the ceiling — nothing to suggest
         reason = (
             f"flip_rate={flip_rate:.2f} > {max_flip_rate:.2f} over {n} alerts "
             f"— verifier is overruling the detector too often; tightening "
@@ -103,7 +104,7 @@ def suggest(
     ):
         new_score = max(current_min_score - score_delta, min_score_cap)
         if new_score >= current_min_score:
-            return None   # already at the floor
+            return None  # already at the floor
         reason = (
             f"flip_rate={flip_rate:.2f} < {min_flip_rate:.2f} and "
             f"alerts_per_hour={rate:.2f} < target={target_alerts_per_hour:.2f} "

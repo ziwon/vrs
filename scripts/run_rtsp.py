@@ -1,16 +1,16 @@
 """Run VRS over a live RTSP stream.
 
 Example:
-    python scripts/run_rtsp.py \
+    uv run scripts/run_rtsp.py \
         --rtsp rtsp://u:p@cam.local:554/stream1 \
         --config configs/default.yaml \
         --policy configs/policies/safety.yaml \
         --out runs/live
 """
+
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 from vrs import setup_logging
 from vrs.pipeline import build_pipeline

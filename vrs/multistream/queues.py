@@ -11,15 +11,16 @@ that's reading a real-time RTSP stream. We support three policies:
 Returns the number of *dropped* items via ``puts_dropped`` so the caller can
 expose backpressure metrics.
 """
+
 from __future__ import annotations
 
 import threading
 from collections import deque
-from enum import Enum
-from typing import Any, Deque, Optional
+from enum import StrEnum
+from typing import Any
 
 
-class DropPolicy(str, Enum):
+class DropPolicy(StrEnum):
     DROP_OLDEST = "drop_oldest"
     DROP_NEWEST = "drop_newest"
     BLOCK = "block"
@@ -32,7 +33,7 @@ class BoundedQueue:
         self.maxsize = int(maxsize)
         self.policy = DropPolicy(policy)
 
-        self._buf: Deque[Any] = deque()
+        self._buf: deque[Any] = deque()
         self._lock = threading.Lock()
         self._not_empty = threading.Condition(self._lock)
         self._not_full = threading.Condition(self._lock)
@@ -43,7 +44,7 @@ class BoundedQueue:
 
     # ---- producer side ---------------------------------------------
 
-    def put(self, item: Any, timeout: Optional[float] = None) -> bool:
+    def put(self, item: Any, timeout: float | None = None) -> bool:
         """Insert an item.
 
         Returns True if the item is in the queue, False if it was dropped per
@@ -87,7 +88,7 @@ class BoundedQueue:
 
     # ---- consumer side ---------------------------------------------
 
-    def get(self, timeout: Optional[float] = None) -> Any:
+    def get(self, timeout: float | None = None) -> Any:
         """Pop the oldest item; raises ``TimeoutError`` if the wait elapses."""
         with self._lock:
             ok = self._not_empty.wait_for(

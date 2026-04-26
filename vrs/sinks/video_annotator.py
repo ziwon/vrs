@@ -13,18 +13,17 @@ to reason about events like "a person has collapsed" — but everything
 written to disk is blurred. This matches GDPR / K-GDPR expectations for
 CCTV retention.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 
 from ..privacy import FaceDetector, NullFaceDetector, blur_faces
 from ..schemas import Detection, Frame, VerifiedAlert
-
 
 _SEVERITY_COLOR = {
     "info": (200, 200, 200),
@@ -38,10 +37,10 @@ _SEVERITY_COLOR = {
 @dataclass
 class _ActiveBanner:
     text: str
-    color: Tuple[int, int, int]
+    color: tuple[int, int, int]
     expires_at_pts_s: float
-    bbox_xywh_norm: Optional[Tuple[float, float, float, float]] = None
-    trajectory_xy_norm: List[Tuple[float, float]] = field(default_factory=list)
+    bbox_xywh_norm: tuple[float, float, float, float] | None = None
+    trajectory_xy_norm: list[tuple[float, float]] = field(default_factory=list)
 
 
 class VideoAnnotator:
@@ -51,7 +50,7 @@ class VideoAnnotator:
         fps: float,
         banner_hold_s: float = 4.0,
         *,
-        face_detector: Optional[FaceDetector] = None,
+        face_detector: FaceDetector | None = None,
         blur_kernel: int = 31,
         blur_margin_pct: float = 0.15,
     ):
@@ -63,9 +62,9 @@ class VideoAnnotator:
         self.blur_kernel = int(blur_kernel)
         self.blur_margin_pct = float(blur_margin_pct)
 
-        self._writer: Optional[cv2.VideoWriter] = None
-        self._size: Optional[Tuple[int, int]] = None
-        self._active: Dict[str, _ActiveBanner] = {}    # keyed by class name
+        self._writer: cv2.VideoWriter | None = None
+        self._size: tuple[int, int] | None = None
+        self._active: dict[str, _ActiveBanner] = {}  # keyed by class name
 
     # ---- lifecycle --------------------------------------------------
 
@@ -107,7 +106,7 @@ class VideoAnnotator:
             trajectory_xy_norm=list(alert.trajectory_xy_norm),
         )
 
-    def write(self, frame: Frame, detections: Optional[List[Detection]] = None) -> None:
+    def write(self, frame: Frame, detections: list[Detection] | None = None) -> None:
         img = frame.image.copy()
         self._lazy_open(img.shape)
 
@@ -117,8 +116,7 @@ class VideoAnnotator:
         # the cost of a privacy-disabled run is one Python function call.
         faces = self.face_detector(img)
         if faces:
-            blur_faces(img, faces, kernel=self.blur_kernel,
-                       margin_pct=self.blur_margin_pct)
+            blur_faces(img, faces, kernel=self.blur_kernel, margin_pct=self.blur_margin_pct)
 
         # detector boxes (subtle white) — gives operator instant feedback
         if detections:
@@ -126,9 +124,14 @@ class VideoAnnotator:
                 x1, y1, x2, y2 = (int(v) for v in d.xyxy)
                 cv2.rectangle(img, (x1, y1), (x2, y2), (255, 255, 255), 1)
                 cv2.putText(
-                    img, f"{d.class_name} {d.score:.2f}",
-                    (x1, max(12, y1 - 4)), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5, (255, 255, 255), 1, cv2.LINE_AA,
+                    img,
+                    f"{d.class_name} {d.score:.2f}",
+                    (x1, max(12, y1 - 4)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 255),
+                    1,
+                    cv2.LINE_AA,
                 )
 
         # active banners: text + verifier bbox + verifier trajectory
@@ -153,8 +156,14 @@ class VideoAnnotator:
                 cv2.polylines(img, [pts], False, (0, 255, 255), 2)
 
         cv2.putText(
-            img, f"t={frame.pts_s:.2f}s  f#{frame.index}",
-            (10, h - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA,
+            img,
+            f"t={frame.pts_s:.2f}s  f#{frame.index}",
+            (10, h - 12),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
         )
         self._writer.write(img)  # type: ignore[union-attr]
 

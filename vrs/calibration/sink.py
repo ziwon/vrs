@@ -1,10 +1,11 @@
 """Append-only JSONL writer for calibration suggestions."""
+
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
-from typing import IO, Optional
+from typing import IO
 
 from .schemas import Suggestion
 
@@ -22,7 +23,7 @@ class CalibrationSink:
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self._fp: Optional[IO[str]] = None
+        self._fp: IO[str] | None = None
 
     def _open(self) -> None:
         if self._fp is not None:
@@ -37,9 +38,13 @@ class CalibrationSink:
         self._fp.flush()
         logger.info(
             "calibration suggestion: stream=%s class=%s %s %.2f → %.2f  (flip_rate=%.2f, n=%d)",
-            s.stream_id, s.class_name, s.direction,
-            s.current_min_score, s.suggested_min_score,
-            s.flip_rate, s.n_alerts,
+            s.stream_id,
+            s.class_name,
+            s.direction,
+            s.current_min_score,
+            s.suggested_min_score,
+            s.flip_rate,
+            s.n_alerts,
         )
 
     def close(self) -> None:
@@ -47,7 +52,7 @@ class CalibrationSink:
             self._fp.close()
             self._fp = None
 
-    def __enter__(self) -> "CalibrationSink":
+    def __enter__(self) -> CalibrationSink:
         return self
 
     def __exit__(self, *exc) -> None:

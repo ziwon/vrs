@@ -24,11 +24,12 @@ This is the generic case we can rely on locally in tests and in the lab.
 Public-dataset adapters (D-Fire, Le2i) convert their native formats into
 the same on-the-fly shape.
 """
+
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, List
 
 from ..schemas import EvalItem, GroundTruthEvent
 from .base import Dataset
@@ -46,16 +47,18 @@ class LabeledDirDataset(Dataset):
             yield EvalItem(video_path=video, events=_load_sidecar(video))
 
 
-def _load_sidecar(video: Path) -> List[GroundTruthEvent]:
+def _load_sidecar(video: Path) -> list[GroundTruthEvent]:
     label = video.with_suffix(".json")
     if not label.exists():
         return []
     raw = json.loads(label.read_text(encoding="utf-8"))
-    out: List[GroundTruthEvent] = []
+    out: list[GroundTruthEvent] = []
     for e in raw.get("events", []):
-        out.append(GroundTruthEvent(
-            class_name=str(e["class"]),
-            start_s=float(e["start_s"]),
-            end_s=float(e["end_s"]),
-        ))
+        out.append(
+            GroundTruthEvent(
+                class_name=str(e["class"]),
+                start_s=float(e["start_s"]),
+                end_s=float(e["end_s"]),
+            )
+        )
     return out

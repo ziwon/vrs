@@ -8,36 +8,35 @@ Reports:
 
 Typical run on an RTX 5080 / 16 GB (Blackwell):
 
-    python scripts/make_test_clips.py --out runs/test_clips
-    python scripts/bench.py --clips runs/test_clips --out runs/bench
+    uv run scripts/make_test_clips.py --out runs/test_clips
+    uv run scripts/bench.py --clips runs/test_clips --out runs/bench
 
 The script never touches the network; everything runs against your local
 models. If ``configs/default.yaml``'s Cosmos entry is set to a HuggingFace
 model ID and it isn't cached yet, ``transformers`` will fetch it — that's
 the one exception and it happens only on first run.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
-
-
 
 from vrs import setup_logging
 
 
-def _vram_snapshot() -> Optional[Dict[str, float]]:
+def _vram_snapshot() -> dict[str, float] | None:
     try:
         import torch
+
         if not torch.cuda.is_available():
             return None
         return {
-            "allocated_gb": torch.cuda.memory_allocated() / (1024 ** 3),
-            "reserved_gb": torch.cuda.memory_reserved() / (1024 ** 3),
-            "peak_gb": torch.cuda.max_memory_allocated() / (1024 ** 3),
+            "allocated_gb": torch.cuda.memory_allocated() / (1024**3),
+            "reserved_gb": torch.cuda.memory_reserved() / (1024**3),
+            "peak_gb": torch.cuda.max_memory_allocated() / (1024**3),
         }
     except ImportError:
         return None
@@ -46,6 +45,7 @@ def _vram_snapshot() -> Optional[Dict[str, float]]:
 def _reset_vram_peak() -> None:
     try:
         import torch
+
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
             torch.cuda.synchronize()
@@ -56,6 +56,7 @@ def _reset_vram_peak() -> None:
 def _gpu_name() -> str:
     try:
         import torch
+
         if torch.cuda.is_available():
             return torch.cuda.get_device_name(0)
     except ImportError:
@@ -65,6 +66,7 @@ def _gpu_name() -> str:
 
 def _count_frames(video_path: Path) -> int:
     import cv2
+
     cap = cv2.VideoCapture(str(video_path))
     n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
     cap.release()
@@ -74,7 +76,7 @@ def _count_frames(video_path: Path) -> int:
 def _count_jsonl(path: Path) -> int:
     if not path.exists():
         return 0
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         return sum(1 for _ in f if _.strip())
 
 
@@ -82,10 +84,11 @@ def _count_jsonl(path: Path) -> int:
 # single-stream bench — one clip at a time, measures steady-state throughput
 # ──────────────────────────────────────────────────────────────────────
 
-def bench_single(clips_dir: Path, config: str, policy: str, out_dir: Path) -> Dict:
+
+def bench_single(clips_dir: Path, config: str, policy: str, out_dir: Path) -> dict:
     from vrs.pipeline import build_pipeline
 
-    results: Dict[str, Dict] = {}
+    results: dict[str, dict] = {}
     for clip in sorted(clips_dir.glob("*.mp4")):
         sub = out_dir / f"single_{clip.stem}"
         sub.mkdir(parents=True, exist_ok=True)
@@ -103,7 +106,7 @@ def bench_single(clips_dir: Path, config: str, policy: str, out_dir: Path) -> Di
 
         target_fps = float(pipeline.cfg["ingest"]["target_fps"])
         # frames the pipeline actually processed (post-downsample)
-        n_processed = max(1, int(round(n_source * (target_fps / 30.0))))
+        n_processed = max(1, round(n_source * (target_fps / 30.0)))
         throughput_fps = n_processed / dt if dt > 0 else 0.0
 
         r = {
@@ -121,7 +124,8 @@ def bench_single(clips_dir: Path, config: str, policy: str, out_dir: Path) -> Di
             f"{throughput_fps:6.2f} proc-fps  "
             f"alerts={n_alerts}  "
             f"peak_vram={r['vram_gb']['peak_gb']:.2f} GB"
-            if r["vram_gb"] else f"[single] {clip.name}: {dt:.2f}s  alerts={n_alerts}"
+            if r["vram_gb"]
+            else f"[single] {clip.name}: {dt:.2f}s  alerts={n_alerts}"
         )
     return results
 
@@ -130,6 +134,7 @@ def bench_single(clips_dir: Path, config: str, policy: str, out_dir: Path) -> Di
 # multi-stream bench — replay all clips as N concurrent "streams"
 # ──────────────────────────────────────────────────────────────────────
 
+
 def bench_multistream(
     clips_dir: Path,
     config: str,
@@ -137,14 +142,15 @@ def bench_multistream(
     out_dir: Path,
     replicas: int = 4,
     max_runtime_s: float = 60.0,
-) -> Dict:
+) -> dict:
     import yaml
+
     from vrs.multistream import build_multistream_pipeline
 
     manifest_path = out_dir / "ms_manifest.yaml"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    streams: List[Dict] = []
+    streams: list[dict] = []
     for clip in sorted(clips_dir.glob("*.mp4")):
         for r in range(replicas):
             streams.append({"id": f"{clip.stem}_{r}", "rtsp": str(clip)})
@@ -194,6 +200,7 @@ def bench_multistream(
 # cli
 # ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     setup_logging()
     ap = argparse.ArgumentParser(description="Benchmark VRS on the local GPU")
@@ -203,8 +210,9 @@ def main() -> None:
     ap.add_argument("--out", default="runs/bench")
     ap.add_argument("--skip-single", action="store_true")
     ap.add_argument("--skip-multi", action="store_true")
-    ap.add_argument("--multi-replicas", type=int, default=4,
-                    help="replay each test clip N times simultaneously")
+    ap.add_argument(
+        "--multi-replicas", type=int, default=4, help="replay each test clip N times simultaneously"
+    )
     ap.add_argument("--multi-runtime-s", type=float, default=60.0)
     args = ap.parse_args()
 
@@ -212,7 +220,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     clips_dir = Path(args.clips)
 
-    report: Dict = {
+    report: dict = {
         "gpu": _gpu_name(),
         "config": args.config,
         "policy": args.policy,
@@ -228,12 +236,15 @@ def main() -> None:
     if not args.skip_multi:
         print("\n── multi-stream ──────────────────────────")
         report["multi"] = bench_multistream(
-            clips_dir, args.config, args.policy, out_dir,
+            clips_dir,
+            args.config,
+            args.policy,
+            out_dir,
             replicas=args.multi_replicas,
             max_runtime_s=args.multi_runtime_s,
         )
         m = report["multi"]
-        agg_fps = (m["streams"] * 4.0)   # nominal input rate (4 fps/stream)
+        agg_fps = m["streams"] * 4.0  # nominal input rate (4 fps/stream)
         print(
             f"\n[multi] {m['streams']} streams  "
             f"wall={m['wall_seconds']}s  "

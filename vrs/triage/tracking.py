@@ -20,10 +20,12 @@ Two implementations are shipped:
 Tracker state is *per-stream*: the multi-stream pipeline constructs one
 tracker per ``stream_id`` so track IDs don't collide across cameras.
 """
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Dict, List, Protocol, Sequence, Tuple
+from typing import Protocol
 
 from ..schemas import Detection
 
@@ -34,16 +36,19 @@ class Tracker(Protocol):
     Implementations should be stateful — the same instance sees every frame
     of one stream — and must cope with an empty detection list.
     """
-    def update(self, detections: Sequence[Detection], frame_index: int) -> List[Detection]: ...
+
+    def update(self, detections: Sequence[Detection], frame_index: int) -> list[Detection]: ...
 
 
 # ──────────────────────────────────────────────────────────────────────
 # pass-through
 # ──────────────────────────────────────────────────────────────────────
 
+
 class NullTracker:
     """No-op tracker — keeps ``track_id=None`` on every detection."""
-    def update(self, detections: Sequence[Detection], frame_index: int) -> List[Detection]:
+
+    def update(self, detections: Sequence[Detection], frame_index: int) -> list[Detection]:
         return list(detections)
 
 
@@ -51,15 +56,16 @@ class NullTracker:
 # simple IoU tracker — greedy, per-class association
 # ──────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class _Track:
     track_id: int
     class_name: str
-    last_xyxy: Tuple[float, float, float, float]
+    last_xyxy: tuple[float, float, float, float]
     last_seen_idx: int
 
 
-def _iou(a: Tuple[float, float, float, float], b: Tuple[float, float, float, float]) -> float:
+def _iou(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
     ix1, iy1 = max(ax1, bx1), max(ay1, by1)
@@ -95,13 +101,13 @@ class SimpleIoUTracker:
             raise ValueError("max_gap_frames must be >= 1")
         self.iou_threshold = float(iou_threshold)
         self.max_gap_frames = int(max_gap_frames)
-        self._tracks: Dict[int, _Track] = {}
+        self._tracks: dict[int, _Track] = {}
         self._next_id = 1
 
-    def update(self, detections: Sequence[Detection], frame_index: int) -> List[Detection]:
-        out: List[Detection] = []
+    def update(self, detections: Sequence[Detection], frame_index: int) -> list[Detection]:
+        out: list[Detection] = []
         # group by class
-        by_cls: Dict[str, List[Detection]] = {}
+        by_cls: dict[str, list[Detection]] = {}
         for d in detections:
             by_cls.setdefault(d.class_name, []).append(d)
 
@@ -133,8 +139,10 @@ class SimpleIoUTracker:
                     tid = self._next_id
                     self._next_id += 1
                     self._tracks[tid] = _Track(
-                        track_id=tid, class_name=cls,
-                        last_xyxy=det.xyxy, last_seen_idx=frame_index,
+                        track_id=tid,
+                        class_name=cls,
+                        last_xyxy=det.xyxy,
+                        last_seen_idx=frame_index,
                     )
                     det.track_id = tid
                 out.append(det)
@@ -142,7 +150,8 @@ class SimpleIoUTracker:
         # retire stale tracks so their IDs don't drift back onto unrelated
         # objects that happen to overlap a decayed bbox
         expired = [
-            tid for tid, t in self._tracks.items()
+            tid
+            for tid, t in self._tracks.items()
             if frame_index - t.last_seen_idx > self.max_gap_frames
         ]
         for tid in expired:
@@ -154,6 +163,7 @@ class SimpleIoUTracker:
 # ──────────────────────────────────────────────────────────────────────
 # factory
 # ──────────────────────────────────────────────────────────────────────
+
 
 def build_tracker(cfg: dict | None) -> Tracker:
     """Construct a tracker from a YAML config block.

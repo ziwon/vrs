@@ -7,7 +7,7 @@ runtime pipeline uses them.
 
 Usage::
 
-    python scripts/export_yoloe_trt.py \\
+    uv run scripts/export_yoloe_trt.py \\
         --weights yoloe-11l-seg.pt \\
         --policy  configs/policies/safety.yaml \\
         --imgsz   640 \\
@@ -29,6 +29,7 @@ Notes:
   runtime accepts identically. This script covers the common zero-shot
   case.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,15 +46,23 @@ def main() -> None:
     setup_logging()
     ap = argparse.ArgumentParser(description="Export YOLOE to TensorRT via Ultralytics")
     ap.add_argument("--weights", required=True, help="YOLOE .pt checkpoint")
-    ap.add_argument("--policy", default="configs/policies/safety.yaml",
-                    help="watch policy whose prompts will be baked in")
+    ap.add_argument(
+        "--policy",
+        default="configs/policies/safety.yaml",
+        help="watch policy whose prompts will be baked in",
+    )
     ap.add_argument("--imgsz", type=int, default=640)
-    ap.add_argument("--half", action="store_true",
-                    help="FP16 precision in the engine (recommended on Ada/Hopper/Blackwell)")
-    ap.add_argument("--device", default="0",
-                    help="CUDA device ordinal to build against")
-    ap.add_argument("--out", default=None,
-                    help="optional destination path; if omitted, Ultralytics writes next to --weights")
+    ap.add_argument(
+        "--half",
+        action="store_true",
+        help="FP16 precision in the engine (recommended on Ada/Hopper/Blackwell)",
+    )
+    ap.add_argument("--device", default="0", help="CUDA device ordinal to build against")
+    ap.add_argument(
+        "--out",
+        default=None,
+        help="optional destination path; if omitted, Ultralytics writes next to --weights",
+    )
     args = ap.parse_args()
 
     weights = Path(args.weights)
@@ -70,8 +79,9 @@ def main() -> None:
     model = YOLOE(str(weights))
     model.set_classes(prompts, model.get_text_pe(prompts))
 
-    logger.info("exporting TRT engine (imgsz=%d, half=%s, device=%s)…",
-                args.imgsz, args.half, args.device)
+    logger.info(
+        "exporting TRT engine (imgsz=%d, half=%s, device=%s)…", args.imgsz, args.half, args.device
+    )
     engine_path = model.export(
         format="engine",
         imgsz=args.imgsz,

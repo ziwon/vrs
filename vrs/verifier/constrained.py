@@ -20,10 +20,12 @@ directly into ``transformers.generate``, needs no extra infra, and the
 compiled grammar carries over when we later migrate to TRT-LLM guided
 decoding (#9 on the roadmap).
 """
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Iterable, List, Optional
+from collections.abc import Iterable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +37,16 @@ def build_verifier_schema(
     *,
     request_bbox: bool = True,
     request_trajectory: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return a JSON schema describing a valid verifier response.
 
     ``false_negative_class`` is constrained to an enum of the policy's class
     names plus ``null``, so the model cannot name a class that the pipeline
     doesn't know how to dispatch.
     """
-    fn_enum: List[Any] = [None] + [str(n) for n in class_names]
+    fn_enum: list[Any] = [None] + [str(n) for n in class_names]
 
-    properties: Dict[str, Any] = {
+    properties: dict[str, Any] = {
         "true_alert": {"type": "boolean"},
         "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
         "false_negative_class": {"enum": fn_enum},
@@ -87,10 +89,10 @@ def build_verifier_schema(
 
 
 def build_logits_processor(
-    schema: Dict[str, Any],
+    schema: dict[str, Any],
     tokenizer: Any,
-    vocab_size: Optional[int] = None,
-) -> Optional[Any]:
+    vocab_size: int | None = None,
+) -> Any | None:
     """Compile the schema with XGrammar and return a ``LogitsProcessor``.
 
     Returns ``None`` if ``xgrammar`` is not installed, or if setup raises.
@@ -105,7 +107,7 @@ def build_logits_processor(
         if not _XGRAMMAR_UNAVAILABLE_LOGGED:
             logger.info(
                 "xgrammar not installed — verifier runs unconstrained. "
-                "Install the 'constrained' extra (pip install 'vrs[constrained]') "
+                "Install the 'constrained' extra (`uv sync --extra constrained`) "
                 "to make JSON parse failures impossible."
             )
             _XGRAMMAR_UNAVAILABLE_LOGGED = True
@@ -117,7 +119,7 @@ def build_logits_processor(
         compiled = compiler.compile_json_schema(schema)
         # xgrammar's HF contrib is the transformers-friendly LogitsProcessor
         return xgr.contrib.hf.LogitsProcessor(compiled)
-    except Exception as e:  # noqa: BLE001 — any xgrammar setup error → fall back
+    except Exception as e:
         logger.warning(
             "xgrammar setup failed (%s); verifier will run unconstrained this session.",
             e,

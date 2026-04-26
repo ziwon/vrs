@@ -4,6 +4,7 @@ Two-stage cascade:
   1. YOLOE-L open-vocabulary detector (fast path, ~6 ms / frame).
   2. Cosmos-Reason2-2B physical-reasoning VLM (slow path, runs only on candidates).
 """
+
 from __future__ import annotations
 
 import logging
@@ -28,9 +29,11 @@ def setup_logging(level: int = logging.INFO) -> None:
     if any(not isinstance(h, logging.NullHandler) for h in root.handlers):
         return
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(levelname)-5s [%(threadName)s] %(name)s — %(message)s",
-        datefmt="%H:%M:%S",
-    ))
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)-5s [%(threadName)s] %(name)s — %(message)s",
+            datefmt="%H:%M:%S",
+        )
+    )
     root.addHandler(handler)
     root.setLevel(level)

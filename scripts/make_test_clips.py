@@ -16,10 +16,11 @@ use real datasets:
                      weapon datasets are violence-adjacent and need care
 
 Usage:
-    python scripts/make_test_clips.py --out runs/test_clips
-    python scripts/make_test_clips.py --out runs/test_clips \\
+    uv run scripts/make_test_clips.py --out runs/test_clips
+    uv run scripts/make_test_clips.py --out runs/test_clips \\
         --size 1920x1080 --fps 30 --seconds 15 --which fire,smoke
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,11 +31,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-
 FHD = (1920, 1080)
 FPS = 30
 SECONDS = 15
-BG_COLOR = (40, 35, 30)    # dark indoor BGR
+BG_COLOR = (40, 35, 30)  # dark indoor BGR
 
 
 def _bg(shape, tint=BG_COLOR):
@@ -42,9 +42,7 @@ def _bg(shape, tint=BG_COLOR):
     h, w = shape
     img = np.full((h, w, 3), tint, dtype=np.uint8)
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
-    d = np.sqrt((xx - w / 2) ** 2 + (yy - h / 2) ** 2) / np.sqrt(
-        (w / 2) ** 2 + (h / 2) ** 2
-    )
+    d = np.sqrt((xx - w / 2) ** 2 + (yy - h / 2) ** 2) / np.sqrt((w / 2) ** 2 + (h / 2) ** 2)
     v = np.clip(1.0 - 0.35 * d, 0.0, 1.0).astype(np.float32)
     return (img.astype(np.float32) * v[..., None]).astype(np.uint8)
 
@@ -60,6 +58,7 @@ def _writer(path: Path, fps: int, w: int, h: int) -> cv2.VideoWriter:
 # ──────────────────────────────────────────────────────────────────────
 # fire — animated flickering orange/yellow noise patch
 # ──────────────────────────────────────────────────────────────────────
+
 
 def gen_fire(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
     w, h = size
@@ -114,6 +113,7 @@ def gen_fire(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
 # smoke — expanding Gaussian blob with noise
 # ──────────────────────────────────────────────────────────────────────
 
+
 def gen_smoke(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
     w, h = size
     wr = _writer(path, fps, w, h)
@@ -121,7 +121,7 @@ def gen_smoke(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
     rng = np.random.default_rng(1)
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
     d2 = (xx - cx) ** 2 + (yy - cy) ** 2
-    smoke_color = np.array([130, 130, 130], dtype=np.float32)     # gray BGR
+    smoke_color = np.array([130, 130, 130], dtype=np.float32)  # gray BGR
     try:
         n = fps * seconds
         for i in range(n):
@@ -131,7 +131,9 @@ def gen_smoke(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
             alpha = np.exp(-d2 / (2 * radius * radius)) * 0.7
             noise = (rng.random((h, w), dtype=np.float32) - 0.5) * 0.2
             alpha = np.clip(alpha + noise * alpha, 0.0, 1.0).astype(np.float32)
-            blended = alpha[..., None] * smoke_color + (1 - alpha[..., None]) * frame.astype(np.float32)
+            blended = alpha[..., None] * smoke_color + (1 - alpha[..., None]) * frame.astype(
+                np.float32
+            )
             wr.write(blended.astype(np.uint8))
     finally:
         wr.release()
@@ -140,6 +142,7 @@ def gen_smoke(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
 # ──────────────────────────────────────────────────────────────────────
 # falldown — stick figure rotating from upright to horizontal
 # ──────────────────────────────────────────────────────────────────────
+
 
 def gen_falldown(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
     w, h = size
@@ -150,11 +153,11 @@ def gen_falldown(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
             frame = _bg((h, w))
             t = i / max(n - 1, 1)
             if t < 0.35:
-                angle = 0.0                                   # standing still
+                angle = 0.0  # standing still
             elif t < 0.55:
-                angle = (t - 0.35) / 0.20 * (math.pi / 2)     # falling
+                angle = (t - 0.35) / 0.20 * (math.pi / 2)  # falling
             else:
-                angle = math.pi / 2                           # on the floor
+                angle = math.pi / 2  # on the floor
 
             base = (w // 2, int(h * 0.82))
             person_h = 320
@@ -184,6 +187,7 @@ def gen_falldown(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
 # weapon — silhouette raising a dark rectangular object
 # ──────────────────────────────────────────────────────────────────────
 
+
 def gen_weapon(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
     w, h = size
     wr = _writer(path, fps, w, h)
@@ -200,7 +204,7 @@ def gen_weapon(path: Path, size=FHD, fps=FPS, seconds=SECONDS) -> None:
             cv2.circle(frame, (body_top[0], body_top[1] - 55), 42, (185, 165, 140), -1)
 
             # arm angle: down → forward horizontal
-            arm_angle = math.pi * (0.15 + 0.35 * raise_t)   # sweep from ~27° to ~90°
+            arm_angle = math.pi * (0.15 + 0.35 * raise_t)  # sweep from ~27° to ~90°
             arm_len = 180
             arm_end = (
                 body_top[0] + int(arm_len * math.sin(arm_angle)),
@@ -248,7 +252,9 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    keys = list(CLIP_GEN.keys()) if args.which == "all" else [s.strip() for s in args.which.split(",")]
+    keys = (
+        list(CLIP_GEN.keys()) if args.which == "all" else [s.strip() for s in args.which.split(",")]
+    )
     for name in keys:
         fn = CLIP_GEN.get(name)
         if fn is None:
@@ -260,13 +266,13 @@ def main() -> None:
 
     print(
         "\nDone. Next step — smoke-test the single-stream pipeline on your RTX 5080:\n"
-        f"  python scripts/run_mp4.py \\\n"
+        f"  uv run scripts/run_mp4.py \\\n"
         f"      --video  {out}/fire_test.mp4 \\\n"
         f"      --config configs/default.yaml \\\n"
         f"      --policy configs/policies/safety.yaml \\\n"
         f"      --out    runs/demo_fire\n"
         "\nOr run the full benchmark harness:\n"
-        f"  python scripts/bench.py --clips {out} --out runs/bench"
+        f"  uv run scripts/bench.py --clips {out} --out runs/bench"
     )
 
 

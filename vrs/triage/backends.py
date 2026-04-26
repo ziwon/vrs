@@ -17,9 +17,10 @@ Backends shipped:
   identical to the ultralytics path — the difference is purely the
   execution provider.
 """
+
 from __future__ import annotations
 
-from typing import List, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from ..policy import WatchPolicy
 from ..schemas import Detection, Frame
@@ -28,8 +29,9 @@ from ..schemas import Detection, Frame
 @runtime_checkable
 class Detector(Protocol):
     """Minimum surface the pipeline needs from a detector."""
-    def __call__(self, frame: Frame) -> List[Detection]: ...
-    def batch(self, frames: List[Frame]) -> List[List[Detection]]: ...
+
+    def __call__(self, frame: Frame) -> list[Detection]: ...
+    def batch(self, frames: list[Frame]) -> list[list[Detection]]: ...
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -48,10 +50,10 @@ def build_detector(cfg, policy: WatchPolicy, backend: str = "ultralytics") -> De
     name = (backend or "ultralytics").lower()
     if name == "ultralytics":
         from .yoloe_detector import YOLOEDetector
+
         return YOLOEDetector(cfg, policy)
     if name == "tensorrt":
         from .tensorrt_detector import TensorRTYOLOEDetector
+
         return TensorRTYOLOEDetector(cfg, policy)
-    raise ValueError(
-        f"unknown detector backend: {backend!r}. Valid: {sorted(_KNOWN_BACKENDS)}"
-    )
+    raise ValueError(f"unknown detector backend: {backend!r}. Valid: {sorted(_KNOWN_BACKENDS)}")

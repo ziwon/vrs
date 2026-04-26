@@ -3,6 +3,7 @@
 Only validates that each generator writes a non-trivial mp4 with the requested
 duration — not visual fidelity (that's subjective and out of scope).
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -15,8 +16,8 @@ cv2 = pytest.importorskip("cv2")
 # Import the script as a module without touching sys.path globally
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "make_test_clips.py"
 _spec = importlib.util.spec_from_file_location("make_test_clips", _SCRIPT)
-mkt = importlib.util.module_from_spec(_spec)          # type: ignore[arg-type]
-_spec.loader.exec_module(mkt)                          # type: ignore[union-attr]
+mkt = importlib.util.module_from_spec(_spec)  # type: ignore[arg-type]
+_spec.loader.exec_module(mkt)  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize("name", ["fire", "smoke", "falldown", "weapon"])

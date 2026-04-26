@@ -2,7 +2,7 @@
 
 Usage::
 
-    python -m vrs.eval.ci \\
+    uv run python -m vrs.eval.ci \\
         --baseline runs/baseline/report.json \\
         --current  runs/eval/report.json \\
         --max-f1-drop 0.02
@@ -17,15 +17,15 @@ and FN-flag-rate are diagnostic signals whose "right direction" depends on
 whether the detector or the verifier changed. Those numbers are still
 printed so a reviewer can eyeball them.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
 
 
 @dataclass
@@ -34,7 +34,7 @@ class ClassDelta:
     baseline_f1: float
     current_f1: float
     regressed: bool
-    note: str = ""   # e.g. "missing in current", "new class"
+    note: str = ""  # e.g. "missing in current", "new class"
 
     @property
     def delta_f1(self) -> float:
@@ -45,25 +45,25 @@ class ClassDelta:
 class GateResult:
     passed: bool
     overall: ClassDelta
-    per_class: List[ClassDelta] = field(default_factory=list)
+    per_class: list[ClassDelta] = field(default_factory=list)
     max_f1_drop: float = 0.02
     baseline_flip_rate: float = 0.0
     current_flip_rate: float = 0.0
     baseline_fn_flag_rate: float = 0.0
     current_fn_flag_rate: float = 0.0
 
-    def regressions(self) -> List[ClassDelta]:
+    def regressions(self) -> list[ClassDelta]:
         out = [d for d in self.per_class if d.regressed]
         if self.overall.regressed:
             out.append(self.overall)
         return out
 
     def render(self) -> str:
-        lines: List[str] = []
+        lines: list[str] = []
         lines.append(f"Regression gate (max F1 drop: {self.max_f1_drop:+.3f})")
         lines.append("")
         lines.append(f"  {'class':<14} {'baseline':>10} {'current':>10} {'delta':>10}  status")
-        lines.append(f"  {'-'*14} {'-'*10} {'-'*10} {'-'*10}  {'-'*6}")
+        lines.append(f"  {'-' * 14} {'-' * 10} {'-' * 10} {'-' * 10}  {'-' * 6}")
         for d in sorted(self.per_class, key=lambda x: x.class_name):
             lines.append(self._fmt_row(d))
         lines.append(self._fmt_row(self.overall))
@@ -94,6 +94,7 @@ class GateResult:
 
 # ──────────────────────────────────────────────────────────────────────
 
+
 def _metrics_section(report: Mapping[str, object]) -> Mapping[str, object]:
     if isinstance(report.get("metrics"), Mapping):
         return report["metrics"]
@@ -110,7 +111,7 @@ def _quality_signals_section(report: Mapping[str, object]) -> Mapping[str, objec
     return {}
 
 
-def _per_class_f1(report: dict) -> Dict[str, float]:
+def _per_class_f1(report: dict) -> dict[str, float]:
     per = _metrics_section(report).get("per_class", {})
     return {cls: float(m.get("f1", 0.0)) for cls, m in per.items()}
 
@@ -124,7 +125,7 @@ def compare_reports(
     current: dict,
     *,
     max_f1_drop: float = 0.02,
-    classes: Optional[Iterable[str]] = None,
+    classes: Iterable[str] | None = None,
 ) -> GateResult:
     """Diff two eval reports. Returns a ``GateResult`` whose ``passed`` flag
     is False if any per-class or overall F1 dropped by more than
@@ -147,26 +148,28 @@ def compare_reports(
     if classes is not None:
         all_classes &= set(classes)
 
-    per_class: List[ClassDelta] = []
+    per_class: list[ClassDelta] = []
     for cls in sorted(all_classes):
         bf1 = b_pc.get(cls, 0.0)
         cf1 = c_pc.get(cls, 0.0)
         note = ""
         if cls not in b_pc:
             note = "new class"
-            regressed = False                                  # can't regress what didn't exist
+            regressed = False  # can't regress what didn't exist
         elif cls not in c_pc:
             note = "missing in current"
-            regressed = bf1 > 0.0                              # treat as F1 dropped to 0
+            regressed = bf1 > 0.0  # treat as F1 dropped to 0
         else:
             regressed = (bf1 - cf1) > max_f1_drop
-        per_class.append(ClassDelta(
-            class_name=cls,
-            baseline_f1=bf1,
-            current_f1=cf1,
-            regressed=regressed,
-            note=note,
-        ))
+        per_class.append(
+            ClassDelta(
+                class_name=cls,
+                baseline_f1=bf1,
+                current_f1=cf1,
+                regressed=regressed,
+                note=note,
+            )
+        )
 
     bof1 = _overall_f1(baseline)
     cof1 = _overall_f1(current)
@@ -204,22 +207,30 @@ def compare_reports(
 # cli
 # ──────────────────────────────────────────────────────────────────────
 
+
 def _load_report(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(path)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="VRS eval regression gate — fail when per-class or overall F1 drops too far"
     )
     ap.add_argument("--baseline", required=True, help="path to baseline report.json")
     ap.add_argument("--current", required=True, help="path to current report.json")
-    ap.add_argument("--max-f1-drop", type=float, default=0.02,
-                    help="allowed F1 drop per class before failing (default: 0.02)")
-    ap.add_argument("--classes", default=None,
-                    help="comma-separated subset of classes to gate on (default: all)")
+    ap.add_argument(
+        "--max-f1-drop",
+        type=float,
+        default=0.02,
+        help="allowed F1 drop per class before failing (default: 0.02)",
+    )
+    ap.add_argument(
+        "--classes",
+        default=None,
+        help="comma-separated subset of classes to gate on (default: all)",
+    )
     args = ap.parse_args(argv)
 
     try:
@@ -237,7 +248,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.classes:
             classes = [c.strip() for c in args.classes.split(",") if c.strip()]
         result = compare_reports(
-            baseline, current, max_f1_drop=args.max_f1_drop, classes=classes,
+            baseline,
+            current,
+            max_f1_drop=args.max_f1_drop,
+            classes=classes,
         )
     except ValueError as e:
         print(f"error: {e}", file=sys.stderr)

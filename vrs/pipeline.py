@@ -3,11 +3,12 @@
 Glue code only — every component is configured via YAML and lives in its own
 module so this file stays short.
 """
+
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -42,8 +43,8 @@ def _validate_config(cfg: dict, path: str = "<config>") -> None:
         _require_key(cfg, "verifier", "model_id", path)
 
 
-def load_config(path: str | Path) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
+def load_config(path: str | Path) -> dict[str, Any]:
+    with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     _validate_config(cfg or {}, str(path))
     return cfg
@@ -52,7 +53,7 @@ def load_config(path: str | Path) -> Dict[str, Any]:
 class VRSPipeline:
     def __init__(
         self,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         policy: WatchPolicy,
         out_dir: str | Path,
     ):
@@ -90,7 +91,7 @@ class VRSPipeline:
         )
 
         # --- slow path (lazy: only spin up the VLM if enabled) ---
-        self.verifier: Optional[AlertVerifier] = None
+        self.verifier: AlertVerifier | None = None
         if ver_cfg.get("enabled", True):
             cosmos = build_cosmos_backend(
                 CosmosConfig(
@@ -129,7 +130,7 @@ class VRSPipeline:
 
         jsonl_path = self.out_dir / sink_cfg.get("jsonl", "alerts.jsonl")
         privacy_cfg = self.cfg.get("privacy") or {}
-        thumbnail_sink: Optional[EventThumbnailSink] = None
+        thumbnail_sink: EventThumbnailSink | None = None
         if sink_cfg.get("write_thumbnails", True):
             thumbnail_sink = EventThumbnailSink(
                 self.out_dir,
@@ -140,7 +141,7 @@ class VRSPipeline:
                 blur_kernel=int(privacy_cfg.get("blur_kernel", 31)),
                 blur_margin_pct=float(privacy_cfg.get("margin_pct", 0.15)),
             )
-        annotator: Optional[VideoAnnotator] = None
+        annotator: VideoAnnotator | None = None
         if sink_cfg.get("write_annotated", False):
             annotator = VideoAnnotator(
                 self.out_dir / sink_cfg.get("annotated_mp4", "annotated.mp4"),
@@ -171,7 +172,7 @@ class VRSPipeline:
                         if thumbnail_sink is not None:
                             try:
                                 thumbnail_sink.write(verified)
-                            except Exception as e:  # noqa: BLE001
+                            except Exception as e:
                                 logger.warning("thumbnail write failed: %s", e)
                         jsonl.write(verified)
                         if annotator is not None:
@@ -194,8 +195,13 @@ class VRSPipeline:
         extra = f"  (fn={v.false_negative_class})" if v.false_negative_class else ""
         logger.info(
             "[%s] t=%7.2fs  class=%-10s  sev=%-8s  conf=%.2f%s   -- %s",
-            tag, v.candidate.peak_pts_s, v.candidate.class_name,
-            v.candidate.severity, v.confidence, extra, v.rationale,
+            tag,
+            v.candidate.peak_pts_s,
+            v.candidate.class_name,
+            v.candidate.severity,
+            v.confidence,
+            extra,
+            v.rationale,
         )
 
 

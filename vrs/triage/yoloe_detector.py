@@ -10,12 +10,10 @@ Why YOLOE here:
   * Returns bounding boxes, which the slow-path verifier consumes as spatial
     grounding (much stronger than frame-level scores).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence
-
-import numpy as np
 
 from ..policy import WatchPolicy
 from ..schemas import Detection, Frame
@@ -23,7 +21,7 @@ from ..schemas import Detection, Frame
 
 @dataclass
 class YOLOEConfig:
-    model: str = "yoloe-11l-seg.pt"   # Ultralytics handles the download
+    model: str = "yoloe-11l-seg.pt"  # Ultralytics handles the download
     device: str = "cuda"
     imgsz: int = 640
     conf_floor: float = 0.20
@@ -33,7 +31,7 @@ class YOLOEConfig:
 
 class YOLOEDetector:
     def __init__(self, cfg: YOLOEConfig, policy: WatchPolicy):
-        from ultralytics import YOLOE  # noqa: WPS433 — heavy optional dep
+        from ultralytics import YOLOE
 
         self.cfg = cfg
         self.policy = policy
@@ -53,11 +51,11 @@ class YOLOEDetector:
 
     # ---- main api ---------------------------------------------------
 
-    def __call__(self, frame: Frame) -> List[Detection]:
+    def __call__(self, frame: Frame) -> list[Detection]:
         """Run YOLOE on one frame; return per-policy-event detections."""
         return self.batch([frame])[0]
 
-    def batch(self, frames: List[Frame]) -> List[List[Detection]]:
+    def batch(self, frames: list[Frame]) -> list[list[Detection]]:
         """Run YOLOE on N frames in a single forward pass.
 
         Multi-stream throughput improves measurably (~2-3x at batch=4) because
@@ -78,8 +76,8 @@ class YOLOEDetector:
         )
         # Ultralytics may return fewer Results than inputs on degenerate frames;
         # pad with empty lists so per-frame indexing stays correct.
-        out: List[List[Detection]] = []
-        for i, r in enumerate(results):
+        out: list[list[Detection]] = []
+        for r in results:
             if r is None or r.boxes is None or len(r.boxes) == 0:
                 out.append([])
                 continue
@@ -87,8 +85,8 @@ class YOLOEDetector:
             confs = r.boxes.conf.detach().cpu().numpy()
             cls_idx = r.boxes.cls.detach().cpu().numpy().astype(int)
 
-            dets: List[Detection] = []
-            for box, conf, ci in zip(xyxy, confs, cls_idx):
+            dets: list[Detection] = []
+            for box, conf, ci in zip(xyxy, confs, cls_idx, strict=True):
                 if ci < 0 or ci >= len(self._prompt_to_event):
                     continue
                 event_name = self._prompt_to_event[ci]

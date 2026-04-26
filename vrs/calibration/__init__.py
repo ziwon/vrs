@@ -19,6 +19,7 @@ work. The same stateless ``suggest()`` function will drive both stages, so
 an operator can move classes off "log only" per-class when they trust the
 loop.
 """
+
 from __future__ import annotations
 
 from .calibrator import Calibrator, build_calibrator
@@ -27,8 +28,8 @@ from .sink import CalibrationSink
 from .suggester import suggest
 
 __all__ = [
-    "Calibrator",
     "CalibrationSink",
+    "Calibrator",
     "Suggestion",
     "WindowEntry",
     "build_calibrator",

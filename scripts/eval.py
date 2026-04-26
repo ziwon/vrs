@@ -1,7 +1,7 @@
 """Run the VRS eval harness against a labeled dataset.
 
 Example:
-    python scripts/eval.py \\
+    uv run scripts/eval.py \\
         --dataset      /data/eval/our_labeled_clips \\
         --config       configs/default.yaml \\
         --policy       configs/policies/safety.yaml \\
@@ -13,6 +13,7 @@ sidecar-JSON schema. Each video gets its own subdir under ``--out`` holding
 its ``alerts.jsonl`` and event thumbnails. A single versioned ``report.json``
 lands at ``--out`` (or the path given via ``--report``).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,13 +36,16 @@ def main() -> None:
     ap.add_argument("--config", default="configs/default.yaml")
     ap.add_argument("--policy", default="configs/policies/safety.yaml")
     ap.add_argument("--out", default="runs/eval")
-    ap.add_argument("--tolerance-s", type=float, default=1.0,
-                    help="temporal slack around GT event windows when matching alerts")
-    ap.add_argument("--report", default=None,
-                    help="JSON report path (default: <out>/report.json)")
+    ap.add_argument(
+        "--tolerance-s",
+        type=float,
+        default=1.0,
+        help="temporal slack around GT event windows when matching alerts",
+    )
+    ap.add_argument("--report", default=None, help="JSON report path (default: <out>/report.json)")
     args = ap.parse_args()
 
-    # Imported lazily so `python scripts/eval.py --help` works without cv2/torch.
+    # Imported lazily so `uv run scripts/eval.py --help` works without cv2/torch.
     from vrs.pipeline import build_pipeline
 
     dataset = LabeledDirDataset(args.dataset)
@@ -58,7 +62,7 @@ def main() -> None:
 
     report_path = Path(args.report) if args.report else Path(args.out) / "report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(args.config, "r", encoding="utf-8") as f:
+    with open(args.config, encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
     report = EvalReport.from_harness_result(
         result,
@@ -72,15 +76,19 @@ def main() -> None:
     agg = result.aggregate
     overall = agg.overall().to_dict()
     print("\n── aggregate ──────────────────────────────")
-    print(f"alerts={agg.n_alerts_total} (true={agg.n_alerts_true})   "
-          f"events={agg.n_events}   "
-          f"flip_rate={agg.flip_rate:.3f}   "
-          f"fn_flag_rate={agg.fn_flag_rate:.3f}")
+    print(
+        f"alerts={agg.n_alerts_total} (true={agg.n_alerts_true})   "
+        f"events={agg.n_events}   "
+        f"flip_rate={agg.flip_rate:.3f}   "
+        f"fn_flag_rate={agg.fn_flag_rate:.3f}"
+    )
     print(f"P={overall['precision']:.3f}  R={overall['recall']:.3f}  F1={overall['f1']:.3f}")
     for cls, cm in sorted(agg.per_class.items()):
         d = cm.to_dict()
-        print(f"  {cls:<10} tp={d['tp']:<3} fp={d['fp']:<3} fn={d['fn']:<3}  "
-              f"P={d['precision']:.3f}  R={d['recall']:.3f}  F1={d['f1']:.3f}")
+        print(
+            f"  {cls:<10} tp={d['tp']:<3} fp={d['fp']:<3} fn={d['fn']:<3}  "
+            f"P={d['precision']:.3f}  R={d['recall']:.3f}  F1={d['f1']:.3f}"
+        )
     print(f"\nReport: {report_path}")
 
 

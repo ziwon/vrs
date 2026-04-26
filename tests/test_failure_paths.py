@@ -9,20 +9,19 @@ explicitly called out as weak coverage:
 
 All tests are CPU-only; GPU paths are stubbed.
 """
+
 from __future__ import annotations
 
 import logging
 import threading
 import time
 from pathlib import Path
-from typing import List, Optional
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
 from vrs.multistream.pipeline import _validate_multistream_spec, load_multistream_spec
-from vrs.multistream.queues import BoundedQueue, DropPolicy
+from vrs.multistream.queues import BoundedQueue
 from vrs.multistream.workers import (
     SinkWorker,
     VerifierWorker,
@@ -35,21 +34,39 @@ from vrs.verifier.alert_verifier import AlertVerifier
 
 
 def _policy() -> WatchPolicy:
-    return WatchPolicy([
-        WatchItem(name="fire", detector_prompts=["fire"], verifier_prompt="flames",
-                  severity="critical", min_score=0.30, min_persist_frames=1),
-        WatchItem(name="smoke", detector_prompts=["smoke"], verifier_prompt="smoke",
-                  severity="high", min_score=0.30, min_persist_frames=1),
-    ])
+    return WatchPolicy(
+        [
+            WatchItem(
+                name="fire",
+                detector_prompts=["fire"],
+                verifier_prompt="flames",
+                severity="critical",
+                min_score=0.30,
+                min_persist_frames=1,
+            ),
+            WatchItem(
+                name="smoke",
+                detector_prompts=["smoke"],
+                verifier_prompt="smoke",
+                severity="high",
+                min_score=0.30,
+                min_persist_frames=1,
+            ),
+        ]
+    )
 
 
 def _cand(class_name: str = "fire") -> CandidateAlert:
     img = np.zeros((16, 16, 3), dtype=np.uint8)
     return CandidateAlert(
-        class_name=class_name, severity="critical",
-        start_pts_s=0.0, peak_pts_s=1.0, peak_frame_index=4,
+        class_name=class_name,
+        severity="critical",
+        start_pts_s=0.0,
+        peak_pts_s=1.0,
+        peak_frame_index=4,
         peak_detections=[Detection(class_name=class_name, score=0.9, xyxy=(0, 0, 10, 10))],
-        keyframes=[img, img], keyframe_pts=[0.5, 1.0],
+        keyframes=[img, img],
+        keyframe_pts=[0.5, 1.0],
     )
 
 
@@ -57,26 +74,31 @@ def _cand(class_name: str = "fire") -> CandidateAlert:
 # 1. RTSP reconnect behavior
 # ──────────────────────────────────────────────────────────────────────
 
+
 class _FakeCapture:
     """VideoCapture stub whose read() fails after N successful frames."""
-    def __init__(self, frames_before_fail: int = 2, fps: float = 25.0,
-                 opens_to_succeed: int = 1):
+
+    def __init__(self, frames_before_fail: int = 2, fps: float = 25.0, opens_to_succeed: int = 1):
         self._frames = frames_before_fail
         self._fps = fps
         self._calls = 0
         self._opens_left = opens_to_succeed
+
     def isOpened(self) -> bool:
         if self._opens_left <= 0:
             return False
         self._opens_left -= 1
         return True
-    def get(self, prop) -> float:  # noqa: ARG002
+
+    def get(self, prop) -> float:
         return self._fps
+
     def read(self):
         self._calls += 1
         if self._calls <= self._frames:
             return True, np.zeros((8, 8, 3), dtype=np.uint8)
         return False, None
+
     def release(self) -> None:
         pass
 
@@ -90,11 +112,13 @@ def test_opencv_reader_reconnects_on_live_source(monkeypatch):
     and keep yielding frames."""
     from vrs.multistream import readers as R
 
-    opens: List[int] = []
+    opens: list[int] = []
+
     def _factory(*args, **kwargs):
         cap = _FakeCapture(frames_before_fail=1, opens_to_succeed=1)
         opens.append(id(cap))
         return cap
+
     monkeypatch.setattr(R.cv2, "VideoCapture", _factory)
     monkeypatch.setattr(R.time, "sleep", lambda s: None)  # don't actually wait
 
@@ -119,13 +143,19 @@ def test_opencv_reader_does_not_reconnect_on_file_source(monkeypatch):
     from vrs.multistream import readers as R
 
     opens = {"count": 0}
+
     def _factory(*args, **kwargs):
         opens["count"] += 1
         return _FakeCapture(frames_before_fail=2, opens_to_succeed=1)
+
     monkeypatch.setattr(R.cv2, "VideoCapture", _factory)
-    monkeypatch.setattr(R.time, "sleep", lambda s: (_ for _ in ()).throw(AssertionError(
-        "file source should never sleep for a reconnect"
-    )))
+    monkeypatch.setattr(
+        R.time,
+        "sleep",
+        lambda s: (_ for _ in ()).throw(
+            AssertionError("file source should never sleep for a reconnect")
+        ),
+    )
 
     reader = R.OpenCVReader("/tmp/nonexistent.mp4", target_fps=1.0)
     frames = list(reader)
@@ -141,14 +171,16 @@ def test_opencv_reader_stops_when_reconnect_fails(monkeypatch):
     def _factory(*args, **kwargs):
         # Opens once, then every subsequent open reports closed
         return _FakeCapture(frames_before_fail=1, opens_to_succeed=1)
+
     # Override _open so reopen fails after the first
     call_count = {"n": 0}
-    original_factory = _factory
+
     def _factory2(*args, **kwargs):
         call_count["n"] += 1
         if call_count["n"] == 1:
             return _FakeCapture(frames_before_fail=1, opens_to_succeed=1)
         return _FakeCapture(frames_before_fail=0, opens_to_succeed=0)
+
     monkeypatch.setattr(R.cv2, "VideoCapture", _factory2)
     monkeypatch.setattr(R.time, "sleep", lambda s: None)
 
@@ -164,11 +196,13 @@ def test_stream_reader_reconnects_on_live_source(monkeypatch):
     identically to the multi-stream OpenCVReader."""
     from vrs.ingest import stream_reader as S
 
-    opens: List[int] = []
+    opens: list[int] = []
+
     def _factory(*args, **kwargs):
         cap = _FakeCapture(frames_before_fail=1, opens_to_succeed=1)
         opens.append(id(cap))
         return cap
+
     monkeypatch.setattr(S.cv2, "VideoCapture", _factory)
     monkeypatch.setattr(S.time, "sleep", lambda s: None)
 
@@ -186,13 +220,17 @@ def test_stream_reader_reconnects_on_live_source(monkeypatch):
 # 2. Malformed / partial model outputs
 # ──────────────────────────────────────────────────────────────────────
 
+
 class _CannedBackend:
     """CosmosBackend stub that returns a caller-supplied string (or raises)."""
-    def __init__(self, response: str = "", error: Optional[Exception] = None):
+
+    def __init__(self, response: str = "", error: Exception | None = None):
         self.response = response
         self.error = error
-    def chat_video(self, system_prompt, user_prompt, frames_bgr, *,
-                   clip_fps=None, response_schema=None):
+
+    def chat_video(
+        self, system_prompt, user_prompt, frames_bgr, *, clip_fps=None, response_schema=None
+    ):
         if self.error is not None:
             raise self.error
         return self.response
@@ -203,9 +241,9 @@ def test_verifier_truncated_json_passes_through_as_true_alert(caplog):
     verifier = AlertVerifier(cosmos=backend, policy=_policy())
     with caplog.at_level(logging.WARNING):
         result = verifier.verify(_cand())
-    assert result.true_alert is True            # pass-through default
-    assert result.confidence == 0.0             # clamped
-    assert any("unparseable" in r.getMessage() for r in caplog.records)
+    assert result.true_alert is True  # pass-through default
+    assert result.confidence == 0.0  # clamped
+    assert any("unparsable" in r.getMessage() for r in caplog.records)
 
 
 def test_verifier_missing_true_alert_defaults_to_true(caplog):
@@ -219,16 +257,19 @@ def test_verifier_missing_true_alert_defaults_to_true(caplog):
 
 
 def test_verifier_clamps_out_of_range_confidence():
-    backend = _CannedBackend(response=(
-        '{"true_alert": true, "confidence": 1.8, '
-        '"false_negative_class": null, "rationale": "ok"}'
-    ))
+    backend = _CannedBackend(
+        response=(
+            '{"true_alert": true, "confidence": 1.8, '
+            '"false_negative_class": null, "rationale": "ok"}'
+        )
+    )
     verifier = AlertVerifier(cosmos=backend, policy=_policy())
     hi = verifier.verify(_cand())
     assert hi.confidence == 1.0
 
-    backend.response = ('{"true_alert": true, "confidence": -0.5, '
-                        '"false_negative_class": null, "rationale": "ok"}')
+    backend.response = (
+        '{"true_alert": true, "confidence": -0.5, "false_negative_class": null, "rationale": "ok"}'
+    )
     lo = verifier.verify(_cand())
     assert lo.confidence == 0.0
 
@@ -237,20 +278,24 @@ def test_verifier_nulls_illegal_false_negative_class():
     """An FN-class the verifier hallucinates must be dropped — otherwise
     a downstream router would dispatch on a class the pipeline doesn't
     know how to handle."""
-    backend = _CannedBackend(response=(
-        '{"true_alert": false, "confidence": 0.3, '
-        '"false_negative_class": "unicorn", "rationale": "nope"}'
-    ))
+    backend = _CannedBackend(
+        response=(
+            '{"true_alert": false, "confidence": 0.3, '
+            '"false_negative_class": "unicorn", "rationale": "nope"}'
+        )
+    )
     verifier = AlertVerifier(cosmos=backend, policy=_policy())
     result = verifier.verify(_cand())
     assert result.false_negative_class is None
 
 
 def test_verifier_preserves_legal_false_negative_class():
-    backend = _CannedBackend(response=(
-        '{"true_alert": false, "confidence": 0.1, '
-        '"false_negative_class": "smoke", "rationale": "it was smoke"}'
-    ))
+    backend = _CannedBackend(
+        response=(
+            '{"true_alert": false, "confidence": 0.1, '
+            '"false_negative_class": "smoke", "rationale": "it was smoke"}'
+        )
+    )
     verifier = AlertVerifier(cosmos=backend, policy=_policy())
     result = verifier.verify(_cand())
     assert result.false_negative_class == "smoke"
@@ -260,15 +305,17 @@ def test_verifier_backend_exception_produces_diagnostic_passthrough():
     backend = _CannedBackend(error=RuntimeError("CUDA OOM"))
     verifier = AlertVerifier(cosmos=backend, policy=_policy())
     result = verifier.verify(_cand())
-    assert result.true_alert is True             # don't drop the detector hit
+    assert result.true_alert is True  # don't drop the detector hit
     assert result.confidence == 0.0
     assert "CUDA OOM" in result.rationale
 
 
-def test_verifier_reject_policy_suppresses_unparseable_response():
+def test_verifier_reject_policy_suppresses_unparsable_response():
     backend = _CannedBackend(response='{"true_alert": true, "confidence": 0.')
     verifier = AlertVerifier(
-        cosmos=backend, policy=_policy(), failure_policy="reject",
+        cosmos=backend,
+        policy=_policy(),
+        failure_policy="reject",
     )
     result = verifier.verify(_cand())
     assert result.true_alert is False
@@ -278,7 +325,9 @@ def test_verifier_reject_policy_suppresses_unparseable_response():
 def test_verifier_reject_policy_suppresses_backend_exception():
     backend = _CannedBackend(error=RuntimeError("CUDA OOM"))
     verifier = AlertVerifier(
-        cosmos=backend, policy=_policy(), failure_policy="reject",
+        cosmos=backend,
+        policy=_policy(),
+        failure_policy="reject",
     )
     result = verifier.verify(_cand())
     assert result.true_alert is False
@@ -312,16 +361,21 @@ def test_verifier_empty_string_response_falls_back_safely():
 # 3. Sink failures
 # ──────────────────────────────────────────────────────────────────────
 
+
 class _ExplodingJsonl:
     """JsonlSink stand-in that raises on the Nth write."""
+
     def __init__(self, fail_after: int = 0):
         self.writes = 0
         self.fail_after = fail_after
         self.path = Path("/tmp/exploding.jsonl")  # never actually touched
+
     def __enter__(self):
         return self
+
     def __exit__(self, *exc):
         pass
+
     def write(self, verified):
         self.writes += 1
         if self.writes > self.fail_after:
@@ -336,7 +390,9 @@ def test_sink_worker_survives_write_failure_and_keeps_draining(tmp_path, monkeyp
     # Wire up an exploding JsonlSink by monkey-patching the import path
     # that workers.py uses.
     import vrs.sinks.jsonl_sink as J
+
     instances = {"fake": None}
+
     class _FakeSink:
         def __init__(self, path):
             self._real_path = tmp_path / "alerts.jsonl"
@@ -344,35 +400,47 @@ def test_sink_worker_survives_write_failure_and_keeps_draining(tmp_path, monkeyp
             self._fp = None
             self._n = 0
             instances["fake"] = self
+
         def __enter__(self):
             self._fp = open(self._real_path, "a", encoding="utf-8")
             return self
+
         def __exit__(self, *exc):
             if self._fp is not None:
                 self._fp.close()
+
         def write(self, verified):
             self._n += 1
             if self._n == 1:
                 raise OSError("simulated disk failure")
             # second call writes real JSON so we can assert recovery
             import json as _json
+
             self._fp.write(_json.dumps(verified.to_json()) + "\n")
             self._fp.flush()
+
     monkeypatch.setattr(J, "JsonlSink", _FakeSink)
 
     stop = threading.Event()
     q = BoundedQueue(maxsize=16)
     worker = SinkWorker(
-        stream_id="s1", out_dir=tmp_path, fps=4.0,
-        write_annotated=False, jsonl_name="alerts.jsonl", mp4_name="x.mp4",
-        sink_q=q, stop_event=stop,
+        stream_id="s1",
+        out_dir=tmp_path,
+        fps=4.0,
+        write_annotated=False,
+        jsonl_name="alerts.jsonl",
+        mp4_name="x.mp4",
+        sink_q=q,
+        stop_event=stop,
     )
     worker.start()
 
     def _v(label: str) -> VerifiedAlert:
         c = _cand()
-        return VerifiedAlert(candidate=c, true_alert=True, confidence=0.8,
-                             false_negative_class=None, rationale=label)
+        return VerifiedAlert(
+            candidate=c, true_alert=True, confidence=0.8, false_negative_class=None, rationale=label
+        )
+
     with caplog.at_level(logging.WARNING, logger="vrs.multistream.workers"):
         q.put(_SinkMsg(kind="alert", verified=_v("first-explodes")))
         q.put(_SinkMsg(kind="alert", verified=_v("second-ok")))
@@ -399,23 +467,35 @@ def test_sink_worker_survives_annotator_write_failure(tmp_path, monkeypatch, cap
     # Minimal real jsonl so the "alert" branch path still works; focus of
     # the test is the frame-annotator error branch.
     monkeypatch.setattr(J, "JsonlSink", lambda path: _NoopSink(path))
+
     class _ExplodingAnnotator:
         def __init__(self, path, fps, **kwargs):
             self.written = 0
+
         def write(self, frame, dets):
             self.written += 1
             if self.written == 1:
                 raise RuntimeError("annotator: video writer not open")
-        def note_alert(self, v): pass
-        def close(self): pass
+
+        def note_alert(self, v):
+            pass
+
+        def close(self):
+            pass
+
     monkeypatch.setattr(V, "VideoAnnotator", _ExplodingAnnotator)
 
     stop = threading.Event()
     q = BoundedQueue(maxsize=16)
     worker = SinkWorker(
-        stream_id="s1", out_dir=tmp_path, fps=4.0,
-        write_annotated=True, jsonl_name="alerts.jsonl", mp4_name="x.mp4",
-        sink_q=q, stop_event=stop,
+        stream_id="s1",
+        out_dir=tmp_path,
+        fps=4.0,
+        write_annotated=True,
+        jsonl_name="alerts.jsonl",
+        mp4_name="x.mp4",
+        sink_q=q,
+        stop_event=stop,
     )
     worker.start()
 
@@ -430,35 +510,47 @@ def test_sink_worker_survives_annotator_write_failure(tmp_path, monkeypatch, cap
         worker.join(timeout=2.0)
 
     assert not worker.is_alive()
-    assert any("annotator: video writer not open" in r.getMessage()
-               for r in caplog.records)
+    assert any("annotator: video writer not open" in r.getMessage() for r in caplog.records)
 
 
 class _NoopSink:
     """JsonlSink stand-in that swallows everything — for tests focused on
     a different path."""
+
     def __init__(self, path):
         self.path = path
-    def __enter__(self): return self
-    def __exit__(self, *exc): pass
-    def write(self, verified): pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass
+
+    def write(self, verified):
+        pass
 
 
 # ──────────────────────────────────────────────────────────────────────
 # 4. Shutdown under in-flight work
 # ──────────────────────────────────────────────────────────────────────
 
+
 class _SlowStubVerifier:
     """AlertVerifier stand-in whose verify() takes a configurable time."""
+
     def __init__(self, delay_s: float):
         self.delay_s = delay_s
         self.verdicts = 0
+
     def verify(self, alert):
         time.sleep(self.delay_s)
         self.verdicts += 1
         return VerifiedAlert(
-            candidate=alert, true_alert=True, confidence=0.9,
-            false_negative_class=None, rationale="slow but done",
+            candidate=alert,
+            true_alert=True,
+            confidence=0.9,
+            false_negative_class=None,
+            rationale="slow but done",
         )
 
 
@@ -472,13 +564,15 @@ def test_verifier_worker_finishes_current_candidate_before_stopping():
 
     v = _SlowStubVerifier(delay_s=0.2)
     worker = VerifierWorker(
-        verifier=v, candidate_q=cand_q,
-        sink_queues={"s1": sink_q}, stop_event=stop,
+        verifier=v,
+        candidate_q=cand_q,
+        sink_queues={"s1": sink_q},
+        stop_event=stop,
     )
     worker.start()
 
     cand_q.put(_CandidateMsg(stream_id="s1", alert=_cand()))
-    time.sleep(0.05)    # give the worker time to dequeue + start the verify
+    time.sleep(0.05)  # give the worker time to dequeue + start the verify
     stop.set()
     cand_q.close()
     worker.join(timeout=2.0)
@@ -524,9 +618,14 @@ def test_sink_worker_drains_backlog_after_stop_and_queue_close(tmp_path):
     q.close()
 
     worker = SinkWorker(
-        stream_id="s1", out_dir=tmp_path, fps=4.0,
-        write_annotated=False, jsonl_name="alerts.jsonl", mp4_name="x.mp4",
-        sink_q=q, stop_event=stop,
+        stream_id="s1",
+        out_dir=tmp_path,
+        fps=4.0,
+        write_annotated=False,
+        jsonl_name="alerts.jsonl",
+        mp4_name="x.mp4",
+        sink_q=q,
+        stop_event=stop,
     )
     worker.start()
     worker.join(timeout=2.0)
@@ -558,7 +657,9 @@ def test_pipeline_stop_keeps_sink_queues_open_until_verifier_finishes():
         sink_q.put("final-alert")
 
     p._verifier_worker = threading.Thread(
-        target=_finish_in_flight, name="verifier", daemon=True,
+        target=_finish_in_flight,
+        name="verifier",
+        daemon=True,
     )
     p._verifier_worker.start()
 
@@ -572,6 +673,7 @@ def test_pipeline_stop_keeps_sink_queues_open_until_verifier_finishes():
 # ──────────────────────────────────────────────────────────────────────
 # 5. Multi-stream config / manifest validation
 # ──────────────────────────────────────────────────────────────────────
+
 
 def test_manifest_rejects_non_mapping_yaml(tmp_path: Path):
     p = tmp_path / "bad.yaml"
@@ -631,6 +733,7 @@ def test_manifest_accepts_video_and_source_keys_as_aliases(tmp_path: Path):
 
 def test_multistream_pipeline_rejects_duplicate_ids():
     from vrs.multistream.pipeline import MultiStreamPipeline, StreamSpec
+
     cfg = {
         "ingest": {"target_fps": 4},
         "detector": {"model": "x", "backend": "ultralytics"},
@@ -638,8 +741,7 @@ def test_multistream_pipeline_rejects_duplicate_ids():
         "verifier": {"enabled": False},
         "sink": {},
     }
-    streams = [StreamSpec(id="dup", source="rtsp://a"),
-               StreamSpec(id="dup", source="rtsp://b")]
+    streams = [StreamSpec(id="dup", source="rtsp://a"), StreamSpec(id="dup", source="rtsp://b")]
     with pytest.raises(ValueError, match="duplicate stream id"):
         # MultiStreamPipeline actually builds the detector during __init__;
         # we can't fully construct without ultralytics. But the duplicate-id
@@ -649,12 +751,11 @@ def test_multistream_pipeline_rejects_duplicate_ids():
 
 def test_multistream_pipeline_rejects_empty_streams_list():
     from vrs.multistream.pipeline import MultiStreamPipeline
+
     with pytest.raises(ValueError, match="no streams configured"):
         MultiStreamPipeline({}, _policy(), streams=[], out_dir="/tmp/nope")
 
 
 def test_validate_multistream_spec_accepts_non_path_string_source():
     """Pure function, no tmp file — direct cfg dict."""
-    _validate_multistream_spec({
-        "streams": [{"id": "a", "rtsp": "rtsp://x"}]
-    })
+    _validate_multistream_spec({"streams": [{"id": "a", "rtsp": "rtsp://x"}]})

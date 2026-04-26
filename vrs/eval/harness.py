@@ -10,13 +10,15 @@ against the item's ground-truth events. The final ``HarnessResult`` holds
 both the per-video breakdown (useful for spotting which clips drag metrics
 down) and the aggregate (headline numbers).
 """
+
 from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, List, Tuple
+from typing import Any
 
 from .datasets.base import Dataset
 from .metrics import aggregate_scores, score_alerts_against_truth
@@ -25,21 +27,18 @@ from .schemas import RunScore
 logger = logging.getLogger(__name__)
 
 
-PipelineFactory = Callable[[Path], Any]   # (out_dir) -> something with .run(source)
+PipelineFactory = Callable[[Path], Any]  # (out_dir) -> something with .run(source)
 
 
 @dataclass
 class HarnessResult:
     aggregate: RunScore
-    per_video: List[Tuple[Path, RunScore]] = field(default_factory=list)
+    per_video: list[tuple[Path, RunScore]] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
             "aggregate": self.aggregate.to_dict(),
-            "per_video": [
-                {"video": str(p), "score": s.to_dict()}
-                for p, s in self.per_video
-            ],
+            "per_video": [{"video": str(p), "score": s.to_dict()} for p, s in self.per_video],
         }
 
 
@@ -69,7 +68,7 @@ def evaluate(
     root.mkdir(parents=True, exist_ok=True)
 
     classes_set = set(classes) if classes is not None else None
-    per_video: List[Tuple[Path, RunScore]] = []
+    per_video: list[tuple[Path, RunScore]] = []
 
     for item in dataset:
         video_out = root / item.video_path.stem
@@ -78,7 +77,7 @@ def evaluate(
         pipeline = pipeline_factory(video_out)
         try:
             pipeline.run(str(item.video_path))
-        except Exception as e:  # noqa: BLE001 — one bad clip shouldn't sink the run
+        except Exception as e:
             logger.error("pipeline run failed on %s: %s", item.video_path, e)
 
         alerts = _load_alerts(video_out / alerts_filename)
@@ -92,7 +91,8 @@ def evaluate(
         logger.info(
             "scored %s — alerts=%d events=%d per_class=%s flip_rate=%.3f",
             item.video_path.name,
-            score.n_alerts_total, score.n_events,
+            score.n_alerts_total,
+            score.n_events,
             {k: v.to_dict() for k, v in score.per_class.items()},
             score.flip_rate,
         )
@@ -103,10 +103,10 @@ def evaluate(
     )
 
 
-def _load_alerts(path: Path) -> List[dict]:
+def _load_alerts(path: Path) -> list[dict]:
     if not path.exists():
         return []
-    out: List[dict] = []
+    out: list[dict] = []
     with path.open("r", encoding="utf-8") as f:
         for raw in f:
             raw = raw.strip()

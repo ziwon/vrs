@@ -45,7 +45,7 @@ verifier:
   # 2026 Qwen releases justify adding/evaluating Qwen3.5/Qwen3.6-class
   # verifier backends before production model lock-in.
   backend: "transformers"    # transformers (default) | vllm | trtllm (reserved).
-                             # vllm: higher gen throughput, needs `pip install 'vrs[vllm]'`
+                             # vllm: higher gen throughput, needs `uv sync --extra vllm`
                              # and a GPU-local smoke run before prod — see vrs/runtime/vllm_cosmos.py.
                              # planned: qwen/openai-compatible served VLM backend.
   model_id: "nvidia/Cosmos-Reason2-2B"  # baseline; compare against Qwen candidates via eval

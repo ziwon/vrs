@@ -9,28 +9,42 @@ without the model:
   * ``build_logits_processor`` degrades gracefully when xgrammar is absent
     or setup raises.
 """
+
 from __future__ import annotations
 
 import logging
 import sys
 import types
 
-import pytest
-
 from vrs.policy.watch_policy import WatchItem, WatchPolicy
 from vrs.verifier import constrained as C
 
 
 def _policy() -> WatchPolicy:
-    return WatchPolicy([
-        WatchItem(name="fire", detector_prompts=["fire"], verifier_prompt="flames",
-                  severity="critical", min_score=0.3, min_persist_frames=2),
-        WatchItem(name="smoke", detector_prompts=["smoke"], verifier_prompt="smoke",
-                  severity="high", min_score=0.3, min_persist_frames=2),
-    ])
+    return WatchPolicy(
+        [
+            WatchItem(
+                name="fire",
+                detector_prompts=["fire"],
+                verifier_prompt="flames",
+                severity="critical",
+                min_score=0.3,
+                min_persist_frames=2,
+            ),
+            WatchItem(
+                name="smoke",
+                detector_prompts=["smoke"],
+                verifier_prompt="smoke",
+                severity="high",
+                min_score=0.3,
+                min_persist_frames=2,
+            ),
+        ]
+    )
 
 
 # ─── schema ───────────────────────────────────────────────────────────
+
 
 def test_schema_has_expected_top_level_shape():
     schema = C.build_verifier_schema(["fire", "smoke"])
@@ -90,6 +104,7 @@ def test_schema_trajectory_is_array_of_xy_pairs():
 
 # ─── logits-processor fallback ────────────────────────────────────────
 
+
 def test_build_logits_processor_returns_none_when_xgrammar_missing(monkeypatch, caplog):
     """Simulate a host without xgrammar installed — must return None with
     exactly one INFO log per process."""
@@ -122,10 +137,12 @@ def test_build_logits_processor_falls_back_on_setup_error(monkeypatch, caplog):
     """If xgrammar is present but raises during setup, we fall back to None
     and log a WARNING naming the error rather than crashing the verifier."""
     fake = types.ModuleType("xgrammar")
+
     class _BrokenTokenizerInfo:
         @staticmethod
         def from_huggingface(*a, **kw):
             raise RuntimeError("tokenizer has no vocab")
+
     fake.TokenizerInfo = _BrokenTokenizerInfo
     monkeypatch.setitem(sys.modules, "xgrammar", fake)
 
@@ -148,11 +165,17 @@ def test_build_logits_processor_returns_processor_when_xgrammar_succeeds(monkeyp
         @staticmethod
         def from_huggingface(*a, **kw):
             return "tok-info"
+
     class _FakeCompiler:
-        def __init__(self, tok_info): self.tok_info = tok_info
-        def compile_json_schema(self, schema): return ("compiled", schema)
+        def __init__(self, tok_info):
+            self.tok_info = tok_info
+
+        def compile_json_schema(self, schema):
+            return ("compiled", schema)
+
     class _FakeLogitsProcessor:
-        def __init__(self, compiled): self.compiled = compiled
+        def __init__(self, compiled):
+            self.compiled = compiled
 
     fake.TokenizerInfo = _FakeTokenizerInfo
     fake.GrammarCompiler = _FakeCompiler
@@ -172,15 +195,19 @@ def test_build_logits_processor_returns_processor_when_xgrammar_succeeds(monkeyp
 
 # ─── end-to-end wiring: verifier uses schema built from policy ─────────
 
+
 def test_verifier_builds_schema_from_policy_on_init():
     """AlertVerifier must compute its response schema from the policy's
     class names so the fn_enum matches what the pipeline can dispatch."""
     from vrs.verifier.alert_verifier import AlertVerifier
 
     class _FakeCosmos:  # minimal shape AlertVerifier reads at init
-        class processor: tokenizer = None
+        class processor:
+            tokenizer = None
+
         class model:
-            class config: vocab_size = 0
+            class config:
+                vocab_size = 0
 
     verifier = AlertVerifier(
         cosmos=_FakeCosmos(),

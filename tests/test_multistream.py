@@ -3,25 +3,27 @@
 Exercise the thread-safe queue + drop policies, and the worker lifecycle with
 stubbed YOLOE / Cosmos so nothing GPU-bound is required.
 """
+
 from __future__ import annotations
 
 import threading
 import time
-from typing import List
 
 import numpy as np
-import pytest
 
-from vrs.multistream.queues import BoundedQueue, DropPolicy
 from vrs.multistream.pipeline import load_multistream_spec
+from vrs.multistream.queues import BoundedQueue, DropPolicy
 from vrs.multistream.workers import (
-    DetectorWorker, SinkWorker, VerifierWorker, _FrameMsg,
+    DetectorWorker,
+    SinkWorker,
+    VerifierWorker,
+    _FrameMsg,
 )
 from vrs.policy.watch_policy import WatchItem, WatchPolicy
 from vrs.schemas import CandidateAlert, Detection, Frame, VerifiedAlert
 
-
 # ─── queue policies ───────────────────────────────────────────────────
+
 
 def test_bounded_queue_drop_oldest_evicts_head_when_full():
     q = BoundedQueue(maxsize=3, policy=DropPolicy.DROP_OLDEST)
@@ -39,7 +41,7 @@ def test_bounded_queue_drop_newest_refuses_new_when_full():
     q = BoundedQueue(maxsize=2, policy=DropPolicy.DROP_NEWEST)
     assert q.put("a") is True
     assert q.put("b") is True
-    assert q.put("c") is False    # dropped silently
+    assert q.put("c") is False  # dropped silently
     assert q.qsize() == 2
     assert q.get() == "a"
     assert q.get() == "b"
@@ -57,7 +59,7 @@ def test_bounded_queue_block_unblocks_on_consumer_progress():
 
     threading.Thread(target=_producer, daemon=True).start()
     time.sleep(0.05)
-    assert not producer_done.is_set()     # blocked because full
+    assert not producer_done.is_set()  # blocked because full
     assert q.get() == "first"
     assert producer_done.wait(timeout=1.0)
     assert q.get() == "second"
@@ -96,33 +98,37 @@ def test_load_multistream_spec_accepts_partial_manifest(tmp_path):
 
 # ─── worker fanout with stubs ─────────────────────────────────────────
 
+
 def _policy(min_persist: int = 1) -> WatchPolicy:
-    return WatchPolicy([
-        WatchItem(
-            name="fire",
-            detector_prompts=["fire"],
-            verifier_prompt="open flames",
-            severity="critical",
-            min_score=0.30,
-            min_persist_frames=min_persist,
-        )
-    ])
+    return WatchPolicy(
+        [
+            WatchItem(
+                name="fire",
+                detector_prompts=["fire"],
+                verifier_prompt="open flames",
+                severity="critical",
+                min_score=0.30,
+                min_persist_frames=min_persist,
+            )
+        ]
+    )
 
 
 class _StubDetector:
     """Deterministic stand-in for YOLOEDetector: returns one detection per frame."""
-    def batch(self, frames: List[Frame]) -> List[List[Detection]]:
+
+    def batch(self, frames: list[Frame]) -> list[list[Detection]]:
         return [
-            [Detection(class_name="fire", score=0.9, xyxy=(1.0, 1.0, 5.0, 5.0))]
-            for _ in frames
+            [Detection(class_name="fire", score=0.9, xyxy=(1.0, 1.0, 5.0, 5.0))] for _ in frames
         ]
 
 
 class _StubVerifier:
     """Stand-in for AlertVerifier: returns a true_alert for every candidate."""
+
     def __init__(self, delay_s: float = 0.0):
         self.delay_s = delay_s
-        self.calls: List[str] = []
+        self.calls: list[str] = []
 
     def verify(self, alert: CandidateAlert) -> VerifiedAlert:
         self.calls.append(alert.class_name)
@@ -213,19 +219,28 @@ def test_verifier_worker_dispatches_to_correct_stream_sink():
     from vrs.multistream.workers import _CandidateMsg  # internal
 
     worker = VerifierWorker(
-        verifier=stub, candidate_q=cand_q, sink_queues=sink_qs, stop_event=stop,
+        verifier=stub,
+        candidate_q=cand_q,
+        sink_queues=sink_qs,
+        stop_event=stop,
     )
     worker.start()
 
     cand_s1 = CandidateAlert(
-        class_name="fire", severity="critical",
-        start_pts_s=0.0, peak_pts_s=0.5, peak_frame_index=2,
-        peak_detections=[Detection(class_name="fire", score=0.9, xyxy=(0,0,1,1))],
+        class_name="fire",
+        severity="critical",
+        start_pts_s=0.0,
+        peak_pts_s=0.5,
+        peak_frame_index=2,
+        peak_detections=[Detection(class_name="fire", score=0.9, xyxy=(0, 0, 1, 1))],
     )
     cand_s2 = CandidateAlert(
-        class_name="fire", severity="critical",
-        start_pts_s=0.0, peak_pts_s=0.5, peak_frame_index=2,
-        peak_detections=[Detection(class_name="fire", score=0.9, xyxy=(0,0,1,1))],
+        class_name="fire",
+        severity="critical",
+        start_pts_s=0.0,
+        peak_pts_s=0.5,
+        peak_frame_index=2,
+        peak_detections=[Detection(class_name="fire", score=0.9, xyxy=(0, 0, 1, 1))],
     )
     cand_q.put(_CandidateMsg("s1", cand_s1))
     cand_q.put(_CandidateMsg("s2", cand_s2))
@@ -244,22 +259,33 @@ def test_sink_worker_writes_jsonl_and_handles_missing_frames(tmp_path):
     stop = threading.Event()
     q = BoundedQueue(maxsize=8)
     w = SinkWorker(
-        stream_id="s1", out_dir=tmp_path, fps=4.0,
-        write_annotated=False,   # avoid cv2 VideoWriter in unit test
-        jsonl_name="alerts.jsonl", mp4_name="annotated.mp4",
-        sink_q=q, stop_event=stop,
+        stream_id="s1",
+        out_dir=tmp_path,
+        fps=4.0,
+        write_annotated=False,  # avoid cv2 VideoWriter in unit test
+        jsonl_name="alerts.jsonl",
+        mp4_name="annotated.mp4",
+        sink_q=q,
+        stop_event=stop,
     )
     w.start()
 
     from vrs.multistream.workers import _SinkMsg
+
     cand = CandidateAlert(
-        class_name="fire", severity="critical",
-        start_pts_s=0.0, peak_pts_s=0.5, peak_frame_index=2,
+        class_name="fire",
+        severity="critical",
+        start_pts_s=0.0,
+        peak_pts_s=0.5,
+        peak_frame_index=2,
         peak_detections=[],
     )
     v = VerifiedAlert(
-        candidate=cand, true_alert=True, confidence=0.8,
-        false_negative_class=None, rationale="stub",
+        candidate=cand,
+        true_alert=True,
+        confidence=0.8,
+        false_negative_class=None,
+        rationale="stub",
     )
     q.put(_SinkMsg(kind="alert", verified=v))
 
@@ -288,6 +314,7 @@ def test_drop_delta_logger_warns_on_increase(caplog):
     queue — that's the only operator-visible signal of live-video
     backpressure."""
     import logging
+
     from vrs.multistream.pipeline import MultiStreamPipeline
 
     prev = {"frame_q": 0, "candidate_q": 0, "sink[s1]": 0}
@@ -301,11 +328,12 @@ def test_drop_delta_logger_warns_on_increase(caplog):
     msg = warnings[0].getMessage()
     assert "frame_q+5" in msg
     assert "sink[s1]+2" in msg
-    assert "candidate_q" not in msg    # unchanged → not named
+    assert "candidate_q" not in msg  # unchanged → not named
 
 
 def test_drop_delta_logger_silent_when_unchanged(caplog):
     import logging
+
     from vrs.multistream.pipeline import MultiStreamPipeline
 
     prev = {"frame_q": 10, "sink[s1]": 3}

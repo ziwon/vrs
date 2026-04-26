@@ -6,16 +6,17 @@ video, and is coarser than D-Fire's per-frame bboxes — a bbox-level scorer
 can be added later on top of the same ``GroundTruthEvent`` shape by adding a
 ``bbox_xywh_norm`` field.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
 
 
 @dataclass(frozen=True)
 class GroundTruthEvent:
     """One labeled event in a source video."""
+
     class_name: str
     start_s: float
     end_s: float
@@ -24,8 +25,9 @@ class GroundTruthEvent:
 @dataclass
 class EvalItem:
     """One video + its ground-truth events (what a Dataset iterator yields)."""
+
     video_path: Path
-    events: List[GroundTruthEvent] = field(default_factory=list)
+    events: list[GroundTruthEvent] = field(default_factory=list)
 
 
 @dataclass
@@ -49,7 +51,7 @@ class ClassMetrics:
         p, r = self.precision, self.recall
         return 2 * p * r / (p + r) if (p + r) else 0.0
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         return {
             "tp": self.tp,
             "fp": self.fp,
@@ -64,18 +66,19 @@ class ClassMetrics:
 class RunScore:
     """Result of scoring one pipeline run against one dataset item (or the
     aggregate across many items — totals accumulate naturally)."""
-    per_class: Dict[str, ClassMetrics] = field(default_factory=dict)
-    n_alerts_total: int = 0          # all alerts, regardless of verifier verdict
-    n_alerts_true: int = 0           # alerts where verifier said true_alert=True
-    n_fn_flagged: int = 0            # alerts where verifier reported a false negative
-    n_events: int = 0                # ground-truth events counted
+
+    per_class: dict[str, ClassMetrics] = field(default_factory=dict)
+    n_alerts_total: int = 0  # all alerts, regardless of verifier verdict
+    n_alerts_true: int = 0  # alerts where verifier said true_alert=True
+    n_fn_flagged: int = 0  # alerts where verifier reported a false negative
+    n_events: int = 0  # ground-truth events counted
 
     @property
     def flip_rate(self) -> float:
         """Fraction of alerts the verifier flipped to false_alarm.
 
         This is the key self-signal the improvements doc names: healthy cascades
-        stabilize around 5–15 %. Trending up → detector drift; trending down →
+        stabilize around 5-15 %. Trending up -> detector drift; trending down ->
         verifier is rubber-stamping.
         """
         if not self.n_alerts_total:

@@ -1,12 +1,13 @@
 """Run VRS over an mp4 file.
 
 Example:
-    python scripts/run_mp4.py \
+    uv run scripts/run_mp4.py \
         --video /path/to/cctv.mp4 \
         --config configs/default.yaml \
         --policy configs/policies/safety.yaml \
         --out runs/demo
 """
+
 from __future__ import annotations
 
 import argparse

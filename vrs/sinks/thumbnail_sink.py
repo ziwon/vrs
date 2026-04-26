@@ -5,17 +5,16 @@ verified alert, linked from ``alerts.jsonl``. Full annotated MP4s are still
 useful for demos/debugging, but they are expensive to store, harder to review at
 scale, and carry more privacy risk.
 """
+
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 import numpy as np
 
 from ..privacy import FaceDetector, NullFaceDetector, blur_faces
 from ..schemas import Detection, VerifiedAlert
-
 
 _SEVERITY_COLOR = {
     "info": (200, 200, 200),
@@ -41,7 +40,7 @@ class EventThumbnailSink:
         *,
         ext: str = "jpg",
         quality: int = 90,
-        face_detector: Optional[FaceDetector] = None,
+        face_detector: FaceDetector | None = None,
         blur_kernel: int = 31,
         blur_margin_pct: float = 0.15,
     ):
@@ -57,7 +56,7 @@ class EventThumbnailSink:
         self.blur_kernel = int(blur_kernel)
         self.blur_margin_pct = float(blur_margin_pct)
 
-    def write(self, alert: VerifiedAlert) -> Optional[str]:
+    def write(self, alert: VerifiedAlert) -> str | None:
         frame = self._pick_keyframe(alert)
         if frame is None:
             return None
@@ -77,6 +76,7 @@ class EventThumbnailSink:
         out_path = self.root_dir / rel
         params = self._encode_params()
         import cv2  # lazy: keep JsonlSink-only tests import-light
+
         ok = cv2.imwrite(str(out_path), img, params)
         if not ok:
             raise RuntimeError(f"failed to write event thumbnail: {out_path}")
@@ -87,15 +87,16 @@ class EventThumbnailSink:
         cls = _safe_name(alert.candidate.class_name)
         verdict = "true" if alert.true_alert else "false"
         track = "none" if alert.candidate.track_id is None else str(alert.candidate.track_id)
-        pts_ms = int(round(alert.candidate.peak_pts_s * 1000.0))
+        pts_ms = round(alert.candidate.peak_pts_s * 1000.0)
         name = (
             f"{alert.candidate.peak_frame_index:08d}_"
             f"{pts_ms:010d}ms_{cls}_track-{track}_{verdict}.{self.ext}"
         )
         return Path(self.dir_name) / name
 
-    def _encode_params(self) -> List[int]:
+    def _encode_params(self) -> list[int]:
         import cv2  # lazy
+
         if self.ext == "jpg":
             return [int(cv2.IMWRITE_JPEG_QUALITY), self.quality]
         if self.ext == "png":
@@ -103,7 +104,7 @@ class EventThumbnailSink:
         return []
 
     @staticmethod
-    def _pick_keyframe(alert: VerifiedAlert) -> Optional[np.ndarray]:
+    def _pick_keyframe(alert: VerifiedAlert) -> np.ndarray | None:
         frames = alert.candidate.keyframes
         if not frames:
             return None
@@ -116,6 +117,7 @@ class EventThumbnailSink:
 
     def _draw_overlays(self, img: np.ndarray, alert: VerifiedAlert) -> None:
         import cv2  # lazy
+
         color = _SEVERITY_COLOR.get(alert.candidate.severity, (0, 0, 255))
         if not alert.true_alert:
             color = (0, 165, 255)
@@ -145,6 +147,7 @@ class EventThumbnailSink:
     @staticmethod
     def _draw_detection(img: np.ndarray, det: Detection) -> None:
         import cv2  # lazy
+
         x1, y1, x2, y2 = (int(v) for v in det.xyxy)
         cv2.rectangle(img, (x1, y1), (x2, y2), (255, 255, 255), 1)
         cv2.putText(
@@ -159,8 +162,9 @@ class EventThumbnailSink:
         )
 
     @staticmethod
-    def _draw_banner(img: np.ndarray, text: str, color: Tuple[int, int, int]) -> None:
+    def _draw_banner(img: np.ndarray, text: str, color: tuple[int, int, int]) -> None:
         import cv2  # lazy
+
         x, y = 10, 30
         (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
         cv2.rectangle(img, (x - 4, y - th - 8), (x + tw + 8, y + 8), (0, 0, 0), -1)

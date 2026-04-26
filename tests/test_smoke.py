@@ -1,4 +1,5 @@
 """CPU-only smoke tests — verify pure-Python logic without YOLOE or Cosmos."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,37 +14,57 @@ from vrs.triage.event_state import EventStateQueue
 from vrs.verifier.alert_verifier import _safe_parse_json
 from vrs.verifier.prompts import build_user_prompt
 
-
 # ─── config validation ─────────────────────────────────────────────────
 
+
 def test_validate_config_rejects_missing_section():
-    cfg = {"ingest": {"target_fps": 4}, "event_state": {"window": 8},
-           "verifier": {"enabled": False}, "sink": {}}
+    cfg = {
+        "ingest": {"target_fps": 4},
+        "event_state": {"window": 8},
+        "verifier": {"enabled": False},
+        "sink": {},
+    }
     with pytest.raises(ValueError, match="missing required section 'detector'"):
         _validate_config(cfg, "test.yaml")
 
 
 def test_validate_config_rejects_missing_key():
-    cfg = {"ingest": {}, "detector": {"model": "x"}, "event_state": {"window": 8},
-           "verifier": {"enabled": False}, "sink": {}}
-    with pytest.raises(ValueError, match="ingest.target_fps"):
+    cfg = {
+        "ingest": {},
+        "detector": {"model": "x"},
+        "event_state": {"window": 8},
+        "verifier": {"enabled": False},
+        "sink": {},
+    }
+    with pytest.raises(ValueError, match=r"ingest\.target_fps"):
         _validate_config(cfg, "test.yaml")
 
 
 def test_validate_config_requires_model_id_when_verifier_enabled():
-    cfg = {"ingest": {"target_fps": 4}, "detector": {"model": "x"},
-           "event_state": {"window": 8}, "verifier": {"enabled": True}, "sink": {}}
-    with pytest.raises(ValueError, match="verifier.model_id"):
+    cfg = {
+        "ingest": {"target_fps": 4},
+        "detector": {"model": "x"},
+        "event_state": {"window": 8},
+        "verifier": {"enabled": True},
+        "sink": {},
+    }
+    with pytest.raises(ValueError, match=r"verifier\.model_id"):
         _validate_config(cfg, "test.yaml")
 
 
 def test_validate_config_skips_model_id_when_verifier_disabled():
-    cfg = {"ingest": {"target_fps": 4}, "detector": {"model": "x"},
-           "event_state": {"window": 8}, "verifier": {"enabled": False}, "sink": {}}
+    cfg = {
+        "ingest": {"target_fps": 4},
+        "detector": {"model": "x"},
+        "event_state": {"window": 8},
+        "verifier": {"enabled": False},
+        "sink": {},
+    }
     _validate_config(cfg, "test.yaml")  # should not raise
 
 
 # ─── policy ────────────────────────────────────────────────────────────
+
 
 def test_load_default_safety_policy_has_expected_events(tmp_path):
     policy = load_watch_policy(Path(__file__).parent.parent / "configs/policies/safety.yaml")
@@ -52,7 +73,7 @@ def test_load_default_safety_policy_has_expected_events(tmp_path):
     # YOLOE vocabulary is the *flat* list — counts >= number of events
     assert len(policy.yoloe_vocabulary()) >= len(names)
     # round-trip prompt index → event name works
-    for i, prompt in enumerate(policy.yoloe_vocabulary()):
+    for i, _prompt in enumerate(policy.yoloe_vocabulary()):
         assert policy.event_for_prompt_index(i) in names
 
 
@@ -72,8 +93,10 @@ def test_policy_rejects_invalid_severity(tmp_path):
 
 # ─── event-state ───────────────────────────────────────────────────────
 
+
 def _make_policy(min_persist: int = 2):
     from vrs.policy.watch_policy import WatchItem
+
     items = [
         WatchItem(
             name="fire",
@@ -97,8 +120,8 @@ def _det(name: str = "fire", score: float = 0.9):
 
 def test_event_state_requires_min_persist():
     q = EventStateQueue(_make_policy(min_persist=2), window=4, cooldown_s=0.5, target_fps=4.0)
-    assert q.step(_frame(0, 0.0), [_det()]) == []           # 1st hit, below threshold
-    alerts = q.step(_frame(1, 0.25), [_det()])              # 2nd hit, fires
+    assert q.step(_frame(0, 0.0), [_det()]) == []  # 1st hit, below threshold
+    alerts = q.step(_frame(1, 0.25), [_det()])  # 2nd hit, fires
     assert len(alerts) == 1
     assert alerts[0].class_name == "fire"
     assert alerts[0].peak_pts_s == pytest.approx(0.25)
@@ -107,8 +130,8 @@ def test_event_state_requires_min_persist():
 def test_event_state_cooldown_suppresses_duplicate_alerts():
     q = EventStateQueue(_make_policy(min_persist=1), window=4, cooldown_s=2.0, target_fps=4.0)
     a1 = q.step(_frame(0, 0.0), [_det()])
-    a2 = q.step(_frame(1, 0.5), [_det()])    # within cooldown — must be suppressed
-    a3 = q.step(_frame(2, 2.5), [_det()])    # past cooldown — must fire again
+    a2 = q.step(_frame(1, 0.5), [_det()])  # within cooldown — must be suppressed
+    a3 = q.step(_frame(2, 2.5), [_det()])  # past cooldown — must fire again
     assert len(a1) == 1
     assert a2 == []
     assert len(a3) == 1
@@ -117,17 +140,18 @@ def test_event_state_cooldown_suppresses_duplicate_alerts():
 def test_event_state_resets_when_class_drops_out():
     q = EventStateQueue(_make_policy(min_persist=2), window=4, cooldown_s=0.0, target_fps=4.0)
     q.step(_frame(0, 0.0), [_det()])
-    q.step(_frame(1, 0.25), [])             # broken — fill_start should reset
-    q.step(_frame(2, 0.5), [_det()])        # 1st hit of new run
+    q.step(_frame(1, 0.25), [])  # broken — fill_start should reset
+    q.step(_frame(2, 0.5), [_det()])  # 1st hit of new run
     out = q.step(_frame(3, 0.75), [_det()])  # 2nd hit, fires
     assert len(out) == 1
 
 
 # ─── verifier helpers ─────────────────────────────────────────────────
 
+
 def test_json_parser_handles_code_fences_and_single_quotes():
     assert _safe_parse_json('{"true_alert": true, "confidence": 0.9}')["true_alert"] is True
-    raw = "Sure, here's the JSON:\n```json\n{\"true_alert\": false, \"confidence\": 0.1}\n```"
+    raw = 'Sure, here\'s the JSON:\n```json\n{"true_alert": false, "confidence": 0.1}\n```'
     parsed = _safe_parse_json(raw)
     assert parsed is not None and parsed["true_alert"] is False
     parsed = _safe_parse_json("{'true_alert': true, 'confidence': 0.5}")
@@ -181,9 +205,9 @@ def test_user_prompt_lists_other_events_as_fn_options_only():
         request_trajectory=True,
     )
     # detector class itself never offered as a false-negative option
-    assert "\"fire\"" not in msg.split("false_negative_class")[1].split("\n")[0]
-    assert "\"smoke\"" in msg
-    assert "\"falldown\"" in msg
+    assert '"fire"' not in msg.split("false_negative_class")[1].split("\n")[0]
+    assert '"smoke"' in msg
+    assert '"falldown"' in msg
     assert "bbox_xywh_norm" in msg
     assert "trajectory_xy_norm" in msg
     assert "t=1.00s .. t=2.00s" in msg

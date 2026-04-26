@@ -21,12 +21,13 @@ feed a TRT YOLOE engine via ``nvinfer`` without ever touching host memory.
 We keep the Reader interface small so that integration is additive — just
 implement a new reader that yields ``Frame`` and register it below.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Iterator, List, Optional, Tuple
+from collections.abc import Iterator
 
 import cv2
 import numpy as np
@@ -38,32 +39,33 @@ logger = logging.getLogger(__name__)
 
 class Reader(ABC):
     """Abstract frame-yielding iterator."""
+
     native_fps: float = 0.0
 
     @abstractmethod
-    def __iter__(self) -> Iterator[Frame]:
-        ...
+    def __iter__(self) -> Iterator[Frame]: ...
 
 
 # ──────────────────────────────────────────────────────────────────────
 # OpenCV (CPU FFmpeg) — always available
 # ──────────────────────────────────────────────────────────────────────
 
+
 class OpenCVReader(Reader):
     def __init__(
         self,
         source: str,
         target_fps: float = 4.0,
-        roi_polygon: Optional[List[Tuple[float, float]]] = None,
+        roi_polygon: list[tuple[float, float]] | None = None,
         reconnect_s: float = 2.0,
     ):
         self.source = source
         self.target_fps = float(target_fps)
-        self.roi = (
-            np.array(roi_polygon, dtype=np.int32) if roi_polygon else None
-        )
+        self.roi = np.array(roi_polygon, dtype=np.int32) if roi_polygon else None
         self.reconnect_s = reconnect_s
-        self._is_live = source.startswith(("rtsp://", "rtmp://", "http://", "https://")) or source.isdigit()
+        self._is_live = (
+            source.startswith(("rtsp://", "rtmp://", "http://", "https://")) or source.isdigit()
+        )
 
     def _open(self) -> cv2.VideoCapture:
         cap = (
@@ -85,7 +87,7 @@ class OpenCVReader(Reader):
 
     def __iter__(self) -> Iterator[Frame]:
         cap = self._open()
-        step = max(1, int(round(max(self.native_fps, 1.0) / max(self.target_fps, 0.1))))
+        step = max(1, round(max(self.native_fps, 1.0) / max(self.target_fps, 0.1)))
         src_idx = 0
         out_idx = 0
         t0 = time.monotonic()
@@ -109,9 +111,7 @@ class OpenCVReader(Reader):
 
                 frame = self._mask(frame)
                 pts_s = (
-                    time.monotonic() - t0
-                    if self._is_live
-                    else src_idx / max(self.native_fps, 1.0)
+                    time.monotonic() - t0 if self._is_live else src_idx / max(self.native_fps, 1.0)
                 )
                 yield Frame(index=out_idx, pts_s=pts_s, image=frame)
                 out_idx += 1
@@ -124,6 +124,7 @@ class OpenCVReader(Reader):
 # NVDEC via cv2.cudacodec — optional, zero-copy decode on GPU
 # ──────────────────────────────────────────────────────────────────────
 
+
 def _has_cudacodec() -> bool:
     """True when OpenCV was built with CUDA and cudacodec is usable."""
     try:
@@ -132,7 +133,7 @@ def _has_cudacodec() -> bool:
         if cuda_mod is None or codec_mod is None:
             return False
         return cuda_mod.getCudaEnabledDeviceCount() > 0
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
 
 
@@ -149,7 +150,7 @@ class NvDecReader(Reader):
         self,
         source: str,
         target_fps: float = 4.0,
-        roi_polygon: Optional[List[Tuple[float, float]]] = None,
+        roi_polygon: list[tuple[float, float]] | None = None,
     ):
         if not _has_cudacodec():
             raise RuntimeError(
@@ -157,15 +158,13 @@ class NvDecReader(Reader):
             )
         self.source = source
         self.target_fps = float(target_fps)
-        self.roi = (
-            np.array(roi_polygon, dtype=np.int32) if roi_polygon else None
-        )
+        self.roi = np.array(roi_polygon, dtype=np.int32) if roi_polygon else None
 
     def __iter__(self) -> Iterator[Frame]:
         reader = cv2.cudacodec.createVideoReader(self.source)  # type: ignore[attr-defined]
         fmt = reader.format() if hasattr(reader, "format") else None
         self.native_fps = float(getattr(fmt, "fps", 25.0) or 25.0)
-        step = max(1, int(round(self.native_fps / max(self.target_fps, 0.1))))
+        step = max(1, round(self.native_fps / max(self.target_fps, 0.1)))
         src_idx = 0
         out_idx = 0
         t0 = time.monotonic()
@@ -199,18 +198,22 @@ class NvDecReader(Reader):
 # factory
 # ──────────────────────────────────────────────────────────────────────
 
+
 def build_reader(
     backend: str,
     source: str,
     target_fps: float,
-    roi_polygon: Optional[List[Tuple[float, float]]] = None,
+    roi_polygon: list[tuple[float, float]] | None = None,
 ) -> Reader:
     backend = (backend or "opencv").lower()
     if backend == "opencv":
         return OpenCVReader(source, target_fps, roi_polygon)
     if backend in ("nvdec", "cudacodec"):
         if not _has_cudacodec():
-            logger.warning("nvdec requested but cv2.cudacodec unavailable — falling back to opencv for %s", source)
+            logger.warning(
+                "nvdec requested but cv2.cudacodec unavailable — falling back to opencv for %s",
+                source,
+            )
             return OpenCVReader(source, target_fps, roi_polygon)
         return NvDecReader(source, target_fps, roi_polygon)
     raise ValueError(f"unknown decoder backend: {backend!r}")

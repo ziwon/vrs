@@ -186,7 +186,7 @@ is available, compiles it to a transformers `LogitsProcessor` that
 Cosmos's `generate()` consumes. The balanced-brace parser stays in place
 as a strict safety net for hosts without xgrammar, and the import is
 guarded so the rest of the cascade runs unchanged on machines where the
-extra isn't installed. Install with `pip install 'vrs[constrained]'`.
+extra isn't installed. Install with `uv sync --extra constrained`.
 
 ## Worth doing, but second-tier
 

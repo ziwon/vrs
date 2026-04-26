@@ -16,11 +16,12 @@ The queue also maintains a small ring buffer of recent ``Frame`` images
 per class so the verifier receives a true short clip rather than a single
 peak frame.
 """
+
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Optional, Sequence, Tuple
 
 from ..policy import WatchPolicy
 from ..schemas import CandidateAlert, Detection, Frame
@@ -28,11 +29,11 @@ from ..schemas import CandidateAlert, Detection, Frame
 
 @dataclass
 class _ClassState:
-    hits: Deque[bool]                       # last `window` frame outcomes
-    fill_start_pts: Optional[float]         # pts of the first hit in the current run
+    hits: deque[bool]  # last `window` frame outcomes
+    fill_start_pts: float | None  # pts of the first hit in the current run
     # cooldown anchor per track_id — ``None`` key is used when detections
     # carry no track_id (untracked run).
-    last_alert_pts_by_track: Dict[Optional[int], float]
+    last_alert_pts_by_track: dict[int | None, float]
 
 
 class EventStateQueue:
@@ -51,7 +52,7 @@ class EventStateQueue:
         self.keyframes = int(keyframes)
         self.context_window_s = float(context_window_s)
 
-        self._state: Dict[str, _ClassState] = {
+        self._state: dict[str, _ClassState] = {
             it.name: _ClassState(
                 hits=deque([False] * self.window, maxlen=self.window),
                 fill_start_pts=None,
@@ -62,7 +63,7 @@ class EventStateQueue:
 
         # rolling buffer of (frame, detections) for keyframe extraction
         ring_len = max(int(context_window_s * target_fps) * 2 + 4, 16)
-        self._ring: Deque[Tuple[Frame, List[Detection]]] = deque(maxlen=ring_len)
+        self._ring: deque[tuple[Frame, list[Detection]]] = deque(maxlen=ring_len)
 
     # ---- main api ---------------------------------------------------
 
@@ -70,14 +71,14 @@ class EventStateQueue:
         self,
         frame: Frame,
         detections: Sequence[Detection],
-    ) -> List[CandidateAlert]:
+    ) -> list[CandidateAlert]:
         """Push one frame's detections; return a CandidateAlert per newly-fired class."""
         self._ring.append((frame, list(detections)))
 
         # group hits by class for this frame
         hit_classes = {d.class_name for d in detections}
 
-        alerts: List[CandidateAlert] = []
+        alerts: list[CandidateAlert] = []
         for name, state in self._state.items():
             hit = name in hit_classes
             state.hits.append(hit)
@@ -92,14 +93,14 @@ class EventStateQueue:
                 continue
 
             peak_dets = [d for d in detections if d.class_name == name]
-            keyframes: Optional[list] = None
-            keyframe_pts: Optional[list] = None
+            keyframes: list | None = None
+            keyframe_pts: list | None = None
 
             # Fire one candidate per distinct track_id present on this frame,
             # each with its own cooldown. An untracked run collapses to a
             # single ``None`` bucket, which reproduces the pre-tracking
             # per-class cooldown behavior exactly.
-            seen_tids: List[Optional[int]] = []
+            seen_tids: list[int | None] = []
             for d in peak_dets:
                 if d.track_id not in seen_tids:
                     seen_tids.append(d.track_id)
@@ -147,7 +148,7 @@ class EventStateQueue:
         if n <= 0:
             return [], []
         step = max(1, len(candidates) // n)
-        picked = candidates[:: step][:n]
+        picked = candidates[::step][:n]
         return (
             [pair[0].image.copy() for pair in picked],
             [float(pair[0].pts_s) for pair in picked],

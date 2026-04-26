@@ -4,9 +4,10 @@ Separate module so the blur pass has a clean seam — a test can swap a
 fake detector in, feed a known image, and assert exactly which pixels
 get blurred without exercising the full annotator.
 """
+
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 
@@ -36,7 +37,7 @@ def blur_faces(
     if kernel < 1:
         raise ValueError("kernel must be >= 1")
     if kernel % 2 == 0:
-        kernel += 1     # cv2.GaussianBlur requires odd kernel
+        kernel += 1  # cv2.GaussianBlur requires odd kernel
     if margin_pct < 0:
         raise ValueError("margin_pct must be >= 0")
 
@@ -44,7 +45,7 @@ def blur_faces(
     import cv2
 
     h, w = bgr.shape[:2]
-    for (x, y, fw, fh) in faces:
+    for x, y, fw, fh in faces:
         mx = int(fw * margin_pct)
         my = int(fh * margin_pct)
         x1 = max(0, x - mx)

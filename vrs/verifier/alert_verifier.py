@@ -31,12 +31,12 @@ Configure via ``verifier.failure_policy`` in ``default.yaml``.  The
 failure-path tests in ``tests/test_failure_paths.py`` pin both
 behaviors.
 """
+
 from __future__ import annotations
 
 import enum
 import json
 import logging
-from typing import List, Optional, Tuple
 
 from ..policy import WatchPolicy
 from ..runtime import CosmosBackend
@@ -54,11 +54,12 @@ class FailurePolicy(enum.Enum):
     reading the implementation.  Configured via
     ``verifier.failure_policy: pass_through | reject`` in the YAML.
     """
+
     PASS_THROUGH = "pass_through"
     REJECT = "reject"
 
     @classmethod
-    def from_str(cls, value: Optional[str]) -> "FailurePolicy":
+    def from_str(cls, value: str | None) -> FailurePolicy:
         if not value:
             return cls.PASS_THROUGH
         key = str(value).lower().replace("-", "_")
@@ -66,12 +67,13 @@ class FailurePolicy(enum.Enum):
             return cls(key)
         except ValueError:
             logger.warning(
-                "unknown failure_policy %r, falling back to PASS_THROUGH", value,
+                "unknown failure_policy %r, falling back to PASS_THROUGH",
+                value,
             )
             return cls.PASS_THROUGH
 
 
-def _find_json_object(text: str) -> Optional[str]:
+def _find_json_object(text: str) -> str | None:
     """Find the first top-level ``{...}`` with balanced braces.
 
     Unlike a greedy regex (``\\{.*\\}``), this stops at the correct closing
@@ -106,7 +108,7 @@ def _find_json_object(text: str) -> Optional[str]:
     return None
 
 
-def _safe_parse_json(text: str) -> Optional[dict]:
+def _safe_parse_json(text: str) -> dict | None:
     if not text:
         return None
     blob = _find_json_object(text)
@@ -121,7 +123,7 @@ def _safe_parse_json(text: str) -> Optional[dict]:
     return None
 
 
-def _coerce_bbox(value) -> Optional[Tuple[float, float, float, float]]:
+def _coerce_bbox(value) -> tuple[float, float, float, float] | None:
     if value is None:
         return None
     try:
@@ -131,10 +133,10 @@ def _coerce_bbox(value) -> Optional[Tuple[float, float, float, float]]:
     return (x, y, w, h)
 
 
-def _coerce_trajectory(value) -> List[Tuple[float, float]]:
+def _coerce_trajectory(value) -> list[tuple[float, float]]:
     if not value:
         return []
-    out: List[Tuple[float, float]] = []
+    out: list[tuple[float, float]] = []
     for pt in value:
         try:
             x, y = (float(v) for v in pt)
@@ -188,7 +190,8 @@ class AlertVerifier:
     def verify(self, alert: CandidateAlert) -> VerifiedAlert:
         if not alert.keyframes:
             return self._failure_verdict(
-                alert, "no keyframes available for verification",
+                alert,
+                "no keyframes available for verification",
             )
 
         item = self.policy[alert.class_name]
@@ -205,20 +208,25 @@ class AlertVerifier:
 
         try:
             raw = self.cosmos.chat_video(
-                SYSTEM_PROMPT, user_msg, alert.keyframes,
+                SYSTEM_PROMPT,
+                user_msg,
+                alert.keyframes,
                 clip_fps=self.clip_fps,
                 response_schema=self._response_schema,
             )
-        except Exception as e:  # noqa: BLE001 — surface in rationale, never crash
+        except Exception as e:
             return self._failure_verdict(alert, f"verifier error: {e}")
 
         parsed = _safe_parse_json(raw)
         failure_default = self.failure_policy == FailurePolicy.PASS_THROUGH
         if parsed is None:
             logger.warning(
-                "verifier returned unparseable response for %s, "
+                "verifier returned unparsable response for %s, "
                 "failure_policy=%s → true_alert=%s: %.200s",
-                alert.class_name, self.failure_policy.value, failure_default, raw,
+                alert.class_name,
+                self.failure_policy.value,
+                failure_default,
+                raw,
             )
             parsed = {}
 
@@ -226,14 +234,14 @@ class AlertVerifier:
             logger.warning(
                 "verifier response missing 'true_alert' field for %s, "
                 "failure_policy=%s → defaulting to %s",
-                alert.class_name, self.failure_policy.value, failure_default,
+                alert.class_name,
+                self.failure_policy.value,
+                failure_default,
             )
         true_alert = bool(parsed.get("true_alert", failure_default))
         conf = float(parsed.get("confidence", 0.0) or 0.0)
         fn_cls = parsed.get("false_negative_class")
-        if fn_cls in (None, "null", "None", "", "<none>"):
-            fn_cls = None
-        elif fn_cls not in self.policy.names():
+        if fn_cls in (None, "null", "None", "", "<none>") or fn_cls not in self.policy.names():
             fn_cls = None
 
         rationale = str(parsed.get("rationale", "")).strip() or raw.strip()[:240]

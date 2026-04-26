@@ -16,11 +16,13 @@ Upcoming:
   * ``datasets/dfire.py`` and ``datasets/le2i.py`` — real public datasets.
   * Detector-only evaluation mode reusing the same report schema.
 """
+
 from __future__ import annotations
 
 from .harness import HarnessResult, evaluate
 from .metrics import aggregate_scores, score_alerts_against_truth
 from .report import (
+    SCHEMA_VERSION,
     EvalReport,
     PerVideoReport,
     ReportClassMetrics,
@@ -31,7 +33,6 @@ from .report import (
     ReportQualitySignals,
     ReportRun,
     ReportRuntime,
-    SCHEMA_VERSION,
 )
 from .schemas import ClassMetrics, EvalItem, GroundTruthEvent, RunScore
 
@@ -41,9 +42,10 @@ from .schemas import ClassMetrics, EvalItem, GroundTruthEvent, RunScore
 # ``from vrs.eval.ci import compare_reports`` if you need the function.
 
 __all__ = [
+    "SCHEMA_VERSION",
     "ClassMetrics",
-    "EvalReport",
     "EvalItem",
+    "EvalReport",
     "GroundTruthEvent",
     "HarnessResult",
     "PerVideoReport",
@@ -56,7 +58,6 @@ __all__ = [
     "ReportRun",
     "ReportRuntime",
     "RunScore",
-    "SCHEMA_VERSION",
     "aggregate_scores",
     "evaluate",
     "score_alerts_against_truth",

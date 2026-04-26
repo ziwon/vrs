@@ -8,13 +8,13 @@ meant to review the suggestion and either apply it (which changes
 meaningful signal comes from a fresh ``min_sample`` worth of verdicts
 under whatever policy is current — so we start a new sample.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from collections import defaultdict, deque
 from pathlib import Path
-from typing import Any, Deque, Dict, Optional, Tuple
 
 from ..policy import WatchPolicy
 from ..schemas import VerifiedAlert
@@ -42,7 +42,7 @@ class Calibrator:
         score_delta: float = 0.02,
         min_score_cap: float = 0.15,
         max_score_cap: float = 0.80,
-        target_alerts_per_hour: Optional[float] = None,
+        target_alerts_per_hour: float | None = None,
     ):
         self.policy = policy
         self.sink = sink
@@ -57,13 +57,13 @@ class Calibrator:
             float(target_alerts_per_hour) if target_alerts_per_hour is not None else None
         )
 
-        self._windows: Dict[Tuple[str, str], Deque[WindowEntry]] = defaultdict(
+        self._windows: dict[tuple[str, str], deque[WindowEntry]] = defaultdict(
             lambda: deque(maxlen=self.window_size)
         )
 
     # ---- public api -----------------------------------------------
 
-    def record(self, stream_id: str, verified: VerifiedAlert) -> Optional[Suggestion]:
+    def record(self, stream_id: str, verified: VerifiedAlert) -> Suggestion | None:
         """Log one verdict. Returns the emitted suggestion if any."""
         cls = verified.candidate.class_name
         item = self.policy.get(cls)
@@ -74,11 +74,13 @@ class Calibrator:
             return None
 
         key = (stream_id, cls)
-        self._windows[key].append(WindowEntry(
-            ts_monotonic=time.monotonic(),
-            was_flipped=not verified.true_alert,
-            had_fn_flag=verified.false_negative_class is not None,
-        ))
+        self._windows[key].append(
+            WindowEntry(
+                ts_monotonic=time.monotonic(),
+                was_flipped=not verified.true_alert,
+                had_fn_flag=verified.false_negative_class is not None,
+            )
+        )
 
         suggestion = suggest(
             stream_id=stream_id,
@@ -109,13 +111,14 @@ class Calibrator:
 # factory
 # ──────────────────────────────────────────────────────────────────────
 
+
 def build_calibrator(
-    cfg: Optional[dict],
+    cfg: dict | None,
     policy: WatchPolicy,
     out_dir: str | Path,
     *,
     filename: str = "calibration_suggestions.jsonl",
-) -> Optional[Calibrator]:
+) -> Calibrator | None:
     """Construct a Calibrator from a YAML block, or ``None`` when disabled.
 
     Accepted shape::

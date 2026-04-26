@@ -1,0 +1,145 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python-version }} unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.12"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: python -m pytest -q
+
+  pr-integration:
+    name: PR integration smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Generate synthetic integration clips
+        run: |
+          python scripts/make_test_clips.py \
+            --out runs/pr-integration/clips \
+            --size 160x120 \
+            --fps 10 \
+            --seconds 1 \
+            --which all
+
+      - name: Validate generated clips and write report
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import cv2
+
+          clip_dir = Path("runs/pr-integration/clips")
+          report = {"clips": []}
+          for path in sorted(clip_dir.glob("*.mp4")):
+              cap = cv2.VideoCapture(str(path))
+              opened = bool(cap.isOpened())
+              frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+              width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+              height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+              cap.release()
+              item = {
+                  "path": str(path),
+                  "bytes": path.stat().st_size,
+                  "opened": opened,
+                  "frames": frames,
+                  "width": width,
+                  "height": height,
+              }
+              report["clips"].append(item)
+
+              if not opened:
+                  raise SystemExit(f"OpenCV could not open {path}")
+              if path.stat().st_size <= 1024:
+                  raise SystemExit(f"{path} is too small to be a valid mp4")
+              if not 8 <= frames <= 10:
+                  raise SystemExit(f"{path} expected about 10 frames, got {frames}")
+              if (width, height) != (160, 120):
+                  raise SystemExit(f"{path} expected 160x120, got {width}x{height}")
+
+          expected = {"falldown_test.mp4", "fire_test.mp4", "smoke_test.mp4", "weapon_test.mp4"}
+          found = {Path(item["path"]).name for item in report["clips"]}
+          if found != expected:
+              raise SystemExit(f"expected {sorted(expected)}, got {sorted(found)}")
+
+          out = Path("runs/pr-integration/report.json")
+          out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+          print(json.dumps(report, indent=2))
+          PY
+
+      - name: Upload integration artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr-integration-${{ github.event.pull_request.number }}
+          path: runs/pr-integration/
+          if-no-files-found: error

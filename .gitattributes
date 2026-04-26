@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+# Lockfiles: huge, generated, collapse on GitHub
+uv.lock linguist-generated=true
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.mp4 binary
+*.mov binary
+*.pt binary
+*.engine binary
+*.onnx binary
+*.safetensors binary

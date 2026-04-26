@@ -1,0 +1,59 @@
+minimum_pre_commit_version: "3.5.0"
+default_install_hook_types:
+  - pre-commit
+default_stages:
+  - pre-commit
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+        exclude: ^uv\.lock$
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        additional_dependencies: ["tomli"]
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen --only-group dev ruff check --fix
+        language: system
+        types_or:
+          - python
+          - pyi
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen --only-group dev ruff format
+        language: system
+        types_or:
+          - python
+          - pyi
+        require_serial: true
+
+      - id: uv-lock-check
+        name: uv lock check
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock)$

@@ -17,14 +17,32 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PYTHONUNBUFFERED: "1"
+  UV_FROZEN: "1"
 
 jobs:
+  lint:
+    name: Lint, format, and pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        uses: ./.github/actions/setup
+        with:
+          python-version: "3.11"
+          install-system-libs: "false"
+
+      - name: Run pre-commit
+        run: uv run --only-group dev pre-commit run --all-files --show-diff-on-failure
+
   tests:
     name: Python ${{ matrix.python-version }} unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: lint
     strategy:
       fail-fast: false
       matrix:
@@ -36,54 +54,33 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up environment
+        uses: ./.github/actions/setup
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
-
-      - name: Install package and test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
 
       - name: Run unit tests
-        run: python -m pytest -q
+        run: uv run python -m pytest -q
 
   pr-integration:
     name: PR integration smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     if: github.event_name == 'pull_request'
+    needs: lint
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up environment
+        uses: ./.github/actions/setup
         with:
           python-version: "3.11"
-          cache: pip
-
-      - name: Install system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
-
-      - name: Install package and test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
 
       - name: Generate synthetic integration clips
         run: |
-          python scripts/make_test_clips.py \
+          uv run python scripts/make_test_clips.py \
             --out runs/pr-integration/clips \
             --size 160x120 \
             --fps 10 \
@@ -92,7 +89,7 @@ jobs:
 
       - name: Validate generated clips and write report
         run: |
-          python - <<'PY'
+          uv run python - <<'PY'
           import json
           from pathlib import Path
 

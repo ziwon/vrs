@@ -1,5 +1,13 @@
 # VRS — Video Reasoning System
 
+[![CI](https://img.shields.io/github/actions/workflow/status/ziwon/vrs/ci.yml?branch=main&label=CI&logo=github)](https://github.com/ziwon/vrs/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
+[![CUDA](https://img.shields.io/badge/CUDA-12.1%20%7C%2012.8-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.5%2B-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+
 A modern, two-stage CCTV / video-understanding pipeline for a **single local GPU**.
 
 The deployment target is 16 GB cards when the verifier is quantized or otherwise
@@ -63,26 +71,27 @@ RTSP/mp4 ─► Reader ─► YOLOE-L ─► per-class score+bbox ─► EventSt
 ## Install
 
 ```bash
-conda create -n vrs python=3.11 -y
-conda activate vrs
+uv python install 3.11
 
 # Pick the right torch build for your GPU architecture:
 #   * Blackwell (RTX 5080/5090, B100, GB100) → CUDA 12.8+ / torch 2.6+
 #   * Hopper   (H100, H200)                 → CUDA 12.4+
 #   * Ada      (RTX 4080/4090, L4, L40)     → CUDA 12.1+
-pip install torch --index-url https://download.pytorch.org/whl/cu128     # Blackwell
+uv sync --python 3.11 --extra cu128     # Blackwell
 # or:
-# pip install torch==2.5.1+cu121 --index-url https://download.pytorch.org/whl/cu121  # Ada/Ampere
-
-pip install -r requirements.txt
+# uv sync --python 3.11 --extra cu121   # Ada/Ampere
 ```
+
+Always pick one CUDA extra on GPU hosts; a bare `uv sync` can satisfy
+transitive `torch` requirements without selecting the deployment-specific
+PyTorch wheel.
 
 ### RTX 5080 / Blackwell note
 
 RTX 5080 (GB205, Blackwell, SM 12.0) needs **CUDA 12.8+ and torch 2.6+** for
 native kernel support. If you get `no kernel image is available for execution
-on the device` when YOLOE or Cosmos starts, your torch is too old — install
-the cu128 wheel above.
+on the device` when YOLOE or Cosmos starts, your torch is too old — sync with
+the `cu128` extra above.
 
 Cosmos-Reason2-2B and YOLOE should be validated on the exact Blackwell host and
 runtime you intend to ship. The BF16 model weights are small, but video tokens,
@@ -92,14 +101,14 @@ a served backend if BF16 does not fit.
 ### W4A16 profile (≤8 GB cards / Jetson)
 
 ```bash
-pip install bitsandbytes>=0.43
+uv sync --extra cu128 --extra quant
 ```
 
 ## Run
 
 **Single mp4:**
 ```bash
-python scripts/run_mp4.py \
+uv run scripts/run_mp4.py \
   --video /path/to/cctv.mp4 \
   --config configs/default.yaml \
   --policy configs/policies/safety.yaml \
@@ -108,7 +117,7 @@ python scripts/run_mp4.py \
 
 **Single RTSP:**
 ```bash
-python scripts/run_rtsp.py \
+uv run scripts/run_rtsp.py \
   --rtsp rtsp://user:pass@cam.local:554/stream1 \
   --config configs/default.yaml \
   --policy configs/policies/safety.yaml \
@@ -117,7 +126,7 @@ python scripts/run_rtsp.py \
 
 **Multi-stream (N cameras on one GPU):**
 ```bash
-python scripts/run_multistream.py \
+uv run scripts/run_multistream.py \
   --config  configs/default.yaml \
   --policy  configs/policies/safety.yaml \
   --streams configs/multistream.yaml \
@@ -140,7 +149,7 @@ Outputs:
 1. **Generate synthetic plumbing-test clips** (no network, no datasets):
 
    ```bash
-   python scripts/make_test_clips.py --out runs/test_clips
+   uv run scripts/make_test_clips.py --out runs/test_clips
    ```
 
    This writes 4 FHD mp4s — `fire_test.mp4`, `smoke_test.mp4`,
@@ -155,7 +164,7 @@ Outputs:
 2. **Benchmark on the local GPU**:
 
    ```bash
-   python scripts/bench.py --clips runs/test_clips --out runs/bench
+   uv run scripts/bench.py --clips runs/test_clips --out runs/bench
    ```
 
    You'll see per-clip single-stream throughput, then a multi-stream run
@@ -169,7 +178,7 @@ Outputs:
    - Multi-class CCTV anomaly: [UCF-Crime](https://www.crcv.ucf.edu/projects/real-world/)
 
    Drop the clips into a directory, add them to `configs/multistream.yaml`
-   as `file://` sources, and re-run `scripts/bench.py`.
+   as `file://` sources, and re-run `uv run scripts/bench.py`.
 
 ## Watch Policy — the only place you maintain
 
@@ -217,7 +226,7 @@ recompute, no thresholds to grid-search.
 The multistream path is designed around one shared YOLOE instance and one
 shared VLM verifier instance. Sustainable stream count depends on alert
 rate, verifier backend, clip length, and GPU memory; measure it with
-`scripts/bench.py` on the target host instead of treating a stream count as
+`uv run scripts/bench.py` on the target host instead of treating a stream count as
 portable. See `vrs/multistream/` for the topology:
 
 ```
@@ -278,5 +287,5 @@ path. A future detector-only scoring mode can reuse the same report schema with
 
 `run.created_at` and `runtime.*` are diagnostic — they vary across runs and
 machines and are not part of the regression contract. The CI gate
-(`python -m vrs.eval.ci`) only compares `metrics` and `quality_signals`, so
+(`uv run python -m vrs.eval.ci`) only compares `metrics` and `quality_signals`, so
 committed baselines are immune to clock and Python-version drift.

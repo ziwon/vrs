@@ -256,3 +256,22 @@ vrs/
 ├── pipeline.py    Single-stream cascade orchestration
 └── schemas.py     Frame / Detection / CandidateAlert / VerifiedAlert
 ```
+
+## Evaluation Reports
+
+`scripts/eval.py` writes `<out>/report.json` using the stable schema version
+`vrs.eval.report.v1`.
+
+Top-level sections:
+- `schema_version` — explicit report-contract identifier for compatibility checks.
+- `run` — dataset name, run ID, timestamp, mode, and config/policy paths.
+- `models` — detector and verifier backend/model identifiers from the active config.
+- `metrics` — overall and per-class precision, recall, F1, TP, FP, and FN.
+- `latency` — reserved stable slots for detector/verifier latency percentiles.
+- `runtime` — lightweight environment metadata such as Python version.
+- `quality_signals` — verifier flip rate, false-negative flag rate, and reserved diagnostic slots.
+- `per_video` — optional per-clip breakdown using the same metrics/quality shape.
+
+Today the CLI emits `mode: "full_cascade"` for the current detector+verifier
+path. A future detector-only scoring mode can reuse the same report schema with
+`mode: "detector_only"` instead of changing the JSON contract again.

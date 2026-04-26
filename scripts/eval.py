@@ -10,19 +10,19 @@ Example:
 
 Layout of the dataset directory — see vrs.eval.datasets.labeled_dir for the
 sidecar-JSON schema. Each video gets its own subdir under ``--out`` holding
-its ``alerts.jsonl`` and event thumbnails. A single ``report.json`` with
-per-video + aggregate metrics lands at ``--out`` (or the path given via
-``--report``).
+its ``alerts.jsonl`` and event thumbnails. A single versioned ``report.json``
+lands at ``--out`` (or the path given via ``--report``).
 """
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 from pathlib import Path
 
+import yaml
+
 from vrs import setup_logging
-from vrs.eval import evaluate
+from vrs.eval import EvalReport, evaluate
 from vrs.eval.datasets import LabeledDirDataset
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,16 @@ def main() -> None:
 
     report_path = Path(args.report) if args.report else Path(args.out) / "report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(result.to_dict(), indent=2), encoding="utf-8")
+    with open(args.config, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f) or {}
+    report = EvalReport.from_harness_result(
+        result,
+        dataset=args.dataset,
+        config_path=args.config,
+        policy_path=args.policy,
+        config=config,
+    )
+    report.write(report_path)
 
     agg = result.aggregate
     overall = agg.overall().to_dict()

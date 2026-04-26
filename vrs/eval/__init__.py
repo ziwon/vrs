@@ -18,6 +18,19 @@ from __future__ import annotations
 
 from .harness import HarnessResult, evaluate
 from .metrics import aggregate_scores, score_alerts_against_truth
+from .report import (
+    EvalReport,
+    PerVideoReport,
+    ReportClassMetrics,
+    ReportLatency,
+    ReportMetrics,
+    ReportModel,
+    ReportModels,
+    ReportQualitySignals,
+    ReportRun,
+    ReportRuntime,
+    SCHEMA_VERSION,
+)
 from .schemas import ClassMetrics, EvalItem, GroundTruthEvent, RunScore
 
 # Note: ``ci`` is intentionally not re-exported here — it is a tool module
@@ -27,10 +40,21 @@ from .schemas import ClassMetrics, EvalItem, GroundTruthEvent, RunScore
 
 __all__ = [
     "ClassMetrics",
+    "EvalReport",
     "EvalItem",
     "GroundTruthEvent",
     "HarnessResult",
+    "PerVideoReport",
+    "ReportClassMetrics",
+    "ReportLatency",
+    "ReportMetrics",
+    "ReportModel",
+    "ReportModels",
+    "ReportQualitySignals",
+    "ReportRun",
+    "ReportRuntime",
     "RunScore",
+    "SCHEMA_VERSION",
     "aggregate_scores",
     "evaluate",
     "score_alerts_against_truth",

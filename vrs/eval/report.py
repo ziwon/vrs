@@ -55,9 +55,9 @@ class ReportClassMetrics:
             tp=int(metrics.tp),
             fp=int(metrics.fp),
             fn=int(metrics.fn),
-            precision=_round_metric(metrics.precision) or 0.0,
-            recall=_round_metric(metrics.recall) or 0.0,
-            f1=_round_metric(metrics.f1) or 0.0,
+            precision=_round_metric(metrics.precision),
+            recall=_round_metric(metrics.recall),
+            f1=_round_metric(metrics.f1),
         )
 
     @classmethod

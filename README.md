@@ -275,3 +275,8 @@ Top-level sections:
 Today the CLI emits `mode: "full_cascade"` for the current detector+verifier
 path. A future detector-only scoring mode can reuse the same report schema with
 `mode: "detector_only"` instead of changing the JSON contract again.
+
+`run.created_at` and `runtime.*` are diagnostic — they vary across runs and
+machines and are not part of the regression contract. The CI gate
+(`python -m vrs.eval.ci`) only compares `metrics` and `quality_signals`, so
+committed baselines are immune to clock and Python-version drift.

@@ -10,6 +10,14 @@
 
 A modern, two-stage CCTV / video-understanding pipeline for a **single local GPU**.
 
+VRS is inspired by the architecture patterns in
+[NVIDIA Video Search and Summarization (VSS)](https://docs.nvidia.com/vss/latest/)
+and the Public Safety Blueprint: perception first, VLM-based alert verification,
+and optional higher-level incident reasoning. It is not a VSS clone. The goal is
+a smaller, hackable, local-GPU-oriented Video Reasoning System that can be
+evaluated, customized, and embedded into CCTV / VMS / edge-appliance
+environments.
+
 The deployment target is 16 GB cards when the verifier is quantized or otherwise
 capacity-tested. For BF16 Cosmos-Reason2-2B, validate on the target host first:
 NVIDIA's 2026 model card lists a 24 GB minimum for the reference inference path.
@@ -39,6 +47,7 @@ kept swappable:
 | Reason | **nvidia/Cosmos-Reason2-2B** baseline | Physical-reasoning specialization, FPS=4 video path, bbox/point/trajectory-oriented prompting. Treat as a baseline, not the expected winner. |
 
 Sources:
+- NVIDIA VSS — [Video Search and Summarization documentation](https://docs.nvidia.com/vss/latest/), used as architectural inspiration for perception-first video AI, alert verification, and optional incident reasoning patterns.
 - YOLOE — Ultralytics docs and CVPR'25 paper. Ultralytics also publishes newer
   YOLOE-26 models; migrate only after eval confirms a gain for the active policy.
 - Cosmos-Reason2 — NVIDIA docs and `nvidia/Cosmos-Reason2-2B` model card.

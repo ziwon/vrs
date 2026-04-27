@@ -223,6 +223,39 @@ watch:
 Adding a custom event is a single block. No bank to score, no embeddings to
 recompute, no thresholds to grid-search.
 
+## Policy Optimization Roadmap
+
+Today, VRS uses a hand-authored watch policy to decide which detector-side
+events should become verification candidates. Longer term, the verifier policy
+should become more structured and data-driven instead of growing into an
+unbounded collection of customer-specific prompt files.
+
+The planned direction is:
+
+```text
+VerifiedAlert + thumbnails/clips + operator feedback
+  -> CaseStore
+  -> false-positive / missed-event mining
+  -> stronger LLM proposes structured PolicyDiff candidates
+  -> scenario evaluation compares baseline vs candidate
+  -> promote only if regression gates pass
+  -> versioned rollout / rollback
+```
+
+This is **not** runtime self-modification. VRS should not change prompts live
+just because one alert was wrong. The intended loop is offline and eval-gated:
+collect evidence, generate a candidate policy update, evaluate it against known
+cases, then promote it only if false positives improve without unacceptable
+recall or uncertainty regressions.
+
+This roadmap also reframes verifier prompts as rendered artifacts from
+structured, versioned scenario policies. A future policy pack may define fields
+such as `normal_conditions`, `abnormal_conditions`, `false_positive_hints`,
+`required_evidence`, and `uncertain_when`; prompt templates can then render those
+fields into the VLM verifier instructions. The goal is to reduce manual prompt
+drift while still allowing customer/site-specific semantics to be captured and
+evaluated.
+
 ## VRAM profiles
 
 | Profile | Detector | Verifier | Notes |

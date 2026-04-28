@@ -331,3 +331,19 @@ path. A future detector-only scoring mode can reuse the same report schema with
 machines and are not part of the regression contract. The CI gate
 (`uv run python -m vrs.eval.ci`) only compares `metrics` and `quality_signals`, so
 committed baselines are immune to clock and Python-version drift.
+
+The committed mini baseline lives at `baselines/eval/report.json`. Regenerate it
+only after an intentional fixture or metric-contract update:
+
+```bash
+uv run python scripts/write_eval_baseline.py --out baselines/eval/report.json
+```
+
+Compare a candidate report against the baseline with:
+
+```bash
+uv run python -m vrs.eval.ci \
+  --baseline baselines/eval/report.json \
+  --current runs/eval/report.json \
+  --max-f1-drop 0.02
+```

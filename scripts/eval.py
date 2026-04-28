@@ -9,9 +9,10 @@ Example:
         --tolerance-s  1.0
 
 Layout of the dataset directory — see vrs.eval.datasets.labeled_dir for the
-sidecar-JSON schema. Each video gets its own subdir under ``--out`` holding
-its ``alerts.jsonl`` and event thumbnails. A single versioned ``report.json``
-lands at ``--out`` (or the path given via ``--report``).
+sidecar-JSON schema, or pass ``--dataset-format dfire`` for a D-Fire
+``images/`` + ``labels/`` tree. Each media item gets its own subdir under
+``--out`` holding its ``alerts.jsonl`` and event thumbnails. A single versioned
+``report.json`` lands at ``--out`` (or the path given via ``--report``).
 """
 
 from __future__ import annotations
@@ -22,14 +23,20 @@ from pathlib import Path
 
 from vrs import setup_logging
 from vrs.eval import EvalReport, config_for_eval_mode, evaluate
-from vrs.eval.datasets import LabeledDirDataset
+from vrs.eval.datasets import DATASET_ADAPTERS, build_dataset
 
 logger = logging.getLogger(__name__)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="VRS — evaluate the cascade on a labeled dataset")
-    ap.add_argument("--dataset", required=True, help="labeled dataset root (see LabeledDirDataset)")
+    ap.add_argument("--dataset", required=True, help="dataset root")
+    ap.add_argument(
+        "--dataset-format",
+        choices=tuple(sorted(DATASET_ADAPTERS)),
+        default="labeled_dir",
+        help="dataset adapter to use",
+    )
     ap.add_argument("--config", default="configs/default.yaml")
     ap.add_argument("--policy", default="configs/policies/safety.yaml")
     ap.add_argument(
@@ -45,6 +52,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="temporal slack around GT event windows when matching alerts",
     )
+    ap.add_argument(
+        "--bbox-iou-threshold",
+        type=float,
+        default=None,
+        help="require bbox IoU at or above this threshold when GT boxes are present",
+    )
     ap.add_argument("--report", default=None, help="JSON report path (default: <out>/report.json)")
     return ap
 
@@ -57,7 +70,7 @@ def main(argv: list[str] | None = None) -> None:
     from vrs.pipeline import VRSPipeline, load_config
     from vrs.policy import load_watch_policy
 
-    dataset = LabeledDirDataset(args.dataset)
+    dataset = build_dataset(args.dataset_format, args.dataset)
     verifier_enabled = False if args.mode == "detector_only" else None
     config = config_for_eval_mode(
         load_config(args.config, verifier_enabled=verifier_enabled),
@@ -73,6 +86,7 @@ def main(argv: list[str] | None = None) -> None:
         pipeline_factory=_factory,
         out_dir=args.out,
         tolerance_s=args.tolerance_s,
+        bbox_iou_threshold=args.bbox_iou_threshold,
     )
 
     report_path = Path(args.report) if args.report else Path(args.out) / "report.json"

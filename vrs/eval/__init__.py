@@ -8,19 +8,19 @@ Current scope:
   * Per-class P/R/F1 + verifier-flip rate + FN-flag rate (``metrics``).
   * Stable, versioned ``EvalReport`` JSON contract (``report``).
   * Harness that iterates a dataset → runs the cascade → scores
-    (``harness``), with the labeled-directory adapter under ``datasets``.
+    (``harness``), with labeled-directory and D-Fire adapters under
+    ``datasets``.
   * Regression gate that compares two reports and exits non-zero on F1
     drops beyond a tolerance (``ci``, run as ``python -m vrs.eval.ci``).
 
 Upcoming:
-  * ``datasets/dfire.py`` and ``datasets/le2i.py`` — real public datasets.
-  * Detector-only evaluation mode reusing the same report schema.
+  * ``datasets/le2i.py`` — video-event public dataset coverage.
 """
 
 from __future__ import annotations
 
 from .harness import EvalMode, HarnessResult, config_for_eval_mode, evaluate
-from .metrics import aggregate_scores, score_alerts_against_truth
+from .metrics import aggregate_scores, bbox_iou_xywh_norm, score_alerts_against_truth
 from .report import (
     SCHEMA_VERSION,
     EvalReport,
@@ -60,6 +60,7 @@ __all__ = [
     "ReportRuntime",
     "RunScore",
     "aggregate_scores",
+    "bbox_iou_xywh_norm",
     "config_for_eval_mode",
     "evaluate",
     "score_alerts_against_truth",

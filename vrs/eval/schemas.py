@@ -1,10 +1,8 @@
 """Data contracts for the eval harness.
 
-Ground truth is event-level (class name + time window in the source video);
-this matches how Le2i / UCF-Crime and the bulk of public VAD datasets label
-video, and is coarser than D-Fire's per-frame bboxes — a bbox-level scorer
-can be added later on top of the same ``GroundTruthEvent`` shape by adding a
-``bbox_xywh_norm`` field.
+Ground truth is event-level (class name + time window in the source media).
+Image datasets such as D-Fire use a degenerate ``0.0`` to ``0.0`` event window
+and can optionally attach normalized YOLO boxes for bbox-level scoring.
 """
 
 from __future__ import annotations
@@ -15,16 +13,21 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class GroundTruthEvent:
-    """One labeled event in a source video."""
+    """One labeled event in a source video or image.
+
+    ``bbox_xywh_norm`` uses normalized VRS alert coordinates:
+    ``(x_min, y_min, width, height)``.
+    """
 
     class_name: str
     start_s: float
     end_s: float
+    bbox_xywh_norm: tuple[float, float, float, float] | None = None
 
 
 @dataclass
 class EvalItem:
-    """One video + its ground-truth events (what a Dataset iterator yields)."""
+    """One media item + its ground-truth events (what a Dataset iterator yields)."""
 
     video_path: Path
     events: list[GroundTruthEvent] = field(default_factory=list)

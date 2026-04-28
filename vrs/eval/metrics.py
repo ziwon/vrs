@@ -27,6 +27,7 @@ def score_alerts_against_truth(
     events: Sequence[GroundTruthEvent],
     *,
     tolerance_s: float = 1.0,
+    bbox_iou_threshold: float | None = None,
     classes: Iterable[str] | None = None,
 ) -> RunScore:
     """Compute per-class P/R/F1 + flip/FN rates for one run's alerts.
@@ -39,11 +40,16 @@ def score_alerts_against_truth(
         tolerance_s: event windows are extended by this much on both sides
             before matching. Absorbs the ~cooldown-window jitter between the
             event's physical onset and when the cascade promotes it.
+        bbox_iou_threshold: when set, bbox-bearing events only match alerts
+            with ``bbox_xywh_norm`` at or above this IoU. Leave as ``None`` for
+            image/event-level scoring.
         classes: restrict scoring to these class names. Defaults to the union
             of classes that appear in alerts or events.
     """
     if tolerance_s < 0:
         raise ValueError("tolerance_s must be >= 0")
+    if bbox_iou_threshold is not None and not 0.0 <= bbox_iou_threshold <= 1.0:
+        raise ValueError("bbox_iou_threshold must be between 0 and 1")
 
     if classes is None:
         classes = {a["class_name"] for a in alerts} | {e.class_name for e in events}
@@ -75,9 +81,16 @@ def score_alerts_against_truth(
             for i, ev in enumerate(cls_events):
                 if matched[i]:
                     continue
-                if ev.start_s - tolerance_s <= pts <= ev.end_s + tolerance_s:
-                    hit_idx = i
-                    break
+                if not ev.start_s - tolerance_s <= pts <= ev.end_s + tolerance_s:
+                    continue
+                if bbox_iou_threshold is not None and not _bbox_matches(
+                    alert,
+                    ev,
+                    iou_threshold=bbox_iou_threshold,
+                ):
+                    continue
+                hit_idx = i
+                break
             if hit_idx is None:
                 cm.fp += 1
             else:
@@ -88,6 +101,41 @@ def score_alerts_against_truth(
         score.per_class[cls] = cm
 
     return score
+
+
+def _bbox_matches(alert: dict, event: GroundTruthEvent, *, iou_threshold: float) -> bool:
+    if event.bbox_xywh_norm is None:
+        return True
+    alert_bbox = alert.get("bbox_xywh_norm")
+    if alert_bbox is None:
+        return False
+    return bbox_iou_xywh_norm(alert_bbox, event.bbox_xywh_norm) >= iou_threshold
+
+
+def bbox_iou_xywh_norm(
+    a: Sequence[float],
+    b: Sequence[float],
+) -> float:
+    """IoU for normalized ``x_min, y_min, width, height`` boxes."""
+    if len(a) != 4 or len(b) != 4:
+        raise ValueError("bbox_xywh_norm values must contain exactly 4 numbers")
+
+    ax1, ay1, ax2, ay2 = _xywh_to_xyxy_corners(a)
+    bx1, by1, bx2, by2 = _xywh_to_xyxy_corners(b)
+
+    inter_w = max(0.0, min(ax2, bx2) - max(ax1, bx1))
+    inter_h = max(0.0, min(ay2, by2) - max(ay1, by1))
+    inter = inter_w * inter_h
+
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _xywh_to_xyxy_corners(box: Sequence[float]) -> tuple[float, float, float, float]:
+    x, y, w, h = (float(v) for v in box)
+    return (x, y, x + w, y + h)
 
 
 def aggregate_scores(scores: Iterable[RunScore]) -> RunScore:

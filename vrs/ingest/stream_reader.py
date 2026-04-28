@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 import cv2
 import numpy as np
 
 from ..schemas import Frame
+
+_IMAGE_SUFFIXES = {".bmp", ".jpeg", ".jpg", ".png", ".webp"}
 
 
 class StreamReader:
@@ -35,6 +38,7 @@ class StreamReader:
         self._cap: cv2.VideoCapture | None = None
         self._native_fps: float = 0.0
         self._is_live = self._looks_like_live(source)
+        self._is_image = not self._is_live and Path(source).suffix.lower() in _IMAGE_SUFFIXES
 
     @staticmethod
     def _looks_like_live(s: str) -> bool:
@@ -57,6 +61,13 @@ class StreamReader:
         return cv2.bitwise_and(img, img, mask=mask)
 
     def __iter__(self) -> Iterator[Frame]:
+        if self._is_image:
+            image = cv2.imread(self.source, cv2.IMREAD_COLOR)
+            if image is None:
+                raise RuntimeError(f"Failed to open image source: {self.source}")
+            yield Frame(index=0, pts_s=0.0, image=self._apply_roi(image))
+            return
+
         self._open()
         assert self._cap is not None
 

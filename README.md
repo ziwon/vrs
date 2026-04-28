@@ -189,6 +189,8 @@ Outputs:
    Drop the clips into a directory, add them to `configs/multistream.yaml`
    as `file://` sources, and re-run `uv run scripts/bench.py`.
 
+   For D-Fire detector-only evaluation, see [docs/dfire-dataset.md](docs/dfire-dataset.md).
+
 ## Watch Policy — the only place you maintain
 
 ```yaml

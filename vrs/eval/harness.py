@@ -62,6 +62,7 @@ def evaluate(
     out_dir: str | Path,
     *,
     tolerance_s: float = 1.0,
+    bbox_iou_threshold: float | None = None,
     alerts_filename: str = "alerts.jsonl",
     classes: Iterable[str] | None = None,
 ) -> HarnessResult:
@@ -99,6 +100,7 @@ def evaluate(
             alerts,
             item.events,
             tolerance_s=tolerance_s,
+            bbox_iou_threshold=bbox_iou_threshold,
             classes=classes_set,
         )
         per_video.append((item.video_path, score))

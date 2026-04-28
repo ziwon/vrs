@@ -12,6 +12,8 @@ Backends shipped:
 * ``vllm`` — higher generation throughput via paged KV cache + in-flight
   batching. Optional dep (``uv sync --extra vllm``); implementation
   lives in ``vllm_cosmos``.
+* ``openai_compatible`` — served VLM over an OpenAI-compatible
+  ``/chat/completions`` endpoint.
 * ``trtllm`` — reserved (a future addition that produces the biggest
   latency win when paired with speculative decoding).
 
@@ -60,7 +62,7 @@ CosmosBackend = VLMBackend
 # factory
 # ──────────────────────────────────────────────────────────────────────
 
-_KNOWN_BACKENDS = {"transformers", "vllm", "trtllm"}
+_KNOWN_BACKENDS = {"transformers", "vllm", "openai_compatible", "trtllm"}
 
 
 def build_vlm_backend(cfg, backend: str = "transformers") -> VLMBackend:
@@ -80,6 +82,10 @@ def build_vlm_backend(cfg, backend: str = "transformers") -> VLMBackend:
         from .vllm_cosmos import VLLMCosmosBackend
 
         return VLLMCosmosBackend(cfg)
+    if name in ("openai_compatible", "openai-compatible", "openai"):
+        from .openai_compatible_vlm import OpenAICompatibleVLMBackend
+
+        return OpenAICompatibleVLMBackend(cfg)
     if name == "trtllm":
         raise NotImplementedError(
             "the trtllm backend is a planned follow-on once the vllm path "

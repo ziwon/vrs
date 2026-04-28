@@ -153,6 +153,30 @@ Outputs:
 - `runs/<name>/thumbnails/*.jpg` — one event image per alert, with detector/verifier overlays
 - `runs/<name>/annotated.mp4` — optional debug/demo overlay video when `sink.write_annotated: true`
 
+### Served OpenAI-compatible verifier
+
+To compare the local Cosmos baseline against a served Qwen/vLLM/SGLang-style
+VLM, point the verifier at an OpenAI-compatible chat-completions endpoint:
+
+```yaml
+verifier:
+  enabled: true
+  backend: openai_compatible
+  model_id: qwen-vl-served
+  base_url: http://localhost:8000/v1
+  api_key_env: VRS_VLM_API_KEY
+  max_new_tokens: 512
+  temperature: 0.0
+```
+
+The backend posts to `${base_url}/chat/completions` with the same system prompt,
+user prompt, and keyframe list used by the local verifier. Each BGR keyframe is
+JPEG-encoded and sent as a `data:image/jpeg;base64,...` `image_url` content item
+after the text prompt. When the verifier supplies its JSON schema, the backend
+passes it as `response_format: {type: "json_schema", ...}`; if a server ignores
+that field, VRS still applies the same verifier JSON parsing and failure policy
+to the returned text.
+
 ## Smoke-test on your GPU (e.g. RTX 5080)
 
 1. **Generate synthetic plumbing-test clips** (no network, no datasets):

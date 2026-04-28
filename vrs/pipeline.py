@@ -110,6 +110,9 @@ class VRSPipeline:
                     max_new_tokens=int(ver_cfg.get("max_new_tokens", 1024)),
                     temperature=float(ver_cfg.get("temperature", 0.2)),
                     clip_fps=int(ver_cfg.get("clip_fps", 4)),
+                    base_url=ver_cfg.get("base_url"),
+                    api_key_env=ver_cfg.get("api_key_env"),
+                    timeout_s=float(ver_cfg.get("timeout_s", 60.0)),
                 ),
                 backend=ver_cfg.get("backend", "transformers"),
             )

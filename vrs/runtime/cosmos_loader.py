@@ -33,6 +33,9 @@ class VLMConfig:
     max_new_tokens: int = 1024
     temperature: float = 0.2
     clip_fps: int = 4  # Cosmos-Reason2-2B was trained at FPS=4
+    base_url: str | None = None
+    api_key_env: str | None = None
+    timeout_s: float = 60.0
 
 
 CosmosConfig = VLMConfig

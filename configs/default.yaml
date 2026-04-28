@@ -44,11 +44,14 @@ verifier:
   # not a final model choice. Internal benchmarks and 2026 Qwen releases
   # justify adding/evaluating Qwen3.5/Qwen3.6-class verifier backends before
   # production model lock-in.
-  backend: "transformers"    # transformers (default) | vllm | trtllm (reserved).
+  backend: "transformers"    # transformers (default) | vllm | openai_compatible | trtllm (reserved).
                              # vllm: higher gen throughput, needs `uv sync --extra vllm`
                              # and a GPU-local smoke run before prod — see vrs/runtime/vllm_cosmos.py.
-                             # planned: qwen/openai-compatible served VLM backend.
+                             # openai_compatible: served VLM at base_url/chat/completions.
   model_id: "nvidia/Cosmos-Reason2-2B"  # baseline; compare against Qwen candidates via eval
+  base_url: null             # e.g. http://localhost:8000/v1 for openai_compatible
+  api_key_env: null          # optional env var name containing bearer token
+  timeout_s: 60.0            # HTTP request timeout for served backends
   dtype: "bf16"              # "bf16" | "fp16" | "w4a16" (requires bitsandbytes)
   device: "cuda"
   context_window_s: 4.0      # video clip handed to the VLM: ±2s around the alert peak

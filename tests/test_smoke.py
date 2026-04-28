@@ -90,6 +90,8 @@ def test_load_default_safety_policy_has_expected_events(tmp_path):
     policy = load_watch_policy(Path(__file__).parent.parent / "configs/policies/safety.yaml")
     names = policy.names()
     assert {"fire", "smoke", "falldown", "weapon"}.issubset(names)
+    assert policy["fire"].verifier_window_s is None
+    assert policy["smoke"].verifier_window_s == pytest.approx(12.0)
     # YOLOE vocabulary is the *flat* list — counts >= number of events
     assert len(policy.yoloe_vocabulary()) >= len(names)
     # round-trip prompt index → event name works
@@ -109,6 +111,26 @@ def test_policy_rejects_invalid_severity(tmp_path):
     )
     with pytest.raises(ValueError):
         load_watch_policy(bad)
+
+
+def test_policy_loads_optional_verifier_window(tmp_path):
+    policy_path = tmp_path / "policy.yaml"
+    policy_path.write_text(
+        "watch:\n"
+        "  - name: smoke\n"
+        "    detector: ['smoke']\n"
+        "    verifier: 'thick smoke'\n"
+        "    verifier_window_s: 8.5\n"
+        "  - name: fire\n"
+        "    detector: ['fire']\n"
+        "    verifier: 'open flames'\n",
+        encoding="utf-8",
+    )
+
+    policy = load_watch_policy(policy_path)
+
+    assert policy["smoke"].verifier_window_s == pytest.approx(8.5)
+    assert policy["fire"].verifier_window_s is None
 
 
 # ─── event-state ───────────────────────────────────────────────────────
@@ -136,6 +158,55 @@ def _frame(idx: int, pts: float):
 
 def _det(name: str = "fire", score: float = 0.9):
     return Detection(class_name=name, score=score, xyxy=(10.0, 10.0, 30.0, 30.0))
+
+
+def test_event_state_uses_global_verifier_window_by_default():
+    q = EventStateQueue(
+        _make_policy(min_persist=1),
+        window=4,
+        cooldown_s=0.0,
+        keyframes=10,
+        context_window_s=1.0,
+    )
+    for idx, pts in enumerate([5.0, 8.0, 9.25]):
+        assert q.step(_frame(idx, pts), []) == []
+
+    alerts = q.step(_frame(3, 10.0), [_det()])
+
+    assert len(alerts) == 1
+    assert alerts[0].keyframe_pts == pytest.approx([9.25, 10.0])
+
+
+def test_event_state_uses_per_class_verifier_window_override():
+    from vrs.policy.watch_policy import WatchItem
+
+    policy = WatchPolicy(
+        [
+            WatchItem(
+                name="smoke",
+                detector_prompts=["smoke"],
+                verifier_prompt="thick smoke",
+                severity="high",
+                min_score=0.25,
+                min_persist_frames=1,
+                verifier_window_s=3.0,
+            )
+        ]
+    )
+    q = EventStateQueue(
+        policy,
+        window=4,
+        cooldown_s=0.0,
+        keyframes=10,
+        context_window_s=1.0,
+    )
+    for idx, pts in enumerate([5.0, 7.5, 9.25]):
+        assert q.step(_frame(idx, pts), []) == []
+
+    alerts = q.step(_frame(3, 10.0), [_det("smoke")])
+
+    assert len(alerts) == 1
+    assert alerts[0].keyframe_pts == pytest.approx([7.5, 9.25, 10.0])
 
 
 def test_event_state_requires_min_persist():

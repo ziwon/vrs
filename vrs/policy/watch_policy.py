@@ -4,7 +4,7 @@ A watch policy lists named events in plain English. Each item has:
 
   detector  : noun-phrase prompts that YOLOE will turn into open-vocab classes.
               Several phrases per event widen recall (e.g. "fire", "open flame").
-  verifier  : a one-sentence definition handed to Cosmos-Reason2-2B.
+  verifier  : a one-sentence definition handed to the VLM verifier.
   severity  : info | low | medium | high | critical
   min_score : per-class score floor (overrides config.detector.conf_floor up).
   min_persist_frames : temporal persistence required to raise a CandidateAlert.

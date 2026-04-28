@@ -1,4 +1,4 @@
-"""vLLM-backed Cosmos verifier runtime.
+"""vLLM-backed VLM verifier runtime for the Cosmos baseline.
 
 Why vLLM: paged KV cache + in-flight batching give 2-3x higher generation
 throughput than ``transformers.generate`` on the same hardware, and the
@@ -8,7 +8,7 @@ supported natively from vLLM ~0.6.5 onward.
 
 **Status note.** The transformers backend in ``cosmos_loader.py`` is
 exhaustively exercised by the repo's test suite. The vLLM backend is
-structurally complete and conforms to the ``CosmosBackend`` Protocol
+structurally complete and conforms to the ``VLMBackend`` Protocol
 (pinned by unit tests that substitute a fake ``vllm`` module), but the
 actual GPU round-trip against a live vLLM instance has not been validated
 in this repo's CI — that validation requires a CUDA host with vLLM
@@ -42,7 +42,7 @@ def _bgr_to_pil(frames_bgr: list[np.ndarray]):
 
 
 class VLLMCosmosBackend:
-    """``CosmosBackend`` backed by a vLLM ``LLM`` engine.
+    """Cosmos baseline implementation of ``VLMBackend`` using vLLM ``LLM``.
 
     Construction imports ``vllm`` lazily and raises a clear ImportError
     pointing at the install extra if it's missing. Per-call, ``chat_video``

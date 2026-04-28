@@ -1,6 +1,6 @@
-"""Stage-2 verifier: CandidateAlert → VerifiedAlert (using Cosmos-Reason2-2B).
+"""Stage-2 verifier: CandidateAlert → VerifiedAlert (using a VLM backend).
 
-Hands the keyframe clip to Cosmos-Reason2-2B with a strict-JSON prompt; parses
+Hands the keyframe clip to the configured VLM with a strict-JSON prompt; parses
 the verdict, bounding box, and trajectory; returns a VerifiedAlert.
 
 When the optional ``xgrammar`` dependency is installed we compile the response
@@ -39,7 +39,7 @@ import json
 import logging
 
 from ..policy import WatchPolicy
-from ..runtime import CosmosBackend
+from ..runtime import VLMBackend
 from ..schemas import CandidateAlert, VerifiedAlert
 from .constrained import build_verifier_schema
 from .prompts import SYSTEM_PROMPT, build_user_prompt
@@ -149,14 +149,23 @@ def _coerce_trajectory(value) -> list[tuple[float, float]]:
 class AlertVerifier:
     def __init__(
         self,
-        cosmos: CosmosBackend,
-        policy: WatchPolicy,
+        vlm: VLMBackend | None = None,
+        policy: WatchPolicy | None = None,
         request_bbox: bool = True,
         request_trajectory: bool = True,
         clip_fps: int = 4,
         failure_policy: FailurePolicy | str | None = None,
+        *,
+        cosmos: VLMBackend | None = None,
     ):
-        self.cosmos = cosmos
+        if vlm is not None and cosmos is not None:
+            raise TypeError("pass either 'vlm' or compatibility alias 'cosmos', not both")
+        if policy is None:
+            raise TypeError("AlertVerifier requires a WatchPolicy")
+        self.vlm = vlm if vlm is not None else cosmos
+        if self.vlm is None:
+            raise TypeError("AlertVerifier requires a VLM backend")
+        self.cosmos = self.vlm
         self.policy = policy
         self.request_bbox = bool(request_bbox)
         self.request_trajectory = bool(request_trajectory)
@@ -207,7 +216,7 @@ class AlertVerifier:
         )
 
         try:
-            raw = self.cosmos.chat_video(
+            raw = self.vlm.chat_video(
                 SYSTEM_PROMPT,
                 user_msg,
                 alert.keyframes,

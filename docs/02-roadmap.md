@@ -62,7 +62,7 @@ Priority candidates:
 
 Acceptance criteria:
 
-- Generalize `CosmosBackend` naming or add a parallel `VLMBackend` abstraction.
+- Use the generalized `VLMBackend` abstraction to plug in candidate backends.
 - Add a Qwen/OpenAI-compatible backend that accepts the same verifier prompt and
   response JSON schema.
 - Run Cosmos and Qwen candidates on identical labeled clips.
@@ -100,7 +100,7 @@ TRT-LLM is the next large verifier-speed path.
 
 Acceptance criteria:
 
-- Backend implementation behind `CosmosBackend`.
+- Backend implementation behind `VLMBackend`.
 - JSON-constrained output support.
 - Optional speculative decoding configuration.
 - GPU benchmark showing material latency reduction versus transformers.

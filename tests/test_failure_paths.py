@@ -222,7 +222,7 @@ def test_stream_reader_reconnects_on_live_source(monkeypatch):
 
 
 class _CannedBackend:
-    """CosmosBackend stub that returns a caller-supplied string (or raises)."""
+    """VLMBackend stub that returns a caller-supplied string (or raises)."""
 
     def __init__(self, response: str = "", error: Exception | None = None):
         self.response = response

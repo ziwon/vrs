@@ -1,4 +1,4 @@
-"""Tests for the Cosmos verifier backend abstraction.
+"""Tests for the VLM verifier backend abstraction.
 
 Structural tests only — nothing GPU-bound. The vLLM backend is exercised
 via a fake ``vllm`` module substituted into ``sys.modules`` so we can
@@ -13,7 +13,7 @@ import types
 import numpy as np
 import pytest
 
-from vrs.runtime import CosmosBackend, build_cosmos_backend
+from vrs.runtime import CosmosBackend, VLMBackend, build_cosmos_backend, build_vlm_backend
 from vrs.runtime.backends import _KNOWN_BACKENDS
 
 
@@ -66,14 +66,23 @@ def _fake_vllm_module(captured: dict):
 # ─── factory ──────────────────────────────────────────────────────────
 
 
-def test_build_cosmos_backend_rejects_unknown():
+def test_build_vlm_backend_rejects_unknown():
+    with pytest.raises(ValueError, match="unknown verifier backend"):
+        build_vlm_backend(object(), backend="banana")
+
+
+def test_build_vlm_backend_trtllm_is_explicitly_not_implemented():
+    with pytest.raises(NotImplementedError, match="trtllm"):
+        build_vlm_backend(object(), backend="trtllm")
+
+
+def test_cosmos_factory_and_protocol_names_remain_aliases():
+    from vrs.runtime.cosmos_loader import CosmosConfig, VLMConfig
+
+    assert CosmosBackend is VLMBackend
+    assert CosmosConfig is VLMConfig
     with pytest.raises(ValueError, match="unknown verifier backend"):
         build_cosmos_backend(object(), backend="banana")
-
-
-def test_build_cosmos_backend_trtllm_is_explicitly_not_implemented():
-    with pytest.raises(NotImplementedError, match="trtllm"):
-        build_cosmos_backend(object(), backend="trtllm")
 
 
 def test_known_backends_set_matches_factory_branches():
@@ -105,10 +114,10 @@ def test_vllm_backend_conforms_to_protocol(monkeypatch):
     pil_image.fromarray = lambda arr: ("pil_stub", arr.shape)
     monkeypatch.setitem(sys.modules, "PIL.Image", pil_image)
 
-    from vrs.runtime.cosmos_loader import CosmosConfig
+    from vrs.runtime.cosmos_loader import VLMConfig
     from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
 
-    cfg = CosmosConfig(
+    cfg = VLMConfig(
         model_id="nvidia/Cosmos-Reason2-2B",
         dtype="bf16",
         max_new_tokens=128,
@@ -117,9 +126,9 @@ def test_vllm_backend_conforms_to_protocol(monkeypatch):
     )
     backend = VLLMCosmosBackend(cfg)
 
-    # Protocol conformance — isinstance works because CosmosBackend is
+    # Protocol conformance — isinstance works because VLMBackend is
     # @runtime_checkable.
-    assert isinstance(backend, CosmosBackend)
+    assert isinstance(backend, VLMBackend)
 
     # LLM got the right keyword args
     kw = captured["llm_kwargs"]
@@ -147,11 +156,11 @@ def test_vllm_backend_passes_schema_as_guided_decoding(monkeypatch):
     monkeypatch.setitem(sys.modules, "PIL", fake_pil)
     monkeypatch.setitem(sys.modules, "PIL.Image", pil_image)
 
-    from vrs.runtime.cosmos_loader import CosmosConfig
+    from vrs.runtime.cosmos_loader import VLMConfig
     from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
 
     backend = VLLMCosmosBackend(
-        CosmosConfig(
+        VLMConfig(
             model_id="nvidia/Cosmos-Reason2-2B",
             dtype="bf16",
             max_new_tokens=64,
@@ -182,11 +191,11 @@ def test_vllm_backend_empty_frames_raises():
     sys.modules["vllm"] = fake
     sys.modules["vllm.sampling_params"] = fake_sp
     try:
-        from vrs.runtime.cosmos_loader import CosmosConfig
+        from vrs.runtime.cosmos_loader import VLMConfig
         from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
 
         backend = VLLMCosmosBackend(
-            CosmosConfig(
+            VLMConfig(
                 model_id="x",
                 dtype="bf16",
                 max_new_tokens=1,
@@ -235,7 +244,7 @@ def test_alert_verifier_only_depends_on_chat_video_surface():
         ]
     )
     stub = _StubBackend()
-    verifier = AlertVerifier(cosmos=stub, policy=policy)
+    verifier = AlertVerifier(vlm=stub, policy=policy)
 
     fake_frame = np.zeros((8, 8, 3), dtype=np.uint8)
     cand = CandidateAlert(

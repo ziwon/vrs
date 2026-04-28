@@ -177,6 +177,33 @@ passes it as `response_format: {type: "json_schema", ...}`; if a server ignores
 that field, VRS still applies the same verifier JSON parsing and failure policy
 to the returned text.
 
+## Prometheus Metrics
+
+Metrics are disabled by default. Enable the lightweight scrape endpoint in your
+runtime config:
+
+```yaml
+observability:
+  metrics:
+    enabled: true
+    host: "0.0.0.0"
+    port: 9108
+```
+
+Prometheus can then scrape `http://<host>:9108/metrics`. The endpoint exports
+queue depth and drop counters for multi-stream runs, detector/verifier latency
+histograms, candidate and verified-alert counters, verifier error counters, and
+sink write error counters.
+
+Example scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: vrs
+    static_configs:
+      - targets: ["vrs-appliance.local:9108"]
+```
+
 ## Smoke-test on your GPU (e.g. RTX 5080)
 
 1. **Generate synthetic plumbing-test clips** (no network, no datasets):

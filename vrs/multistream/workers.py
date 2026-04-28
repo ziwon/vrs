@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ..observability import NullVRSMetrics
 from ..policy import WatchPolicy
 from ..schemas import CandidateAlert, Detection, Frame, VerifiedAlert
 from .queues import BoundedQueue
@@ -111,6 +113,7 @@ class DetectorWorker(threading.Thread):
         verifier_cfg: dict | None = None,
         tracker_cfg: dict | None = None,
         target_fps: float = 4.0,
+        metrics: Any | None = None,
     ):
         super().__init__(name="detector", daemon=True)
         self.detector = detector
@@ -121,6 +124,7 @@ class DetectorWorker(threading.Thread):
         self.stop_event = stop_event
         self.batch_size = int(batch_size)
         self.batch_timeout = max(batch_timeout_ms, 1) / 1000.0
+        self.metrics = metrics or NullVRSMetrics()
 
         from ..triage import EventStateQueue, build_tracker  # lazy — keep workers import-light
 
@@ -160,11 +164,14 @@ class DetectorWorker(threading.Thread):
 
             # --- batched YOLOE inference ---
             frames = [m.frame for m in msgs]
+            detector_t0 = time.perf_counter()
             try:
                 all_dets = self.detector.batch(frames)
             except Exception as e:
                 logger.warning("detector batch failed: %s", e)
                 continue
+            finally:
+                self.metrics.observe_detector_latency(time.perf_counter() - detector_t0)
 
             # --- per-stream tracking + event-state + sink fanout ---
             for msg, dets in zip(msgs, all_dets, strict=True):
@@ -182,6 +189,7 @@ class DetectorWorker(threading.Thread):
                     continue
                 candidates = es.step(msg.frame, dets)
                 for cand in candidates:
+                    self.metrics.inc_candidates(sid, cand.class_name)
                     self.candidate_q.put(_CandidateMsg(stream_id=sid, alert=cand))
 
 
@@ -198,6 +206,8 @@ class VerifierWorker(threading.Thread):
         sink_queues: dict[str, BoundedQueue],
         stop_event: threading.Event,
         calibrator: Any | None = None,
+        metrics: Any | None = None,
+        verifier_backend: str = "disabled",
     ):
         super().__init__(name="verifier", daemon=True)
         self.verifier = verifier
@@ -205,6 +215,8 @@ class VerifierWorker(threading.Thread):
         self.sink_queues = sink_queues
         self.stop_event = stop_event
         self.calibrator = calibrator
+        self.metrics = metrics or NullVRSMetrics()
+        self.verifier_backend = verifier_backend
 
     def run(self) -> None:
         while not self.stop_event.is_set():
@@ -216,7 +228,14 @@ class VerifierWorker(threading.Thread):
                 break
 
             if self.verifier is not None:
-                verified = self.verifier.verify(msg.alert)
+                verifier_t0 = time.perf_counter()
+                try:
+                    verified = self.verifier.verify(msg.alert)
+                except Exception:
+                    self.metrics.inc_verifier_errors(self.verifier_backend)
+                    raise
+                finally:
+                    self.metrics.observe_verifier_latency(time.perf_counter() - verifier_t0)
             else:
                 verified = VerifiedAlert(
                     candidate=msg.alert,
@@ -225,6 +244,8 @@ class VerifierWorker(threading.Thread):
                     false_negative_class=None,
                     rationale="verifier disabled",
                 )
+            verdict = "true_alert" if verified.true_alert else "false_alert"
+            self.metrics.inc_verified_alerts(msg.stream_id, verified.candidate.class_name, verdict)
 
             sink_q = self.sink_queues.get(msg.stream_id)
             if sink_q is not None:
@@ -275,6 +296,7 @@ class SinkWorker(threading.Thread):
         thumbnail_ext: str = "jpg",
         thumbnail_quality: int = 90,
         privacy_cfg: dict | None = None,
+        metrics: Any | None = None,
     ):
         super().__init__(name=f"sink[{stream_id}]", daemon=True)
         self.stream_id = stream_id
@@ -291,6 +313,7 @@ class SinkWorker(threading.Thread):
         self.q = sink_q
         self.stop_event = stop_event
         self.privacy_cfg = privacy_cfg or {}
+        self.metrics = metrics or NullVRSMetrics()
 
     def run(self) -> None:
         # Import each sink directly (not via the package __init__) so an
@@ -353,6 +376,7 @@ class SinkWorker(threading.Thread):
                             if annotator is not None:
                                 annotator.note_alert(msg.verified)
                     except Exception as e:
+                        self.metrics.inc_sink_write_errors(self.stream_id)
                         logger.warning(
                             "sink[%s] write failed for %s: %s",
                             self.stream_id,

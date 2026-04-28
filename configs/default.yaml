@@ -110,3 +110,11 @@ calibration:
   max_score_cap: 0.80        # never suggest above this
   target_alerts_per_hour: null  # null = tighten-only (safe default).
                                 # set a number to enable the loosen arm.
+
+observability:
+  metrics:
+    # Exposes a Prometheus-compatible text endpoint at /metrics when enabled.
+    # Disabled by default so local runs do not open a listening socket.
+    enabled: false
+    host: "127.0.0.1"
+    port: 9108

@@ -68,7 +68,9 @@ class DFireDataset(Dataset):
             line = raw_line.strip()
             if not line:
                 continue
-            events.append(_parse_yolo_label(line, label=label, line_no=line_no, class_map=self.class_map))
+            events.append(
+                _parse_yolo_label(line, label=label, line_no=line_no, class_map=self.class_map)
+            )
         return events
 
 
@@ -110,12 +112,7 @@ def _parse_yolo_label(
 
 def _valid_yolo_bbox(bbox: tuple[float, ...]) -> bool:
     cx, cy, width, height = bbox
-    return (
-        0.0 <= cx <= 1.0
-        and 0.0 <= cy <= 1.0
-        and 0.0 < width <= 1.0
-        and 0.0 < height <= 1.0
-    )
+    return 0.0 <= cx <= 1.0 and 0.0 <= cy <= 1.0 and 0.0 < width <= 1.0 and 0.0 < height <= 1.0
 
 
 def _yolo_to_vrs_bbox(bbox: tuple[float, ...]) -> tuple[float, float, float, float]:

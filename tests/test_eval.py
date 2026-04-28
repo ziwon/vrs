@@ -155,9 +155,7 @@ def test_score_restricted_classes_excludes_others():
 
 
 def test_bbox_iou_xywh_norm_uses_vrs_coordinates():
-    assert bbox_iou_xywh_norm((0.5, 0.5, 0.2, 0.2), (0.5, 0.5, 0.2, 0.2)) == pytest.approx(
-        1.0
-    )
+    assert bbox_iou_xywh_norm((0.5, 0.5, 0.2, 0.2), (0.5, 0.5, 0.2, 0.2)) == pytest.approx(1.0)
     assert bbox_iou_xywh_norm((0.1, 0.1, 0.1, 0.1), (0.9, 0.9, 0.1, 0.1)) == 0.0
 
 

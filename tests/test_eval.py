@@ -792,6 +792,13 @@ def test_gate_rejects_malformed_report():
         compare_reports({}, _report({"fire": 0.8}))
 
 
+def test_gate_rejects_non_object_report():
+    from vrs.eval.ci import compare_reports
+
+    with pytest.raises(ValueError, match="expected object at 'baseline'"):
+        compare_reports([], _report({"fire": 0.8}))
+
+
 def test_gate_rejects_structural_metric_errors():
     from vrs.eval.ci import compare_reports
 
@@ -803,6 +810,21 @@ def test_gate_rejects_structural_metric_errors():
         compare_reports(baseline, current)
 
 
+def test_gate_treats_null_quality_signals_as_zero():
+    from vrs.eval.ci import compare_reports
+
+    baseline = _schema_v1_report({"fire": 0.80}, overall_f1=0.80)
+    current = _schema_v1_report({"fire": 0.80}, overall_f1=0.80)
+    current["quality_signals"]["verifier_flip_rate"] = None
+    current["quality_signals"]["false_negative_flag_rate"] = None
+
+    result = compare_reports(baseline, current)
+
+    assert result.passed is True
+    assert result.current_flip_rate == 0.0
+    assert result.current_fn_flag_rate == 0.0
+
+
 def test_gate_cli_exit_codes(tmp_path: Path):
     import json as _json
 
@@ -812,15 +834,18 @@ def test_gate_cli_exit_codes(tmp_path: Path):
     current_pass = tmp_path / "current_pass.json"
     current_fail = tmp_path / "current_fail.json"
     current_invalid = tmp_path / "current_invalid.json"
+    current_non_object = tmp_path / "current_non_object.json"
 
     baseline.write_text(_json.dumps(_report({"fire": 0.80}, overall_f1=0.80)))
     current_pass.write_text(_json.dumps(_report({"fire": 0.79}, overall_f1=0.79)))
     current_fail.write_text(_json.dumps(_report({"fire": 0.50}, overall_f1=0.50)))
     current_invalid.write_text(_json.dumps({"metrics": {"per_class": {"fire": {}}}}))
+    current_non_object.write_text(_json.dumps([]))
 
     assert ci_main(["--baseline", str(baseline), "--current", str(current_pass)]) == 0
     assert ci_main(["--baseline", str(baseline), "--current", str(current_fail)]) == 1
     assert ci_main(["--baseline", str(baseline), "--current", str(current_invalid)]) == 2
+    assert ci_main(["--baseline", str(baseline), "--current", str(current_non_object)]) == 2
     assert (
         ci_main(["--baseline", str(baseline), "--current", str(tmp_path / "nonexistent.json")]) == 2
     )

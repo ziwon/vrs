@@ -1,0 +1,128 @@
+policy_id: factory_fire_safety_v1
+policy_version: 1
+description: Factory fire and smoke verifier semantics.
+
+scenarios:
+  - id: factory_smoke_vs_steam
+    event_class: smoke
+    detector_labels:
+      - smoke
+      - smoke cloud
+      - billowing smoke
+    prompt_template: verifier_base.md
+    context_window_s: 12
+    min_detector_confidence: 0.35
+
+    normal_conditions:
+      - white steam from configured vent areas
+      - short-lived vapor plume near cooling equipment
+      - temporary dust cloud near loading dock
+
+    abnormal_conditions:
+      - dark smoke accumulating near ceiling
+      - smoke from machine housing
+      - smoke persisting across multiple sampled frames
+
+    false_positive_hints:
+      - steam vent
+      - dust cloud
+      - exhaust plume
+
+    true_positive_hints:
+      - dark smoke accumulating near ceiling
+      - smoke from machine housing
+      - smoke with visible flame nearby
+
+    required_evidence:
+      - source location
+      - color and density
+      - persistence across frames
+      - spread direction
+
+    uncertain_when:
+      - source is outside the visible scene
+      - smoke-like region appears in only one sampled frame
+      - image is too dark or blurry
+
+    verifier:
+      enabled: true
+      require_json: true
+      decision_labels:
+        - true_alert
+        - false_positive
+        - uncertain
+
+    severity:
+      true_alert: critical
+      uncertain: warning
+
+    recommended_action:
+      true_alert: notify_operator
+      uncertain: request_review
+
+    zones:
+      include:
+        - production_floor
+      exclude:
+        - steam_vent_area
+
+  - id: factory_flame_vs_welding
+    event_class: fire
+    detector_labels:
+      - fire
+      - open flame
+      - burning object
+    prompt_template: verifier_base.md
+    context_window_s: 8
+    min_detector_confidence: 0.4
+
+    normal_conditions:
+      - bright welding arc inside a marked welding bay
+      - controlled torch flame in approved hot-work area
+      - orange warning beacon or reflection on machinery
+
+    abnormal_conditions:
+      - flame outside an approved hot-work area
+      - flame spreading from materials or machine housing
+      - flame with smoke or visible charring nearby
+
+    false_positive_hints:
+      - welding arc
+      - warning beacon
+      - sun reflection
+
+    true_positive_hints:
+      - uncontrolled flame
+      - burning material
+      - smoke rising from ignition source
+
+    required_evidence:
+      - flame source
+      - nearby material or equipment
+      - whether the location is an approved hot-work zone
+
+    uncertain_when:
+      - the bright source is saturated or occluded
+      - the source location cannot be tied to a zone
+
+    verifier:
+      enabled: true
+      require_json: true
+      decision_labels:
+        - true_alert
+        - false_positive
+        - uncertain
+
+    severity:
+      true_alert: critical
+      uncertain: warning
+
+    recommended_action:
+      true_alert: notify_operator
+      uncertain: request_review
+
+    zones:
+      include:
+        - production_floor
+      exclude:
+        - welding_bay

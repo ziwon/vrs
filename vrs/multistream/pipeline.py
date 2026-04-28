@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 
 from ..calibration import build_calibrator
+from ..observability import build_metrics
 from ..pipeline import load_config
 from ..policy import WatchPolicy, load_watch_policy
 from ..runtime import VLMConfig, build_vlm_backend
@@ -106,6 +107,7 @@ class MultiStreamPipeline:
         self.streams = streams
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.metrics = build_metrics(config)
 
         # --- shared GPU models (created once, owned by their worker threads) ---
         det_cfg = config["detector"]
@@ -209,6 +211,7 @@ class MultiStreamPipeline:
                     sink_q=self._sink_qs[s.id],
                     stop_event=self._stop,
                     privacy_cfg=self._privacy_cfg,
+                    metrics=self.metrics,
                 )
             )
 
@@ -219,6 +222,8 @@ class MultiStreamPipeline:
             sink_queues=self._sink_qs,
             stop_event=self._stop,
             calibrator=self._calibrator,
+            metrics=self.metrics,
+            verifier_backend=str(self._ver_cfg.get("backend", "disabled")),
         )
 
         # detector worker
@@ -236,6 +241,7 @@ class MultiStreamPipeline:
             verifier_cfg=self._ver_cfg,
             tracker_cfg=self._tracker_cfg,
             target_fps=float(ing["target_fps"]),
+            metrics=self.metrics,
         )
 
         # decoder threads (per stream)
@@ -288,6 +294,7 @@ class MultiStreamPipeline:
         drop_log_interval = float(self._ms_cfg.get("drop_log_interval_s", 5.0))
         last_drop_log = time.monotonic()
         last_drop_snapshot = self._drop_counters()
+        self._record_queue_metrics()
 
         t0 = time.monotonic()
         try:
@@ -301,6 +308,8 @@ class MultiStreamPipeline:
                     self._log_drop_deltas(last_drop_snapshot, cur)
                     last_drop_snapshot = cur
                     last_drop_log = now
+
+                self._record_queue_metrics()
 
                 # join briefly on decoder threads so we exit naturally when files end
                 alive = any(d.is_alive() for d in self._decoders)
@@ -344,6 +353,10 @@ class MultiStreamPipeline:
 
         if self._calibrator is not None:
             self._calibrator.close()
+        self._record_queue_metrics()
+        metrics = getattr(self, "metrics", None)
+        if metrics is not None:
+            metrics.close()
 
     @staticmethod
     def _join_or_track_hung(thread: threading.Thread, timeout: float, hung: list[str]) -> None:
@@ -361,6 +374,18 @@ class MultiStreamPipeline:
         for sid, q in self._sink_qs.items():
             out[f"sink[{sid}]"] = q.puts_dropped
         return out
+
+    def _record_queue_metrics(self) -> None:
+        metrics = getattr(self, "metrics", None)
+        if metrics is None:
+            return
+        metrics.set_queue_depth("frame", "all", self._frame_q.qsize())
+        metrics.set_queue_dropped_total("frame", "all", self._frame_q.puts_dropped)
+        metrics.set_queue_depth("candidate", "all", self._candidate_q.qsize())
+        metrics.set_queue_dropped_total("candidate", "all", self._candidate_q.puts_dropped)
+        for sid, q in self._sink_qs.items():
+            metrics.set_queue_depth("sink", sid, q.qsize())
+            metrics.set_queue_dropped_total("sink", sid, q.puts_dropped)
 
     @staticmethod
     def _log_drop_deltas(prev: dict[str, int], cur: dict[str, int]) -> None:

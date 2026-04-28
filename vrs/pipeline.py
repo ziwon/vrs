@@ -7,6 +7,7 @@ module so this file stays short.
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ import yaml
 
 from .calibration import build_calibrator
 from .ingest import StreamReader
+from .observability import build_metrics
 from .policy import WatchPolicy, load_watch_policy
 from .privacy import build_face_detector
 from .runtime import VLMConfig, build_vlm_backend
@@ -70,11 +72,13 @@ class VRSPipeline:
         self.policy = policy
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.metrics = build_metrics(config)
 
         det_cfg = config["detector"]
         ing_cfg = config["ingest"]
         es_cfg = config["event_state"]
         ver_cfg = config["verifier"]
+        self._verifier_backend = str(ver_cfg.get("backend", "transformers"))
 
         # --- fast path ---
         self.detector = build_detector(
@@ -166,13 +170,27 @@ class VRSPipeline:
         try:
             with JsonlSink(jsonl_path) as jsonl:
                 for frame in reader:
-                    detections = self.detector(frame)
+                    detector_t0 = time.perf_counter()
+                    try:
+                        detections = self.detector(frame)
+                    finally:
+                        self.metrics.observe_detector_latency(time.perf_counter() - detector_t0)
                     detections = self.tracker.update(detections, frame.index)
                     candidates = self.event_state.step(frame, detections)
 
                     for cand in candidates:
+                        self.metrics.inc_candidates("default", cand.class_name)
                         if self.verifier is not None:
-                            verified = self.verifier.verify(cand)
+                            verifier_t0 = time.perf_counter()
+                            try:
+                                verified = self.verifier.verify(cand)
+                            except Exception:
+                                self.metrics.inc_verifier_errors(self._verifier_backend)
+                                raise
+                            finally:
+                                self.metrics.observe_verifier_latency(
+                                    time.perf_counter() - verifier_t0
+                                )
                         else:
                             verified = VerifiedAlert(
                                 candidate=cand,
@@ -181,10 +199,15 @@ class VRSPipeline:
                                 false_negative_class=None,
                                 rationale="verifier disabled",
                             )
+                        verdict = "true_alert" if verified.true_alert else "false_alert"
+                        self.metrics.inc_verified_alerts(
+                            "default", verified.candidate.class_name, verdict
+                        )
                         if thumbnail_sink is not None:
                             try:
                                 thumbnail_sink.write(verified)
                             except Exception as e:
+                                self.metrics.inc_sink_write_errors("default")
                                 logger.warning("thumbnail write failed: %s", e)
                         jsonl.write(verified)
                         if annotator is not None:
@@ -200,6 +223,7 @@ class VRSPipeline:
                 annotator.close()
             if self.calibrator is not None:
                 self.calibrator.close()
+            self.metrics.close()
 
     @staticmethod
     def _log(v: VerifiedAlert) -> None:

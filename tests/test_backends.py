@@ -7,8 +7,11 @@ spinning up a GPU."""
 
 from __future__ import annotations
 
+import json
 import sys
 import types
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 
 import numpy as np
 import pytest
@@ -88,7 +91,7 @@ def test_cosmos_factory_and_protocol_names_remain_aliases():
 def test_known_backends_set_matches_factory_branches():
     """If we add a backend name we must also update the _KNOWN_BACKENDS
     advertisement — this pin catches silent drift."""
-    assert {"transformers", "vllm", "trtllm"} == _KNOWN_BACKENDS
+    assert {"transformers", "vllm", "openai_compatible", "trtllm"} == _KNOWN_BACKENDS
 
 
 # ─── vLLM backend ─────────────────────────────────────────────────────
@@ -207,6 +210,101 @@ def test_vllm_backend_empty_frames_raises():
     finally:
         sys.modules.pop("vllm", None)
         sys.modules.pop("vllm.sampling_params", None)
+
+
+# ─── OpenAI-compatible served backend ─────────────────────────────────
+
+
+def test_openai_compatible_backend_posts_multimodal_chat_completion(monkeypatch):
+    captured: dict = {}
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers["Content-Length"])
+            captured["path"] = self.path
+            captured["authorization"] = self.headers.get("Authorization")
+            captured["payload"] = json.loads(self.rfile.read(length))
+            body = (
+                b'{"choices":[{"message":{"content":"{\\"true_alert\\":true,'
+                b'\\"confidence\\":0.91,\\"false_negative_class\\":null,'
+                b'\\"rationale\\":\\"ok\\"}"}}]}'
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    fake_cv2 = types.ModuleType("cv2")
+    fake_cv2.imencode = lambda ext, arr: (True, np.frombuffer(b"jpeg-bytes", dtype=np.uint8))
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+    monkeypatch.setenv("VRS_VLM_API_KEY", "secret-token")
+
+    from vrs.runtime.cosmos_loader import CosmosConfig
+    from vrs.runtime.openai_compatible_vlm import OpenAICompatibleVLMBackend
+
+    try:
+        backend = OpenAICompatibleVLMBackend(
+            CosmosConfig(
+                model_id="qwen-vl-served",
+                max_new_tokens=64,
+                temperature=0.0,
+                base_url=f"http://127.0.0.1:{server.server_port}/v1",
+                api_key_env="VRS_VLM_API_KEY",
+            )
+        )
+        schema = {"type": "object", "properties": {"true_alert": {"type": "boolean"}}}
+
+        out = backend.chat_video(
+            "sys",
+            "user",
+            [np.zeros((8, 8, 3), dtype=np.uint8)],
+            response_schema=schema,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert out.startswith("{")
+    assert captured["path"] == "/v1/chat/completions"
+    assert captured["authorization"] == "Bearer secret-token"
+
+    payload = captured["payload"]
+    assert payload["model"] == "qwen-vl-served"
+    assert payload["max_tokens"] == 64
+    assert payload["temperature"] == pytest.approx(0.0)
+    assert payload["response_format"]["json_schema"]["schema"] == schema
+
+    user_content = payload["messages"][1]["content"]
+    assert user_content[0] == {"type": "text", "text": "user"}
+    assert user_content[1]["type"] == "image_url"
+    assert user_content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+def test_openai_compatible_backend_requires_base_url():
+    from vrs.runtime.cosmos_loader import CosmosConfig
+    from vrs.runtime.openai_compatible_vlm import OpenAICompatibleVLMBackend
+
+    with pytest.raises(ValueError, match="base_url"):
+        OpenAICompatibleVLMBackend(CosmosConfig(model_id="qwen-vl-served"))
+
+
+def test_openai_compatible_backend_empty_frames_raises():
+    from vrs.runtime.cosmos_loader import CosmosConfig
+    from vrs.runtime.openai_compatible_vlm import OpenAICompatibleVLMBackend
+
+    backend = OpenAICompatibleVLMBackend(
+        CosmosConfig(model_id="qwen-vl-served", base_url="http://127.0.0.1:1/v1")
+    )
+    with pytest.raises(ValueError, match="at least one frame"):
+        backend.chat_video("sys", "user", [])
 
 
 # ─── verifier integrates cleanly through the Protocol ─────────────────

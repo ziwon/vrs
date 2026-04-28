@@ -258,6 +258,10 @@ evaluated.
 
 ## VRAM profiles
 
+See [Runtime validation matrix](docs/runtime-matrix.md) for the current
+validated, unvalidated, and planned GPU/runtime combinations. Treat the table
+below as configuration intent until a profile has a linked benchmark note.
+
 | Profile | Detector | Verifier | Notes |
 |---------|----------|----------|-------|
 | `default.yaml` | YOLOE-L FP16 | Cosmos-Reason2-2B BF16 | Accuracy-oriented local profile; validate memory on target GPU. NVIDIA's reference model card lists 24 GB minimum. |

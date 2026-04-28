@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vrs.pipeline import _validate_config
+from vrs.pipeline import _validate_config, load_config
 from vrs.policy.watch_policy import WatchPolicy, load_watch_policy
 from vrs.schemas import CandidateAlert, Detection, Frame, VerifiedAlert
 from vrs.triage.event_state import EventStateQueue
@@ -61,6 +61,26 @@ def test_validate_config_skips_model_id_when_verifier_disabled():
         "sink": {},
     }
     _validate_config(cfg, "test.yaml")  # should not raise
+
+
+def test_load_config_can_disable_verifier_before_validation(tmp_path: Path):
+    cfg = tmp_path / "detector-only.yaml"
+    cfg.write_text(
+        "ingest:\n"
+        "  target_fps: 4\n"
+        "detector:\n"
+        "  model: fake.pt\n"
+        "event_state:\n"
+        "  window: 2\n"
+        "verifier:\n"
+        "  enabled: true\n"
+        "sink: {}\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_config(cfg, verifier_enabled=False)
+
+    assert loaded["verifier"]["enabled"] is False
 
 
 # ─── policy ────────────────────────────────────────────────────────────

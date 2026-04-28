@@ -14,6 +14,7 @@ from vrs.eval import (
     EvalReport,
     GroundTruthEvent,
     HarnessResult,
+    config_for_eval_mode,
     score_alerts_against_truth,
 )
 from vrs.eval.datasets import LabeledDirDataset
@@ -304,6 +305,105 @@ def test_eval_report_round_trip_is_stable():
     assert list(payload["metrics"]["per_class"].keys()) == ["fire", "smoke"]
     assert EvalReport.from_dict(payload) == report
     assert json.loads(report.to_json()) == payload
+
+
+def test_config_for_eval_mode_marks_detector_only_without_mutating_source():
+    config = {
+        "detector": {"backend": "ultralytics", "model": "yoloe-11l-seg.pt"},
+        "verifier": {
+            "enabled": True,
+            "backend": "transformers",
+            "model_id": "nvidia/Cosmos-Reason2-2B",
+        },
+    }
+
+    effective = config_for_eval_mode(config, "detector_only")
+
+    assert config["verifier"]["enabled"] is True
+    assert effective["verifier"]["enabled"] is False
+
+    report = EvalReport.from_harness_result(
+        HarnessResult(aggregate=score_alerts_against_truth([], [])),
+        dataset="fixtures/mini-dataset",
+        config_path="configs/default.yaml",
+        policy_path="configs/policies/safety.yaml",
+        config=effective,
+        created_at=datetime(2026, 4, 26, 0, 0, tzinfo=UTC),
+    )
+    assert report.run.mode == "detector_only"
+    assert report.models.detector is not None
+    assert report.models.verifier is None
+
+
+def test_eval_cli_accepts_detector_only_mode():
+    from scripts.eval import build_arg_parser
+
+    args = build_arg_parser().parse_args(
+        [
+            "--dataset",
+            "fixtures/mini-dataset",
+            "--config",
+            "configs/default.yaml",
+            "--policy",
+            "configs/policies/safety.yaml",
+            "--mode",
+            "detector_only",
+            "--out",
+            "runs/eval-detector",
+        ]
+    )
+    assert args.mode == "detector_only"
+
+
+def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_path: Path):
+    from vrs.pipeline import VRSPipeline
+    from vrs.policy.watch_policy import WatchItem, WatchPolicy
+
+    class _FakeDetector:
+        def __call__(self, frame):
+            return []
+
+        def batch(self, frames):
+            return [[] for _ in frames]
+
+    def fail_build_cosmos_backend(*args, **kwargs):
+        raise AssertionError("detector-only eval must not construct a VLM backend")
+
+    monkeypatch.setattr("vrs.pipeline.build_detector", lambda *args, **kwargs: _FakeDetector())
+    monkeypatch.setattr("vrs.pipeline.build_cosmos_backend", fail_build_cosmos_backend)
+
+    policy = WatchPolicy(
+        [
+            WatchItem(
+                name="fire",
+                detector_prompts=["fire"],
+                verifier_prompt="open flames",
+                severity="critical",
+                min_score=0.30,
+                min_persist_frames=1,
+            )
+        ]
+    )
+    config = config_for_eval_mode(
+        {
+            "ingest": {"target_fps": 4},
+            "detector": {"backend": "ultralytics", "model": "fake.pt"},
+            "event_state": {"window": 2},
+            "tracker": {"backend": "none"},
+            "verifier": {
+                "enabled": True,
+                "backend": "transformers",
+                "model_id": "nvidia/Cosmos-Reason2-2B",
+            },
+            "sink": {"write_thumbnails": False, "write_annotated": False},
+            "calibration": {"enabled": False},
+        },
+        "detector_only",
+    )
+
+    pipeline = VRSPipeline(config, policy, tmp_path)
+
+    assert pipeline.verifier is None
 
 
 def _report(

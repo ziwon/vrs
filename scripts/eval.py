@@ -20,21 +20,24 @@ import argparse
 import logging
 from pathlib import Path
 
-import yaml
-
 from vrs import setup_logging
-from vrs.eval import EvalReport, evaluate
+from vrs.eval import EvalReport, config_for_eval_mode, evaluate
 from vrs.eval.datasets import LabeledDirDataset
 
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
-    setup_logging()
+def build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="VRS — evaluate the cascade on a labeled dataset")
     ap.add_argument("--dataset", required=True, help="labeled dataset root (see LabeledDirDataset)")
     ap.add_argument("--config", default="configs/default.yaml")
     ap.add_argument("--policy", default="configs/policies/safety.yaml")
+    ap.add_argument(
+        "--mode",
+        choices=("full_cascade", "detector_only"),
+        default="full_cascade",
+        help="evaluation mode: full cascade with verifier, or detector/event-state only",
+    )
     ap.add_argument("--out", default="runs/eval")
     ap.add_argument(
         "--tolerance-s",
@@ -43,15 +46,27 @@ def main() -> None:
         help="temporal slack around GT event windows when matching alerts",
     )
     ap.add_argument("--report", default=None, help="JSON report path (default: <out>/report.json)")
-    args = ap.parse_args()
+    return ap
+
+
+def main(argv: list[str] | None = None) -> None:
+    setup_logging()
+    args = build_arg_parser().parse_args(argv)
 
     # Imported lazily so `uv run scripts/eval.py --help` works without cv2/torch.
-    from vrs.pipeline import build_pipeline
+    from vrs.pipeline import VRSPipeline, load_config
+    from vrs.policy import load_watch_policy
 
     dataset = LabeledDirDataset(args.dataset)
+    verifier_enabled = False if args.mode == "detector_only" else None
+    config = config_for_eval_mode(
+        load_config(args.config, verifier_enabled=verifier_enabled),
+        args.mode,
+    )
+    policy = load_watch_policy(args.policy)
 
     def _factory(video_out: Path):
-        return build_pipeline(args.config, args.policy, video_out)
+        return VRSPipeline(config, policy, video_out)
 
     result = evaluate(
         dataset=dataset,
@@ -62,8 +77,6 @@ def main() -> None:
 
     report_path = Path(args.report) if args.report else Path(args.out) / "report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(args.config, encoding="utf-8") as f:
-        config = yaml.safe_load(f) or {}
     report = EvalReport.from_harness_result(
         result,
         dataset=args.dataset,

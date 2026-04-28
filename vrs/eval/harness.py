@@ -16,9 +16,10 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable, Iterable
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .datasets.base import Dataset
 from .metrics import aggregate_scores, score_alerts_against_truth
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 PipelineFactory = Callable[[Path], Any]  # (out_dir) -> something with .run(source)
+EvalMode = Literal["full_cascade", "detector_only"]
 
 
 @dataclass
@@ -40,6 +42,18 @@ class HarnessResult:
             "aggregate": self.aggregate.to_dict(),
             "per_video": [{"video": str(p), "score": s.to_dict()} for p, s in self.per_video],
         }
+
+
+def config_for_eval_mode(config: dict[str, Any], mode: EvalMode) -> dict[str, Any]:
+    """Return a copy of ``config`` adjusted for the requested eval mode."""
+    if mode not in ("full_cascade", "detector_only"):
+        raise ValueError(f"unknown eval mode: {mode!r}")
+
+    cfg = deepcopy(config)
+    if mode == "detector_only":
+        verifier = cfg.setdefault("verifier", {})
+        verifier["enabled"] = False
+    return cfg
 
 
 def evaluate(

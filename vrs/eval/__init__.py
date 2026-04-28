@@ -19,7 +19,7 @@ Upcoming:
 
 from __future__ import annotations
 
-from .harness import HarnessResult, evaluate
+from .harness import EvalMode, HarnessResult, config_for_eval_mode, evaluate
 from .metrics import aggregate_scores, score_alerts_against_truth
 from .report import (
     SCHEMA_VERSION,
@@ -45,6 +45,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "ClassMetrics",
     "EvalItem",
+    "EvalMode",
     "EvalReport",
     "GroundTruthEvent",
     "HarnessResult",
@@ -59,6 +60,7 @@ __all__ = [
     "ReportRuntime",
     "RunScore",
     "aggregate_scores",
+    "config_for_eval_mode",
     "evaluate",
     "score_alerts_against_truth",
 ]

@@ -43,9 +43,14 @@ def _validate_config(cfg: dict, path: str = "<config>") -> None:
         _require_key(cfg, "verifier", "model_id", path)
 
 
-def load_config(path: str | Path) -> dict[str, Any]:
+def load_config(path: str | Path, *, verifier_enabled: bool | None = None) -> dict[str, Any]:
     with open(path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
+    if verifier_enabled is not None:
+        cfg = dict(cfg or {})
+        verifier = dict(cfg.get("verifier") or {})
+        verifier["enabled"] = verifier_enabled
+        cfg["verifier"] = verifier
     _validate_config(cfg or {}, str(path))
     return cfg
 

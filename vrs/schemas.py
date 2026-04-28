@@ -1,6 +1,6 @@
 """Data contracts that flow through the cascade.
 
-Frame ──► Detection (per object, YOLOE) ──► CandidateAlert (event-state) ──► VerifiedAlert (Cosmos)
+Frame ──► Detection (per object, YOLOE) ──► CandidateAlert (event-state) ──► VerifiedAlert (VLM)
 """
 
 from __future__ import annotations
@@ -65,6 +65,21 @@ class CandidateAlert:
             "num_keyframes": len(self.keyframes),
         }
 
+    def detector_bbox_xywh_norm(self) -> tuple[float, float, float, float] | None:
+        """Return the highest-score peak detector box as normalized x/y/w/h."""
+        if not self.peak_detections or not self.keyframes:
+            return None
+        height, width = self.keyframes[-1].shape[:2]
+        if width <= 0 or height <= 0:
+            return None
+        det = max(self.peak_detections, key=lambda item: item.score)
+        x1, y1, x2, y2 = det.xyxy
+        x1 = _clamp(float(x1) / width)
+        y1 = _clamp(float(y1) / height)
+        x2 = _clamp(float(x2) / width)
+        y2 = _clamp(float(y2) / height)
+        return (x1, y1, max(0.0, x2 - x1), max(0.0, y2 - y1))
+
 
 @dataclass
 class VerifiedAlert:
@@ -75,23 +90,26 @@ class VerifiedAlert:
     confidence: float  # 0.0 .. 1.0
     false_negative_class: str | None  # detector missed this listed event
     rationale: str  # one short sentence
-    bbox_xywh_norm: tuple[float, float, float, float] | None = None  # Cosmos bbox
+    bbox_xywh_norm: tuple[float, float, float, float] | None = None  # verifier bbox
     trajectory_xy_norm: list[tuple[float, float]] = field(default_factory=list)
     verifier_raw: str = ""
     thumbnail_path: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         out = self.candidate.summary()
+        bbox = self.bbox_xywh_norm or self.candidate.detector_bbox_xywh_norm()
         out.update(
             true_alert=bool(self.true_alert),
             confidence=float(self.confidence),
             false_negative_class=self.false_negative_class,
             rationale=self.rationale,
-            bbox_xywh_norm=(
-                [float(x) for x in self.bbox_xywh_norm] if self.bbox_xywh_norm is not None else None
-            ),
+            bbox_xywh_norm=([float(x) for x in bbox] if bbox is not None else None),
             trajectory_xy_norm=[[float(x), float(y)] for (x, y) in self.trajectory_xy_norm],
             verifier_raw=self.verifier_raw,
             thumbnail_path=self.thumbnail_path,
         )
         return out
+
+
+def _clamp(value: float) -> float:
+    return max(0.0, min(1.0, value))

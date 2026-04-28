@@ -10,7 +10,7 @@ Topology:
                                           CandidateQueue (bounded, drop-policy)
                                                   |
                                                   v
-                                          VerifierWorker (Cosmos)
+                                          VerifierWorker (VLM)
                                                   |
                                                   v
                                           SinkWorker x N  ->  jsonl + mp4

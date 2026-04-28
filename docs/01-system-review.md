@@ -41,7 +41,7 @@ The following components are present and covered by unit tests where practical:
   queue drop counters, and shutdown diagnostics.
 - Detector backend protocol with Ultralytics YOLOE and TensorRT-engine loader
   branch.
-- Cosmos-shaped verifier backend protocol with transformers default, vLLM
+- VLM verifier backend protocol with transformers/Cosmos default, vLLM
   backend skeleton, and reserved TRT-LLM branch. The protocol should be
   generalized to Qwen-class VLMs next.
 - Verifier constrained-output support through optional XGrammar.

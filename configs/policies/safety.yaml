@@ -9,6 +9,8 @@
 #   min_score   : per-class detector score floor (overrides config.detector.conf_floor up)
 #   min_persist_frames : how many of the last `event_state.window` frames must
 #                        contain a hit before we promote to a CandidateAlert
+#   verifier_window_s  : optional per-class verifier clip window, overriding
+#                        verifier.context_window_s from the runtime config
 
 watch:
   - name: fire
@@ -24,6 +26,7 @@ watch:
     severity: high
     min_score: 0.25
     min_persist_frames: 2
+    verifier_window_s: 12.0
 
   - name: falldown
     detector:

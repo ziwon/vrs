@@ -6,7 +6,7 @@ Two backends:
   * NvDecReader (optional) — ``cv2.cudacodec.VideoReader``. Uses NVDEC for
     hardware-accelerated H.264/H.265 decode and delivers frames via
     ``cv2.cuda_GpuMat`` (zero-copy on GPU until we convert to BGR for
-    YOLOE / Cosmos). Requires OpenCV built with CUDA; gracefully falls back
+    YOLOE / VLM verifier). Requires OpenCV built with CUDA; gracefully falls back
     to OpenCVReader when unavailable.
 
 A ``Reader`` is an iterable of ``Frame``. Both backends honor ``target_fps``

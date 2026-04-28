@@ -186,7 +186,7 @@ class DetectorWorker(threading.Thread):
 
 
 # ──────────────────────────────────────────────────────────────────────
-# verifier — one shared thread, Cosmos-Reason2-2B
+# verifier — one shared VLM thread
 # ──────────────────────────────────────────────────────────────────────
 
 

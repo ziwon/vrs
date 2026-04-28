@@ -4,10 +4,11 @@ A watch policy lists named events in plain English. Each item has:
 
   detector  : noun-phrase prompts that YOLOE will turn into open-vocab classes.
               Several phrases per event widen recall (e.g. "fire", "open flame").
-  verifier  : a one-sentence definition handed to Cosmos-Reason2-2B.
+  verifier  : a one-sentence definition handed to the VLM verifier.
   severity  : info | low | medium | high | critical
   min_score : per-class score floor (overrides config.detector.conf_floor up).
   min_persist_frames : temporal persistence required to raise a CandidateAlert.
+  verifier_window_s : optional per-event verifier context window override.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ class WatchItem:
     severity: str
     min_score: float
     min_persist_frames: int
+    verifier_window_s: float | None = None
 
 
 class WatchPolicy:
@@ -108,6 +110,12 @@ def _validate_item(raw: dict) -> WatchItem:
     if min_persist < 1:
         raise ValueError(f"watch[{name}].min_persist_frames must be >= 1")
 
+    verifier_window_s: float | None = None
+    if "verifier_window_s" in raw and raw["verifier_window_s"] is not None:
+        verifier_window_s = float(raw["verifier_window_s"])
+        if verifier_window_s <= 0.0:
+            raise ValueError(f"watch[{name}].verifier_window_s must be > 0")
+
     return WatchItem(
         name=name,
         detector_prompts=detector,
@@ -115,6 +123,7 @@ def _validate_item(raw: dict) -> WatchItem:
         severity=severity,
         min_score=min_score,
         min_persist_frames=min_persist,
+        verifier_window_s=verifier_window_s,
     )
 
 

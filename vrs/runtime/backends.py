@@ -1,4 +1,4 @@
-"""Cosmos verifier backend Protocol + factory.
+"""VLM verifier backend Protocol + factory.
 
 The slow path is the system's capacity ceiling, so we want to be able to
 swap the generation engine without touching ``AlertVerifier``. Every
@@ -8,10 +8,12 @@ the backend decides internally how to apply a JSON-schema constraint.
 Backends shipped:
 
 * ``transformers`` — the ``CosmosReason2`` class in ``cosmos_loader``.
-  Default and well-tested.
+  Default baseline implementation.
 * ``vllm`` — higher generation throughput via paged KV cache + in-flight
   batching. Optional dep (``uv sync --extra vllm``); implementation
   lives in ``vllm_cosmos``.
+* ``openai_compatible`` — served VLM over an OpenAI-compatible
+  ``/chat/completions`` endpoint.
 * ``trtllm`` — reserved (a future addition that produces the biggest
   latency win when paired with speculative decoding).
 
@@ -29,8 +31,8 @@ import numpy as np
 
 
 @runtime_checkable
-class CosmosBackend(Protocol):
-    """Minimum surface the verifier needs from a Cosmos runtime."""
+class VLMBackend(Protocol):
+    """Minimum surface the verifier needs from a video-language-model runtime."""
 
     def chat_video(
         self,
@@ -51,15 +53,20 @@ class CosmosBackend(Protocol):
         ...
 
 
+# Backward-compatible public alias. Existing imports and isinstance checks keep
+# working while new code uses the model-family-neutral VLMBackend name.
+CosmosBackend = VLMBackend
+
+
 # ──────────────────────────────────────────────────────────────────────
 # factory
 # ──────────────────────────────────────────────────────────────────────
 
-_KNOWN_BACKENDS = {"transformers", "vllm", "trtllm"}
+_KNOWN_BACKENDS = {"transformers", "vllm", "openai_compatible", "trtllm"}
 
 
-def build_cosmos_backend(cfg, backend: str = "transformers") -> CosmosBackend:
-    """Construct the Cosmos backend named by ``backend``.
+def build_vlm_backend(cfg, backend: str = "transformers") -> VLMBackend:
+    """Construct the VLM backend named by ``backend``.
 
     Lazy-imports the backend module so hosts without vLLM / TRT-LLM
     installed can still run the transformers default unchanged.
@@ -75,9 +82,18 @@ def build_cosmos_backend(cfg, backend: str = "transformers") -> CosmosBackend:
         from .vllm_cosmos import VLLMCosmosBackend
 
         return VLLMCosmosBackend(cfg)
+    if name in ("openai_compatible", "openai-compatible", "openai"):
+        from .openai_compatible_vlm import OpenAICompatibleVLMBackend
+
+        return OpenAICompatibleVLMBackend(cfg)
     if name == "trtllm":
         raise NotImplementedError(
             "the trtllm backend is a planned follow-on once the vllm path "
             "is validated end-to-end; track the #10 roadmap item."
         )
     raise ValueError(f"unknown verifier backend: {backend!r}. Valid: {sorted(_KNOWN_BACKENDS)}")
+
+
+def build_cosmos_backend(cfg, backend: str = "transformers") -> VLMBackend:
+    """Compatibility wrapper for the old Cosmos-named factory."""
+    return build_vlm_backend(cfg, backend=backend)

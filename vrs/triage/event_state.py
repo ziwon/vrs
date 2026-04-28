@@ -51,6 +51,14 @@ class EventStateQueue:
         self.cooldown_s = float(cooldown_s)
         self.keyframes = int(keyframes)
         self.context_window_s = float(context_window_s)
+        self._context_window_by_class = {
+            it.name: (
+                float(it.verifier_window_s)
+                if it.verifier_window_s is not None
+                else self.context_window_s
+            )
+            for it in policy
+        }
 
         self._state: dict[str, _ClassState] = {
             it.name: _ClassState(
@@ -62,7 +70,10 @@ class EventStateQueue:
         }
 
         # rolling buffer of (frame, detections) for keyframe extraction
-        ring_len = max(int(context_window_s * target_fps) * 2 + 4, 16)
+        max_context_window_s = max(
+            self._context_window_by_class.values(), default=self.context_window_s
+        )
+        ring_len = max(int(max_context_window_s * target_fps) * 2 + 4, 16)
         self._ring: deque[tuple[Frame, list[Detection]]] = deque(maxlen=ring_len)
 
     # ---- main api ---------------------------------------------------
@@ -114,7 +125,7 @@ class EventStateQueue:
                 state.last_alert_pts_by_track[tid] = frame.pts_s
 
                 if keyframes is None:
-                    keyframes, keyframe_pts = self._sample_keyframes(frame.pts_s)
+                    keyframes, keyframe_pts = self._sample_keyframes(frame.pts_s, name)
 
                 tid_dets = [d for d in peak_dets if d.track_id == tid] or peak_dets
                 alerts.append(
@@ -134,12 +145,13 @@ class EventStateQueue:
 
     # ---- helpers ----------------------------------------------------
 
-    def _sample_keyframes(self, peak_pts_s: float):
+    def _sample_keyframes(self, peak_pts_s: float, class_name: str):
         """Pick ``self.keyframes`` evenly-spaced frames around the peak."""
         if not self._ring:
             return [], []
-        t_lo = peak_pts_s - self.context_window_s
-        t_hi = peak_pts_s + self.context_window_s
+        context_window_s = self._context_window_by_class.get(class_name, self.context_window_s)
+        t_lo = peak_pts_s - context_window_s
+        t_hi = peak_pts_s + context_window_s
         candidates = [pair for pair in self._ring if t_lo <= pair[0].pts_s <= t_hi]
         if not candidates:
             candidates = list(self._ring)

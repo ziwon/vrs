@@ -190,6 +190,30 @@ because every record commits to the previous record hash. To prove that the last
 record was not truncated, store the final `record_hash` or file digest in your
 external retention system at collection time.
 
+### Served OpenAI-compatible verifier
+
+To compare the local Cosmos baseline against a served Qwen/vLLM/SGLang-style
+VLM, point the verifier at an OpenAI-compatible chat-completions endpoint:
+
+```yaml
+verifier:
+  enabled: true
+  backend: openai_compatible
+  model_id: qwen-vl-served
+  base_url: http://localhost:8000/v1
+  api_key_env: VRS_VLM_API_KEY
+  max_new_tokens: 512
+  temperature: 0.0
+```
+
+The backend posts to `${base_url}/chat/completions` with the same system prompt,
+user prompt, and keyframe list used by the local verifier. Each BGR keyframe is
+JPEG-encoded and sent as a `data:image/jpeg;base64,...` `image_url` content item
+after the text prompt. When the verifier supplies its JSON schema, the backend
+passes it as `response_format: {type: "json_schema", ...}`; if a server ignores
+that field, VRS still applies the same verifier JSON parsing and failure policy
+to the returned text.
+
 ## Smoke-test on your GPU (e.g. RTX 5080)
 
 1. **Generate synthetic plumbing-test clips** (no network, no datasets):
@@ -225,6 +249,8 @@ external retention system at collection time.
 
    Drop the clips into a directory, add them to `configs/multistream.yaml`
    as `file://` sources, and re-run `uv run scripts/bench.py`.
+
+   For D-Fire detector-only evaluation, see [docs/dfire-dataset.md](docs/dfire-dataset.md).
 
 ## Watch Policy — the only place you maintain
 
@@ -294,6 +320,10 @@ drift while still allowing customer/site-specific semantics to be captured and
 evaluated.
 
 ## VRAM profiles
+
+See [Runtime validation matrix](docs/runtime-matrix.md) for the current
+validated, unvalidated, and planned GPU/runtime combinations. Treat the table
+below as configuration intent until a profile has a linked benchmark note.
 
 | Profile | Detector | Verifier | Notes |
 |---------|----------|----------|-------|
@@ -368,3 +398,19 @@ path. A future detector-only scoring mode can reuse the same report schema with
 machines and are not part of the regression contract. The CI gate
 (`uv run python -m vrs.eval.ci`) only compares `metrics` and `quality_signals`, so
 committed baselines are immune to clock and Python-version drift.
+
+The committed mini baseline lives at `baselines/eval/report.json`. Regenerate it
+only after an intentional fixture or metric-contract update:
+
+```bash
+uv run python scripts/write_eval_baseline.py --out baselines/eval/report.json
+```
+
+Compare a candidate report against the baseline with:
+
+```bash
+uv run python -m vrs.eval.ci \
+  --baseline baselines/eval/report.json \
+  --current runs/eval/report.json \
+  --max-f1-drop 0.02
+```

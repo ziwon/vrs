@@ -26,6 +26,13 @@ import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+from .report import SCHEMA_VERSION
+
+
+class ReportStructureError(ValueError):
+    """Raised when an eval report does not match the supported metric shape."""
 
 
 @dataclass
@@ -95,29 +102,64 @@ class GateResult:
 # ──────────────────────────────────────────────────────────────────────
 
 
-def _metrics_section(report: Mapping[str, object]) -> Mapping[str, object]:
-    if isinstance(report.get("metrics"), Mapping):
-        return report["metrics"]
-    if isinstance(report.get("aggregate"), Mapping):
-        return report["aggregate"]
+def _as_mapping(value: Any, path: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ReportStructureError(f"expected object at '{path}'")
+    return value
+
+
+def _read_f1(value: Any, path: str) -> float:
+    metrics = _as_mapping(value, path)
+    if "f1" not in metrics:
+        raise ReportStructureError(f"missing required field '{path}.f1'")
+    try:
+        return float(metrics["f1"])
+    except (TypeError, ValueError) as exc:
+        raise ReportStructureError(f"expected numeric field '{path}.f1'") from exc
+
+
+def _read_optional_float(
+    metrics: Mapping[str, Any],
+    primary_key: str,
+    legacy_key: str,
+    path: str,
+) -> float:
+    value = metrics.get(primary_key, metrics.get(legacy_key, 0.0))
+    if value is None:
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ReportStructureError(f"expected numeric field '{path}'") from exc
+
+
+def _metrics_section(report: Mapping[str, Any]) -> Mapping[str, Any]:
+    if report.get("schema_version") not in (None, SCHEMA_VERSION):
+        raise ReportStructureError(
+            f"unsupported schema_version {report.get('schema_version')!r}; expected {SCHEMA_VERSION!r}"
+        )
+    if "metrics" in report:
+        return _as_mapping(report.get("metrics"), "metrics")
+    if "aggregate" in report:
+        return _as_mapping(report.get("aggregate"), "aggregate")
+    raise ReportStructureError("missing required top-level 'metrics' section")
+
+
+def _quality_signals_section(report: Mapping[str, Any]) -> Mapping[str, Any]:
+    if "quality_signals" in report:
+        return _as_mapping(report.get("quality_signals"), "quality_signals")
+    if "aggregate" in report:
+        return _as_mapping(report.get("aggregate"), "aggregate")
     return {}
 
 
-def _quality_signals_section(report: Mapping[str, object]) -> Mapping[str, object]:
-    if isinstance(report.get("quality_signals"), Mapping):
-        return report["quality_signals"]
-    if isinstance(report.get("aggregate"), Mapping):
-        return report["aggregate"]
-    return {}
+def _per_class_f1(report: Mapping[str, Any]) -> dict[str, float]:
+    per = _as_mapping(_metrics_section(report).get("per_class"), "metrics.per_class")
+    return {str(cls): _read_f1(metrics, f"metrics.per_class.{cls}") for cls, metrics in per.items()}
 
 
-def _per_class_f1(report: dict) -> dict[str, float]:
-    per = _metrics_section(report).get("per_class", {})
-    return {cls: float(m.get("f1", 0.0)) for cls, m in per.items()}
-
-
-def _overall_f1(report: dict) -> float:
-    return float(_metrics_section(report).get("overall", {}).get("f1", 0.0))
+def _overall_f1(report: Mapping[str, Any]) -> float:
+    return _read_f1(_metrics_section(report).get("overall"), "metrics.overall")
 
 
 def compare_reports(
@@ -139,8 +181,10 @@ def compare_reports(
     """
     if max_f1_drop < 0:
         raise ValueError("max_f1_drop must be >= 0")
-    if not _metrics_section(baseline) or not _metrics_section(current):
-        raise ValueError("both reports must have either a 'metrics' or 'aggregate' key")
+    baseline = _as_mapping(baseline, "baseline")
+    current = _as_mapping(current, "current")
+    _metrics_section(baseline)
+    _metrics_section(current)
 
     b_pc = _per_class_f1(baseline)
     c_pc = _per_class_f1(current)
@@ -188,17 +232,29 @@ def compare_reports(
         per_class=per_class,
         overall=overall,
         max_f1_drop=max_f1_drop,
-        baseline_flip_rate=float(
-            b_quality.get("verifier_flip_rate", b_quality.get("flip_rate", 0.0))
+        baseline_flip_rate=_read_optional_float(
+            b_quality,
+            "verifier_flip_rate",
+            "flip_rate",
+            "quality_signals.verifier_flip_rate",
         ),
-        current_flip_rate=float(
-            c_quality.get("verifier_flip_rate", c_quality.get("flip_rate", 0.0))
+        current_flip_rate=_read_optional_float(
+            c_quality,
+            "verifier_flip_rate",
+            "flip_rate",
+            "quality_signals.verifier_flip_rate",
         ),
-        baseline_fn_flag_rate=float(
-            b_quality.get("false_negative_flag_rate", b_quality.get("fn_flag_rate", 0.0))
+        baseline_fn_flag_rate=_read_optional_float(
+            b_quality,
+            "false_negative_flag_rate",
+            "fn_flag_rate",
+            "quality_signals.false_negative_flag_rate",
         ),
-        current_fn_flag_rate=float(
-            c_quality.get("false_negative_flag_rate", c_quality.get("fn_flag_rate", 0.0))
+        current_fn_flag_rate=_read_optional_float(
+            c_quality,
+            "false_negative_flag_rate",
+            "fn_flag_rate",
+            "quality_signals.false_negative_flag_rate",
         ),
     )
 

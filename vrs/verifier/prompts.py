@@ -1,7 +1,8 @@
-"""Prompt templates for Cosmos-Reason2-2B verification.
+"""Prompt templates for VLM verification.
 
-Cosmos-Reason2-2B is post-trained for *physical-world* reasoning with native
-chain-of-thought, bounding-box, and trajectory output. We exploit all three:
+The current Cosmos-Reason2-2B baseline supports *physical-world* reasoning with
+native chain-of-thought, bounding-box, and trajectory output. We exploit all
+three through a backend-neutral ``chat_video`` surface:
 
   - CoT to actually reason about whether the detector's claim matches the
     physics of the scene (e.g. "is that orange glow a fire or a sunset?").

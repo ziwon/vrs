@@ -12,9 +12,9 @@ Three weight profiles, sized for different deployment targets:
     w4a16  : ~1.7 GB — community quant ``embedl/Cosmos-Reason2-2B-W4A16``,
                        fits 8 GB cards / Jetson Orin.
 
-We expose a ``chat_video`` method that takes a list of BGR frames + a system /
-user prompt and returns the model's raw text. Frame packing is handled here so
-the verifier code stays focused on prompt design.
+The public runtime config is named ``VLMConfig`` because Cosmos is one backend
+implementation, not the verifier architecture. ``CosmosConfig`` remains as a
+compatibility alias for existing configs and imports.
 """
 
 from __future__ import annotations
@@ -26,13 +26,19 @@ import torch
 
 
 @dataclass
-class CosmosConfig:
+class VLMConfig:
     model_id: str = "nvidia/Cosmos-Reason2-2B"
     dtype: str = "bf16"  # bf16 | fp16 | w4a16
     device: str = "cuda"
     max_new_tokens: int = 1024
     temperature: float = 0.2
     clip_fps: int = 4  # Cosmos-Reason2-2B was trained at FPS=4
+    base_url: str | None = None
+    api_key_env: str | None = None
+    timeout_s: float = 60.0
+
+
+CosmosConfig = VLMConfig
 
 
 def _torch_dtype(name: str) -> torch.dtype:
@@ -54,7 +60,7 @@ def _bgr_list_to_pil_rgb(frames_bgr: list[np.ndarray]):
 class CosmosReason2:
     """Thin wrapper that hides the dtype / quant / chat-template choreography."""
 
-    def __init__(self, cfg: CosmosConfig):
+    def __init__(self, cfg: VLMConfig):
         from transformers import AutoProcessor
 
         try:

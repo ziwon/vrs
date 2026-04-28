@@ -1,0 +1,144 @@
+{
+  "schema_version": "vrs.eval.report.v1",
+  "run": {
+    "run_id": "2026-04-26-mini-eval-fixture-yoloe-11l-seg-cosmos-reason2-2b",
+    "created_at": "2026-04-26T00:00:00Z",
+    "dataset": "mini-eval-fixture",
+    "mode": "full_cascade",
+    "policy_path": "configs/policies/safety.yaml",
+    "config_path": "configs/default.yaml"
+  },
+  "models": {
+    "detector": {
+      "backend": "ultralytics",
+      "model": "yoloe-11l-seg.pt"
+    },
+    "verifier": {
+      "backend": "transformers",
+      "model": "nvidia/Cosmos-Reason2-2B"
+    }
+  },
+  "metrics": {
+    "overall": {
+      "precision": 0.7143,
+      "recall": 0.8333,
+      "f1": 0.7692,
+      "tp": 5,
+      "fp": 2,
+      "fn": 1
+    },
+    "per_class": {
+      "fire": {
+        "precision": 0.75,
+        "recall": 0.75,
+        "f1": 0.75,
+        "tp": 3,
+        "fp": 1,
+        "fn": 1
+      },
+      "smoke": {
+        "precision": 0.6667,
+        "recall": 1.0,
+        "f1": 0.8,
+        "tp": 2,
+        "fp": 1,
+        "fn": 0
+      }
+    }
+  },
+  "latency": {
+    "detector_p50_ms": null,
+    "detector_p95_ms": null,
+    "verifier_p50_ms": null,
+    "verifier_p95_ms": null
+  },
+  "runtime": {
+    "python": null,
+    "torch": null,
+    "cuda": null,
+    "gpu_name": null,
+    "peak_vram_mb": null
+  },
+  "quality_signals": {
+    "verifier_flip_rate": 0.125,
+    "false_negative_flag_rate": 0.125,
+    "malformed_json_rate": null,
+    "queue_drops": null
+  },
+  "per_video": [
+    {
+      "video": "mini-fire-smoke-001.mp4",
+      "metrics": {
+        "overall": {
+          "precision": 0.75,
+          "recall": 1.0,
+          "f1": 0.8571,
+          "tp": 3,
+          "fp": 1,
+          "fn": 0
+        },
+        "per_class": {
+          "fire": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "tp": 2,
+            "fp": 0,
+            "fn": 0
+          },
+          "smoke": {
+            "precision": 0.5,
+            "recall": 1.0,
+            "f1": 0.6667,
+            "tp": 1,
+            "fp": 1,
+            "fn": 0
+          }
+        }
+      },
+      "quality_signals": {
+        "verifier_flip_rate": 0.25,
+        "false_negative_flag_rate": 0.0,
+        "malformed_json_rate": null,
+        "queue_drops": null
+      }
+    },
+    {
+      "video": "mini-fire-smoke-002.mp4",
+      "metrics": {
+        "overall": {
+          "precision": 0.6667,
+          "recall": 0.6667,
+          "f1": 0.6667,
+          "tp": 2,
+          "fp": 1,
+          "fn": 1
+        },
+        "per_class": {
+          "fire": {
+            "precision": 0.5,
+            "recall": 0.5,
+            "f1": 0.5,
+            "tp": 1,
+            "fp": 1,
+            "fn": 1
+          },
+          "smoke": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "tp": 1,
+            "fp": 0,
+            "fn": 0
+          }
+        }
+      },
+      "quality_signals": {
+        "verifier_flip_rate": 0.0,
+        "false_negative_flag_rate": 0.25,
+        "malformed_json_rate": null,
+        "queue_drops": null
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-"""End-to-end cascade: ingest → YOLOE → event-state → Cosmos verifier → sinks.
+"""End-to-end cascade: ingest → YOLOE → event-state → VLM verifier → sinks.
 
 Glue code only — every component is configured via YAML and lives in its own
 module so this file stays short.
@@ -16,13 +16,17 @@ from .calibration import build_calibrator
 from .ingest import StreamReader
 from .policy import WatchPolicy, load_watch_policy
 from .privacy import build_face_detector
-from .runtime import CosmosConfig, build_cosmos_backend
+from .runtime import VLMConfig, build_vlm_backend
 from .schemas import VerifiedAlert
 from .sinks import EventThumbnailSink, JsonlSink, VideoAnnotator
 from .triage import EventStateQueue, YOLOEConfig, build_detector, build_tracker
 from .verifier import AlertVerifier
 
 logger = logging.getLogger(__name__)
+
+# Compatibility for external tests/tools that monkeypatch the old pipeline
+# factory symbol. New construction goes through build_vlm_backend.
+build_cosmos_backend = build_vlm_backend
 
 
 def _require_key(cfg: dict, section: str, key: str, path: str) -> None:
@@ -98,19 +102,22 @@ class VRSPipeline:
         # --- slow path (lazy: only spin up the VLM if enabled) ---
         self.verifier: AlertVerifier | None = None
         if ver_cfg.get("enabled", True):
-            cosmos = build_cosmos_backend(
-                CosmosConfig(
+            vlm = build_vlm_backend(
+                VLMConfig(
                     model_id=ver_cfg["model_id"],
                     dtype=ver_cfg.get("dtype", "bf16"),
                     device=ver_cfg.get("device", "cuda"),
                     max_new_tokens=int(ver_cfg.get("max_new_tokens", 1024)),
                     temperature=float(ver_cfg.get("temperature", 0.2)),
                     clip_fps=int(ver_cfg.get("clip_fps", 4)),
+                    base_url=ver_cfg.get("base_url"),
+                    api_key_env=ver_cfg.get("api_key_env"),
+                    timeout_s=float(ver_cfg.get("timeout_s", 60.0)),
                 ),
                 backend=ver_cfg.get("backend", "transformers"),
             )
             self.verifier = AlertVerifier(
-                cosmos=cosmos,
+                vlm=vlm,
                 policy=policy,
                 request_bbox=bool(ver_cfg.get("request_bbox", True)),
                 request_trajectory=bool(ver_cfg.get("request_trajectory", True)),

@@ -6,6 +6,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
 from vrs.eval import (
@@ -14,22 +16,32 @@ from vrs.eval import (
     EvalReport,
     GroundTruthEvent,
     HarnessResult,
+    bbox_iou_xywh_norm,
     config_for_eval_mode,
     score_alerts_against_truth,
 )
-from vrs.eval.datasets import LabeledDirDataset
+from vrs.eval.datasets import DFireDataset, LabeledDirDataset, build_dataset
 from vrs.eval.metrics import aggregate_scores
+from vrs.schemas import CandidateAlert, Detection, VerifiedAlert
 
 
 def _alert(
-    class_name: str, peak_pts_s: float, *, true_alert: bool = True, fn_cls: str | None = None
+    class_name: str,
+    peak_pts_s: float,
+    *,
+    true_alert: bool = True,
+    fn_cls: str | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
 ) -> dict:
-    return {
+    out = {
         "class_name": class_name,
         "peak_pts_s": peak_pts_s,
         "true_alert": true_alert,
         "false_negative_class": fn_cls,
     }
+    if bbox is not None:
+        out["bbox_xywh_norm"] = bbox
+    return out
 
 
 def _event(cls: str, start: float, end: float) -> GroundTruthEvent:
@@ -142,6 +154,57 @@ def test_score_restricted_classes_excludes_others():
     assert score.n_events == 0
 
 
+def test_bbox_iou_xywh_norm_uses_vrs_coordinates():
+    assert bbox_iou_xywh_norm((0.5, 0.5, 0.2, 0.2), (0.5, 0.5, 0.2, 0.2)) == pytest.approx(1.0)
+    assert bbox_iou_xywh_norm((0.1, 0.1, 0.1, 0.1), (0.9, 0.9, 0.1, 0.1)) == 0.0
+
+
+def test_bbox_threshold_requires_matching_alert_box():
+    events = [
+        GroundTruthEvent(
+            class_name="fire",
+            start_s=0.0,
+            end_s=0.0,
+            bbox_xywh_norm=(0.5, 0.5, 0.2, 0.2),
+        )
+    ]
+    image_level = score_alerts_against_truth(
+        [_alert("fire", 0.0, bbox=(0.1, 0.1, 0.1, 0.1))],
+        events,
+        tolerance_s=0.0,
+    )
+    bbox_level = score_alerts_against_truth(
+        [_alert("fire", 0.0, bbox=(0.1, 0.1, 0.1, 0.1))],
+        events,
+        tolerance_s=0.0,
+        bbox_iou_threshold=0.5,
+    )
+    assert image_level.per_class["fire"].tp == 1
+    assert (bbox_level.per_class["fire"].tp, bbox_level.per_class["fire"].fn) == (0, 1)
+
+
+def test_detector_only_alert_serializes_peak_detector_bbox():
+    alert = VerifiedAlert(
+        candidate=CandidateAlert(
+            class_name="fire",
+            severity="critical",
+            start_pts_s=0.0,
+            peak_pts_s=0.0,
+            peak_frame_index=0,
+            peak_detections=[
+                Detection("fire", 0.9, (20.0, 10.0, 60.0, 50.0)),
+            ],
+            keyframes=[np.zeros((100, 200, 3), dtype=np.uint8)],
+        ),
+        true_alert=True,
+        confidence=1.0,
+        false_negative_class=None,
+        rationale="verifier disabled",
+    )
+
+    assert alert.to_json()["bbox_xywh_norm"] == pytest.approx([0.1, 0.1, 0.2, 0.4])
+
+
 # ─── aggregation ──────────────────────────────────────────────────────
 
 
@@ -183,6 +246,88 @@ def test_labeled_dir_yields_items_with_events(tmp_path: Path):
 def test_labeled_dir_rejects_nonexistent_root(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         LabeledDirDataset(tmp_path / "does-not-exist")
+
+
+# ─── DFireDataset ─────────────────────────────────────────────────────
+
+
+def _make_dfire_root(tmp_path: Path) -> Path:
+    root = tmp_path / "dfire-mini"
+    (root / "images").mkdir(parents=True)
+    (root / "labels").mkdir()
+    return root
+
+
+def test_dfire_yields_image_items_with_bbox_events(tmp_path: Path):
+    root = _make_dfire_root(tmp_path)
+    (root / "images" / "a.jpg").write_bytes(b"fake image bytes")
+    (root / "images" / "b.png").write_bytes(b"fake image bytes")
+    (root / "labels" / "a.txt").write_text(
+        "1 0.50 0.50 0.20 0.30\n0 0.25 0.25 0.10 0.10\n",
+        encoding="utf-8",
+    )
+    (root / "labels" / "b.txt").write_text("", encoding="utf-8")
+
+    items = list(DFireDataset(root))
+
+    assert [item.video_path.name for item in items] == ["a.jpg", "b.png"]
+    assert items[0].events == [
+        GroundTruthEvent("fire", 0.0, 0.0, (0.40, 0.35, 0.20, 0.30)),
+        GroundTruthEvent("smoke", 0.0, 0.0, (0.20, 0.20, 0.10, 0.10)),
+    ]
+    assert items[1].events == []
+
+
+def test_dfire_missing_label_file_is_quiet_by_default(tmp_path: Path):
+    root = _make_dfire_root(tmp_path)
+    (root / "images" / "quiet.jpg").write_bytes(b"fake image bytes")
+
+    [item] = list(DFireDataset(root))
+
+    assert item.video_path.name == "quiet.jpg"
+    assert item.events == []
+
+
+def test_dfire_can_require_label_files(tmp_path: Path):
+    root = _make_dfire_root(tmp_path)
+    (root / "images" / "quiet.jpg").write_bytes(b"fake image bytes")
+
+    with pytest.raises(FileNotFoundError):
+        list(DFireDataset(root, require_labels=True))
+
+
+def test_dfire_rejects_malformed_yolo_rows(tmp_path: Path):
+    root = _make_dfire_root(tmp_path)
+    (root / "images" / "bad.jpg").write_bytes(b"fake image bytes")
+    (root / "labels" / "bad.txt").write_text("1 0.5 0.5\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected 5 YOLO fields"):
+        list(DFireDataset(root))
+
+
+def test_dataset_registry_builds_dfire(tmp_path: Path):
+    root = _make_dfire_root(tmp_path)
+    (root / "images" / "a.jpg").write_bytes(b"fake image bytes")
+    (root / "labels" / "a.txt").write_text("", encoding="utf-8")
+
+    dataset = build_dataset("dfire", root)
+
+    assert isinstance(dataset, DFireDataset)
+
+
+def test_stream_reader_yields_single_frame_for_image(tmp_path: Path):
+    from vrs.ingest import StreamReader
+
+    image_path = tmp_path / "frame.jpg"
+    image = np.full((8, 12, 3), 127, dtype=np.uint8)
+    assert cv2.imwrite(str(image_path), image)
+
+    frames = list(StreamReader(str(image_path), target_fps=4))
+
+    assert len(frames) == 1
+    assert frames[0].index == 0
+    assert frames[0].pts_s == 0.0
+    assert frames[0].image.shape == (8, 12, 3)
 
 
 # ─── harness integration (stubbed pipeline) ────────────────────────────
@@ -342,6 +487,8 @@ def test_eval_cli_accepts_detector_only_mode():
         [
             "--dataset",
             "fixtures/mini-dataset",
+            "--dataset-format",
+            "dfire",
             "--config",
             "configs/default.yaml",
             "--policy",
@@ -350,9 +497,13 @@ def test_eval_cli_accepts_detector_only_mode():
             "detector_only",
             "--out",
             "runs/eval-detector",
+            "--bbox-iou-threshold",
+            "0.5",
         ]
     )
     assert args.mode == "detector_only"
+    assert args.dataset_format == "dfire"
+    assert args.bbox_iou_threshold == 0.5
 
 
 def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_path: Path):
@@ -366,11 +517,11 @@ def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_pat
         def batch(self, frames):
             return [[] for _ in frames]
 
-    def fail_build_cosmos_backend(*args, **kwargs):
+    def fail_build_vlm_backend(*args, **kwargs):
         raise AssertionError("detector-only eval must not construct a VLM backend")
 
     monkeypatch.setattr("vrs.pipeline.build_detector", lambda *args, **kwargs: _FakeDetector())
-    monkeypatch.setattr("vrs.pipeline.build_cosmos_backend", fail_build_cosmos_backend)
+    monkeypatch.setattr("vrs.pipeline.build_vlm_backend", fail_build_vlm_backend)
 
     policy = WatchPolicy(
         [
@@ -570,6 +721,34 @@ def test_gate_reads_schema_v1_reports():
     assert result.current_flip_rate == pytest.approx(0.12)
 
 
+def test_committed_eval_baseline_matches_regeneration_script():
+    from scripts.write_eval_baseline import build_baseline_report
+
+    baseline_path = Path("baselines/eval/report.json")
+    committed = json.loads(baseline_path.read_text(encoding="utf-8"))
+    regenerated = build_baseline_report().to_dict()
+
+    assert committed == regenerated
+
+
+def test_gate_accepts_committed_eval_baseline():
+    from vrs.eval.ci import compare_reports
+
+    baseline = json.loads(Path("baselines/eval/report.json").read_text(encoding="utf-8"))
+    current = _schema_v1_report(
+        {"fire": 0.74, "smoke": 0.79},
+        overall_f1=0.76,
+        flip_rate=0.125,
+        fn_flag_rate=0.125,
+    )
+
+    result = compare_reports(baseline, current, max_f1_drop=0.02)
+
+    assert result.passed is True
+    assert result.overall.regressed is False
+    assert {d.class_name for d in result.per_class} == {"fire", "smoke"}
+
+
 def test_gate_supports_legacy_vs_schema_v1_reports():
     from vrs.eval.ci import compare_reports
 
@@ -613,6 +792,39 @@ def test_gate_rejects_malformed_report():
         compare_reports({}, _report({"fire": 0.8}))
 
 
+def test_gate_rejects_non_object_report():
+    from vrs.eval.ci import compare_reports
+
+    with pytest.raises(ValueError, match="expected object at 'baseline'"):
+        compare_reports([], _report({"fire": 0.8}))
+
+
+def test_gate_rejects_structural_metric_errors():
+    from vrs.eval.ci import compare_reports
+
+    baseline = _schema_v1_report({"fire": 0.80}, overall_f1=0.80)
+    current = _schema_v1_report({"fire": 0.79}, overall_f1=0.79)
+    del current["metrics"]["per_class"]["fire"]["f1"]
+
+    with pytest.raises(ValueError, match=r"metrics\.per_class\.fire\.f1"):
+        compare_reports(baseline, current)
+
+
+def test_gate_treats_null_quality_signals_as_zero():
+    from vrs.eval.ci import compare_reports
+
+    baseline = _schema_v1_report({"fire": 0.80}, overall_f1=0.80)
+    current = _schema_v1_report({"fire": 0.80}, overall_f1=0.80)
+    current["quality_signals"]["verifier_flip_rate"] = None
+    current["quality_signals"]["false_negative_flag_rate"] = None
+
+    result = compare_reports(baseline, current)
+
+    assert result.passed is True
+    assert result.current_flip_rate == 0.0
+    assert result.current_fn_flag_rate == 0.0
+
+
 def test_gate_cli_exit_codes(tmp_path: Path):
     import json as _json
 
@@ -621,13 +833,19 @@ def test_gate_cli_exit_codes(tmp_path: Path):
     baseline = tmp_path / "baseline.json"
     current_pass = tmp_path / "current_pass.json"
     current_fail = tmp_path / "current_fail.json"
+    current_invalid = tmp_path / "current_invalid.json"
+    current_non_object = tmp_path / "current_non_object.json"
 
     baseline.write_text(_json.dumps(_report({"fire": 0.80}, overall_f1=0.80)))
     current_pass.write_text(_json.dumps(_report({"fire": 0.79}, overall_f1=0.79)))
     current_fail.write_text(_json.dumps(_report({"fire": 0.50}, overall_f1=0.50)))
+    current_invalid.write_text(_json.dumps({"metrics": {"per_class": {"fire": {}}}}))
+    current_non_object.write_text(_json.dumps([]))
 
     assert ci_main(["--baseline", str(baseline), "--current", str(current_pass)]) == 0
     assert ci_main(["--baseline", str(baseline), "--current", str(current_fail)]) == 1
+    assert ci_main(["--baseline", str(baseline), "--current", str(current_invalid)]) == 2
+    assert ci_main(["--baseline", str(baseline), "--current", str(current_non_object)]) == 2
     assert (
         ci_main(["--baseline", str(baseline), "--current", str(tmp_path / "nonexistent.json")]) == 2
     )

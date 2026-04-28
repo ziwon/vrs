@@ -15,7 +15,9 @@ class JsonlSink:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._fp: IO[str] | None = None
-        self.audit_config = audit if isinstance(audit, AuditConfig) else AuditConfig.from_mapping(audit)
+        self.audit_config = (
+            audit if isinstance(audit, AuditConfig) else AuditConfig.from_mapping(audit)
+        )
         self._audit_signer: AuditSigner | None = None
 
     def __enter__(self) -> JsonlSink:

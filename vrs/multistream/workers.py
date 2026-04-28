@@ -300,7 +300,9 @@ class SinkWorker(threading.Thread):
         from ..sinks.jsonl_sink import JsonlSink
 
         jsonl_path = self.out_dir / self.jsonl_name
-        jsonl = JsonlSink(jsonl_path, audit=self.audit_cfg) if self.audit_cfg else JsonlSink(jsonl_path)
+        jsonl = (
+            JsonlSink(jsonl_path, audit=self.audit_cfg) if self.audit_cfg else JsonlSink(jsonl_path)
+        )
 
         annotator = None
         thumbnail_sink = None

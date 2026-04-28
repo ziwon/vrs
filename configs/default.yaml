@@ -75,6 +75,14 @@ sink:
   annotated_mp4: annotated.mp4
   write_annotated: false
 
+audit:
+  # Optional tamper-evident signing for alerts.jsonl. Disabled preserves the
+  # historical unsigned JSONL record shape.
+  enabled: false
+  mode: hmac_sha256          # hmac_sha256 | sha256
+  key_id: null               # example: local-dev-key
+  key_env: VRS_AUDIT_HMAC_KEY
+
 privacy:
   # Face blurring on retained visual outputs (thumbnails and optional mp4).
   # GDPR / K-GDPR: faces on retained

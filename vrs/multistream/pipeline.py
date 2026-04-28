@@ -208,6 +208,7 @@ class MultiStreamPipeline:
                     thumbnails_dir=self._sink_cfg.get("thumbnails_dir", "thumbnails"),
                     thumbnail_ext=self._sink_cfg.get("thumbnail_ext", "jpg"),
                     thumbnail_quality=int(self._sink_cfg.get("thumbnail_quality", 90)),
+                    audit_cfg=self.cfg.get("audit"),
                     sink_q=self._sink_qs[s.id],
                     stop_event=self._stop,
                     privacy_cfg=self._privacy_cfg,

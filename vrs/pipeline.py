@@ -137,6 +137,7 @@ class VRSPipeline:
     def run(self, source: str) -> None:
         ing_cfg = self.cfg["ingest"]
         sink_cfg = self.cfg["sink"]
+        audit_cfg = self.cfg.get("audit")
 
         reader = StreamReader(
             source=source,
@@ -168,7 +169,7 @@ class VRSPipeline:
             )
 
         try:
-            with JsonlSink(jsonl_path) as jsonl:
+            with JsonlSink(jsonl_path, audit=audit_cfg) as jsonl:
                 for frame in reader:
                     detector_t0 = time.perf_counter()
                     try:

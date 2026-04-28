@@ -1,0 +1,68 @@
+policy_id: elderly_care_v1
+policy_version: 1
+description: Elderly-care fall verification semantics.
+
+scenarios:
+  - id: elderly_room_fall
+    event_class: falldown
+    detector_labels:
+      - person lying on the ground
+      - fallen person
+      - collapsed person
+    prompt_template: verifier_base.md
+    context_window_s: 10
+    min_detector_confidence: 0.3
+
+    normal_conditions:
+      - person resting on a bed, sofa, or recliner
+      - caregiver kneeling beside a resident
+      - resident exercising on a floor mat with normal movement
+
+    abnormal_conditions:
+      - person lying on the floor away from furniture
+      - abrupt transition from standing or walking to the floor
+      - person motionless or struggling to get up after falling
+
+    false_positive_hints:
+      - bed or sofa use
+      - stretching on mat
+      - caregiver kneeling
+
+    true_positive_hints:
+      - body on floor in walkway
+      - unusual sprawled posture
+      - no recovery across sampled frames
+
+    required_evidence:
+      - person location relative to floor and furniture
+      - posture
+      - motion before and after peak frame
+      - whether another person is assisting
+
+    uncertain_when:
+      - the person is heavily occluded
+      - only one frame shows the person on the floor
+      - low light prevents posture assessment
+
+    verifier:
+      enabled: true
+      require_json: true
+      decision_labels:
+        - true_alert
+        - false_positive
+        - uncertain
+
+    severity:
+      true_alert: high
+      uncertain: warning
+
+    recommended_action:
+      true_alert: notify_caregiver
+      uncertain: request_review
+
+    zones:
+      include:
+        - resident_room
+        - hallway
+      exclude:
+        - bed_area

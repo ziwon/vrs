@@ -153,6 +153,43 @@ Outputs:
 - `runs/<name>/thumbnails/*.jpg` — one event image per alert, with detector/verifier overlays
 - `runs/<name>/annotated.mp4` — optional debug/demo overlay video when `sink.write_annotated: true`
 
+## Tamper-Evident Alert Logs
+
+`alerts.jsonl` can optionally include a hash chain so later review can detect
+modified, deleted, or reordered records. This is not encryption; alert contents
+remain plaintext JSON.
+
+```yaml
+audit:
+  enabled: true
+  mode: hmac_sha256
+  key_id: local-dev-key
+  key_env: VRS_AUDIT_HMAC_KEY
+```
+
+Set the HMAC key in the runtime environment and keep it out of the config file:
+
+```bash
+export VRS_AUDIT_HMAC_KEY='replace-with-a-secret-key'
+```
+
+When audit signing is enabled, each alert record gets `schema_version`,
+`audit_mode`, `prev_hash`, `record_hash`, and `key_id`. With
+`audit.enabled: false` (the default), the JSONL record shape is unchanged.
+
+Verify a signed log:
+
+```bash
+python -m vrs.audit --log runs/demo/alerts.jsonl \
+  --mode hmac_sha256 \
+  --key-env VRS_AUDIT_HMAC_KEY
+```
+
+Verification detects edits to signed records, middle deletion, and reordering
+because every record commits to the previous record hash. To prove that the last
+record was not truncated, store the final `record_hash` or file digest in your
+external retention system at collection time.
+
 ## Smoke-test on your GPU (e.g. RTX 5080)
 
 1. **Generate synthetic plumbing-test clips** (no network, no datasets):

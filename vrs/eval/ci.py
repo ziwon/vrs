@@ -26,6 +26,13 @@ import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+from .report import SCHEMA_VERSION
+
+
+class ReportStructureError(ValueError):
+    """Raised when an eval report does not match the supported metric shape."""
 
 
 @dataclass
@@ -95,29 +102,49 @@ class GateResult:
 # ──────────────────────────────────────────────────────────────────────
 
 
-def _metrics_section(report: Mapping[str, object]) -> Mapping[str, object]:
-    if isinstance(report.get("metrics"), Mapping):
-        return report["metrics"]
-    if isinstance(report.get("aggregate"), Mapping):
-        return report["aggregate"]
+def _as_mapping(value: Any, path: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ReportStructureError(f"expected object at '{path}'")
+    return value
+
+
+def _read_f1(value: Any, path: str) -> float:
+    metrics = _as_mapping(value, path)
+    if "f1" not in metrics:
+        raise ReportStructureError(f"missing required field '{path}.f1'")
+    try:
+        return float(metrics["f1"])
+    except (TypeError, ValueError) as exc:
+        raise ReportStructureError(f"expected numeric field '{path}.f1'") from exc
+
+
+def _metrics_section(report: Mapping[str, Any]) -> Mapping[str, Any]:
+    if report.get("schema_version") not in (None, SCHEMA_VERSION):
+        raise ReportStructureError(
+            f"unsupported schema_version {report.get('schema_version')!r}; expected {SCHEMA_VERSION!r}"
+        )
+    if "metrics" in report:
+        return _as_mapping(report.get("metrics"), "metrics")
+    if "aggregate" in report:
+        return _as_mapping(report.get("aggregate"), "aggregate")
+    raise ReportStructureError("missing required top-level 'metrics' section")
+
+
+def _quality_signals_section(report: Mapping[str, Any]) -> Mapping[str, Any]:
+    if "quality_signals" in report:
+        return _as_mapping(report.get("quality_signals"), "quality_signals")
+    if "aggregate" in report:
+        return _as_mapping(report.get("aggregate"), "aggregate")
     return {}
 
 
-def _quality_signals_section(report: Mapping[str, object]) -> Mapping[str, object]:
-    if isinstance(report.get("quality_signals"), Mapping):
-        return report["quality_signals"]
-    if isinstance(report.get("aggregate"), Mapping):
-        return report["aggregate"]
-    return {}
+def _per_class_f1(report: Mapping[str, Any]) -> dict[str, float]:
+    per = _as_mapping(_metrics_section(report).get("per_class"), "metrics.per_class")
+    return {str(cls): _read_f1(metrics, f"metrics.per_class.{cls}") for cls, metrics in per.items()}
 
 
-def _per_class_f1(report: dict) -> dict[str, float]:
-    per = _metrics_section(report).get("per_class", {})
-    return {cls: float(m.get("f1", 0.0)) for cls, m in per.items()}
-
-
-def _overall_f1(report: dict) -> float:
-    return float(_metrics_section(report).get("overall", {}).get("f1", 0.0))
+def _overall_f1(report: Mapping[str, Any]) -> float:
+    return _read_f1(_metrics_section(report).get("overall"), "metrics.overall")
 
 
 def compare_reports(

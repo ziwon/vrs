@@ -570,6 +570,34 @@ def test_gate_reads_schema_v1_reports():
     assert result.current_flip_rate == pytest.approx(0.12)
 
 
+def test_committed_eval_baseline_matches_regeneration_script():
+    from scripts.write_eval_baseline import build_baseline_report
+
+    baseline_path = Path("baselines/eval/report.json")
+    committed = json.loads(baseline_path.read_text(encoding="utf-8"))
+    regenerated = build_baseline_report().to_dict()
+
+    assert committed == regenerated
+
+
+def test_gate_accepts_committed_eval_baseline():
+    from vrs.eval.ci import compare_reports
+
+    baseline = json.loads(Path("baselines/eval/report.json").read_text(encoding="utf-8"))
+    current = _schema_v1_report(
+        {"fire": 0.74, "smoke": 0.79},
+        overall_f1=0.76,
+        flip_rate=0.125,
+        fn_flag_rate=0.125,
+    )
+
+    result = compare_reports(baseline, current, max_f1_drop=0.02)
+
+    assert result.passed is True
+    assert result.overall.regressed is False
+    assert {d.class_name for d in result.per_class} == {"fire", "smoke"}
+
+
 def test_gate_supports_legacy_vs_schema_v1_reports():
     from vrs.eval.ci import compare_reports
 
@@ -613,6 +641,17 @@ def test_gate_rejects_malformed_report():
         compare_reports({}, _report({"fire": 0.8}))
 
 
+def test_gate_rejects_structural_metric_errors():
+    from vrs.eval.ci import compare_reports
+
+    baseline = _schema_v1_report({"fire": 0.80}, overall_f1=0.80)
+    current = _schema_v1_report({"fire": 0.79}, overall_f1=0.79)
+    del current["metrics"]["per_class"]["fire"]["f1"]
+
+    with pytest.raises(ValueError, match=r"metrics\.per_class\.fire\.f1"):
+        compare_reports(baseline, current)
+
+
 def test_gate_cli_exit_codes(tmp_path: Path):
     import json as _json
 
@@ -621,13 +660,16 @@ def test_gate_cli_exit_codes(tmp_path: Path):
     baseline = tmp_path / "baseline.json"
     current_pass = tmp_path / "current_pass.json"
     current_fail = tmp_path / "current_fail.json"
+    current_invalid = tmp_path / "current_invalid.json"
 
     baseline.write_text(_json.dumps(_report({"fire": 0.80}, overall_f1=0.80)))
     current_pass.write_text(_json.dumps(_report({"fire": 0.79}, overall_f1=0.79)))
     current_fail.write_text(_json.dumps(_report({"fire": 0.50}, overall_f1=0.50)))
+    current_invalid.write_text(_json.dumps({"metrics": {"per_class": {"fire": {}}}}))
 
     assert ci_main(["--baseline", str(baseline), "--current", str(current_pass)]) == 0
     assert ci_main(["--baseline", str(baseline), "--current", str(current_fail)]) == 1
+    assert ci_main(["--baseline", str(baseline), "--current", str(current_invalid)]) == 2
     assert (
         ci_main(["--baseline", str(baseline), "--current", str(tmp_path / "nonexistent.json")]) == 2
     )

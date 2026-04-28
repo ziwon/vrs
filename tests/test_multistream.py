@@ -308,6 +308,147 @@ def test_queue_stats_report_backpressure():
     assert q.qsize() == 2
 
 
+def test_fast_shutdown_sets_worker_stop_immediately():
+    from vrs.multistream.pipeline import MultiStreamPipeline
+
+    p = MultiStreamPipeline.__new__(MultiStreamPipeline)
+    p._stop = threading.Event()
+    p._decoder_stop = threading.Event()
+    p._frame_q = BoundedQueue(maxsize=4)
+    p._candidate_q = BoundedQueue(maxsize=4)
+    p._sink_qs = {"s1": BoundedQueue(maxsize=4)}
+    p._decoders = []
+    p._sinks = []
+    p._verifier_worker = None
+    p._calibrator = None
+    saw_stop = threading.Event()
+
+    def _worker():
+        p._stop.wait(timeout=1.0)
+        if p._stop.is_set():
+            saw_stop.set()
+
+    p._detector_worker = threading.Thread(target=_worker, name="detector", daemon=True)
+    p._detector_worker.start()
+
+    p.stop("fast")
+
+    assert p._decoder_stop.is_set()
+    assert p._stop.is_set()
+    assert saw_stop.is_set()
+
+
+def test_drain_shutdown_flushes_frame_candidate_and_sink_queues_without_loss():
+    from vrs.multistream.pipeline import MultiStreamPipeline
+
+    p = MultiStreamPipeline.__new__(MultiStreamPipeline)
+    p._stop = threading.Event()
+    p._decoder_stop = threading.Event()
+    p._shutdown_drain_timeout_s = 2.0
+    p._frame_q = BoundedQueue(maxsize=8)
+    p._candidate_q = BoundedQueue(maxsize=8)
+    sink_q = BoundedQueue(maxsize=8)
+    p._sink_qs = {"s1": sink_q}
+    p._decoders = []
+    p._calibrator = None
+    written: list[str] = []
+
+    for item in ("f1", "f2"):
+        p._frame_q.put(item)
+    p._candidate_q.put("candidate-before-stop")
+    sink_q.put("sink-before-stop")
+
+    def _detector():
+        while True:
+            try:
+                item = p._frame_q.get(timeout=0.05)
+            except TimeoutError:
+                continue
+            except StopIteration:
+                break
+            p._candidate_q.put(f"candidate:{item}")
+
+    def _verifier():
+        while True:
+            try:
+                item = p._candidate_q.get(timeout=0.05)
+            except TimeoutError:
+                continue
+            except StopIteration:
+                break
+            sink_q.put(f"verified:{item}")
+
+    def _sink():
+        while True:
+            try:
+                item = sink_q.get(timeout=0.05)
+            except TimeoutError:
+                continue
+            except StopIteration:
+                break
+            written.append(item)
+
+    p._detector_worker = threading.Thread(target=_detector, name="detector", daemon=True)
+    p._verifier_worker = threading.Thread(target=_verifier, name="verifier", daemon=True)
+    p._sinks = [threading.Thread(target=_sink, name="sink[s1]", daemon=True)]
+    p._detector_worker.start()
+    p._verifier_worker.start()
+    p._sinks[0].start()
+
+    p.stop("drain")
+
+    assert p._stop.is_set()
+    assert set(written) == {
+        "sink-before-stop",
+        "verified:candidate-before-stop",
+        "verified:candidate:f1",
+        "verified:candidate:f2",
+    }
+
+
+def test_drain_shutdown_logs_queue_sizes_and_alive_workers_on_deadline(caplog):
+    import logging
+
+    from vrs.multistream.pipeline import MultiStreamPipeline
+
+    p = MultiStreamPipeline.__new__(MultiStreamPipeline)
+    p._stop = threading.Event()
+    p._decoder_stop = threading.Event()
+    p._shutdown_drain_timeout_s = 0.01
+    p._frame_q = BoundedQueue(maxsize=4)
+    p._candidate_q = BoundedQueue(maxsize=4)
+    p._sink_qs = {"s1": BoundedQueue(maxsize=4)}
+    p._decoders = []
+    p._verifier_worker = None
+    p._sinks = []
+    p._calibrator = None
+    release = threading.Event()
+
+    p._frame_q.put("still-buffered")
+
+    def _blocked_detector():
+        release.wait(timeout=1.0)
+
+    p._detector_worker = threading.Thread(
+        target=_blocked_detector,
+        name="detector",
+        daemon=True,
+    )
+    p._detector_worker.start()
+
+    try:
+        with caplog.at_level(logging.WARNING, logger="vrs.multistream.pipeline"):
+            p.stop("drain")
+    finally:
+        release.set()
+        p._detector_worker.join(timeout=1.0)
+
+    messages = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("drain shutdown deadline exceeded" in m for m in messages)
+    assert any("frame_q=1" in m for m in messages)
+    assert any("alive workers: detector" in m for m in messages)
+
+
 def test_drop_delta_logger_warns_on_increase(caplog):
     """Regression: when queue drop counters grow between samples, the
     pipeline must surface the jump as a WARNING naming every affected

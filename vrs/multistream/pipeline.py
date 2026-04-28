@@ -158,6 +158,13 @@ class MultiStreamPipeline:
         # --- queues ---
         ms_cfg = config.get("multistream") or {}
         self._stop = threading.Event()
+        self._decoder_stop = threading.Event()
+        self._shutdown_mode = str(ms_cfg.get("shutdown_mode", "fast")).lower()
+        if self._shutdown_mode not in {"fast", "drain"}:
+            raise ValueError("multistream.shutdown_mode must be 'fast' or 'drain'")
+        self._shutdown_drain_timeout_s = float(ms_cfg.get("shutdown_drain_timeout_s", 10.0))
+        if self._shutdown_drain_timeout_s < 0:
+            raise ValueError("multistream.shutdown_drain_timeout_s must be >= 0")
         self._frame_q = BoundedQueue(
             maxsize=int(ms_cfg.get("frame_queue_size", max(32, 4 * len(streams)))),
             policy=DropPolicy(ms_cfg.get("frame_drop_policy", "drop_oldest")),
@@ -259,7 +266,7 @@ class MultiStreamPipeline:
                     stream_id=s.id,
                     reader=reader,
                     frame_q=self._frame_q,
-                    stop_event=self._stop,
+                    stop_event=self._decoder_stop,
                 )
             )
 
@@ -321,7 +328,17 @@ class MultiStreamPipeline:
         finally:
             self.stop()
 
-    def stop(self) -> None:
+    def stop(self, mode: str | None = None) -> None:
+        shutdown_mode = str(mode or getattr(self, "_shutdown_mode", "fast")).lower()
+        if shutdown_mode == "drain":
+            self._stop_drain()
+        elif shutdown_mode == "fast":
+            self._stop_fast()
+        else:
+            raise ValueError("shutdown mode must be 'fast' or 'drain'")
+
+    def _stop_fast(self) -> None:
+        self._decoder_stop_event().set()
         self._stop.set()
         self._frame_q.close()
         self._candidate_q.close()
@@ -359,11 +376,93 @@ class MultiStreamPipeline:
         if metrics is not None:
             metrics.close()
 
+    def _stop_drain(self) -> None:
+        timeout_s = float(getattr(self, "_shutdown_drain_timeout_s", 10.0))
+        deadline = time.monotonic() + timeout_s
+        deadline_exceeded = False
+
+        self._decoder_stop_event().set()
+
+        for d in self._decoders:
+            if not self._join_until_deadline(d, deadline):
+                deadline_exceeded = True
+
+        self._frame_q.close()
+        if self._detector_worker and not self._join_until_deadline(self._detector_worker, deadline):
+            deadline_exceeded = True
+
+        self._candidate_q.close()
+        if self._verifier_worker and not self._join_until_deadline(self._verifier_worker, deadline):
+            deadline_exceeded = True
+
+        for q in self._sink_qs.values():
+            q.close()
+        for w in self._sinks:
+            if not self._join_until_deadline(w, deadline):
+                deadline_exceeded = True
+
+        if deadline_exceeded:
+            self._log_drain_deadline_exceeded(timeout_s)
+            self._stop.set()
+            self._frame_q.close()
+            self._candidate_q.close()
+            for q in self._sink_qs.values():
+                q.close()
+        else:
+            self._stop.set()
+
+        if self._calibrator is not None:
+            self._calibrator.close()
+
     @staticmethod
     def _join_or_track_hung(thread: threading.Thread, timeout: float, hung: list[str]) -> None:
         thread.join(timeout=timeout)
         if thread.is_alive():
             hung.append(f"{thread.name}(>{timeout:g}s)")
+
+    @staticmethod
+    def _join_until_deadline(thread: threading.Thread, deadline: float) -> bool:
+        timeout = max(0.0, deadline - time.monotonic())
+        thread.join(timeout=timeout)
+        return not thread.is_alive()
+
+    def _decoder_stop_event(self) -> threading.Event:
+        event = getattr(self, "_decoder_stop", None)
+        if event is None:
+            event = self._stop
+            self._decoder_stop = event
+        return event
+
+    def _log_drain_deadline_exceeded(self, timeout_s: float) -> None:
+        queue_sizes = self._queue_sizes()
+        queue_parts = ", ".join(f"{name}={size}" for name, size in queue_sizes.items())
+        alive = self._alive_worker_names()
+        alive_part = ", ".join(alive) if alive else "none"
+        logger.warning(
+            "drain shutdown deadline exceeded after %.2fs; remaining queues: %s; alive workers: %s",
+            timeout_s,
+            queue_parts,
+            alive_part,
+        )
+
+    def _queue_sizes(self) -> dict[str, int]:
+        out = {
+            "frame_q": self._frame_q.qsize(),
+            "candidate_q": self._candidate_q.qsize(),
+        }
+        for sid, q in self._sink_qs.items():
+            out[f"sink[{sid}]"] = q.qsize()
+        return out
+
+    def _alive_worker_names(self) -> list[str]:
+        threads: list[threading.Thread] = []
+        threads.extend(getattr(self, "_decoders", []))
+        for attr in ("_detector_worker", "_verifier_worker"):
+            worker = getattr(self, attr, None)
+            if worker is not None:
+                threads.append(worker)
+        threads.extend(getattr(self, "_sinks", []))
+        return [t.name for t in threads if t.is_alive()]
 
     # ---- backpressure diagnostics -----------------------------------
 

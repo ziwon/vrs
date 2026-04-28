@@ -8,6 +8,7 @@ to change.
 from __future__ import annotations
 
 from .base import Dataset
+from .dfire import DFireDataset
 from .labeled_dir import LabeledDirDataset
 
-__all__ = ["Dataset", "LabeledDirDataset"]
+__all__ = ["DFireDataset", "Dataset", "LabeledDirDataset"]

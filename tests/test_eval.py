@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from vrs.eval import (
     SCHEMA_VERSION,
@@ -16,8 +17,10 @@ from vrs.eval import (
     HarnessResult,
     config_for_eval_mode,
     score_alerts_against_truth,
+    score_detections_against_truth,
+    score_image_level_against_truth,
 )
-from vrs.eval.datasets import LabeledDirDataset
+from vrs.eval.datasets import DFireDataset, LabeledDirDataset
 from vrs.eval.metrics import aggregate_scores
 
 
@@ -34,6 +37,10 @@ def _alert(
 
 def _event(cls: str, start: float, end: float) -> GroundTruthEvent:
     return GroundTruthEvent(class_name=cls, start_s=start, end_s=end)
+
+
+def _bbox_event(cls: str, bbox: tuple[float, float, float, float]) -> GroundTruthEvent:
+    return GroundTruthEvent(class_name=cls, start_s=0.0, end_s=0.0, bbox_xywh_norm=bbox)
 
 
 # ─── ClassMetrics ──────────────────────────────────────────────────────
@@ -142,6 +149,69 @@ def test_score_restricted_classes_excludes_others():
     assert score.n_events == 0
 
 
+def test_score_detections_matches_bboxes_by_class_and_iou():
+    alerts = [
+        {
+            "class_name": "fire",
+            "peak_pts_s": 0.0,
+            "true_alert": True,
+            "bbox_xywh_norm": [0.50, 0.50, 0.40, 0.40],
+        },
+        {
+            "class_name": "smoke",
+            "peak_pts_s": 0.0,
+            "true_alert": True,
+            "bbox_xywh_norm": [0.10, 0.10, 0.10, 0.10],
+        },
+    ]
+    events = [
+        _bbox_event("fire", (0.50, 0.50, 0.40, 0.40)),
+        _bbox_event("smoke", (0.80, 0.80, 0.10, 0.10)),
+    ]
+
+    score = score_detections_against_truth(alerts, events, iou_threshold=0.5)
+
+    assert (score.per_class["fire"].tp, score.per_class["fire"].fp, score.per_class["fire"].fn) == (
+        1,
+        0,
+        0,
+    )
+    assert (
+        score.per_class["smoke"].tp,
+        score.per_class["smoke"].fp,
+        score.per_class["smoke"].fn,
+    ) == (0, 1, 1)
+
+
+def test_score_detections_uses_peak_detection_xyxy_boxes():
+    alerts = [
+        {
+            "class_name": "smoke",
+            "peak_pts_s": 0.0,
+            "true_alert": True,
+            "peak_detections": [{"score": 0.9, "xyxy": [20, 10, 60, 30]}],
+        }
+    ]
+    events = [_bbox_event("smoke", (0.40, 0.40, 0.40, 0.40))]
+
+    score = score_detections_against_truth(alerts, events, image_size=(100, 50))
+
+    assert score.per_class["smoke"].tp == 1
+
+
+def test_score_image_level_collapses_multiple_boxes_to_class_presence():
+    alerts = [_alert("fire", 0.0), _alert("smoke", 0.0)]
+    events = [
+        _bbox_event("fire", (0.2, 0.2, 0.1, 0.1)),
+        _bbox_event("fire", (0.8, 0.8, 0.1, 0.1)),
+    ]
+
+    score = score_image_level_against_truth(alerts, events)
+
+    assert (score.per_class["fire"].tp, score.per_class["fire"].fn) == (1, 0)
+    assert score.per_class["smoke"].fp == 1
+
+
 # ─── aggregation ──────────────────────────────────────────────────────
 
 
@@ -183,6 +253,39 @@ def test_labeled_dir_yields_items_with_events(tmp_path: Path):
 def test_labeled_dir_rejects_nonexistent_root(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         LabeledDirDataset(tmp_path / "does-not-exist")
+
+
+def test_dfire_dataset_yields_image_items_with_bbox_events(tmp_path: Path):
+    root = tmp_path / "dfire-mini"
+    images = root / "images"
+    labels = root / "labels"
+    images.mkdir(parents=True)
+    labels.mkdir()
+
+    Image.new("RGB", (80, 40), color="black").save(images / "sample.jpg")
+    Image.new("RGB", (80, 40), color="black").save(images / "quiet.jpg")
+    (labels / "sample.txt").write_text("0 0.50 0.50 0.25 0.50\n1 0.25 0.25 0.20 0.20\n")
+
+    items = list(DFireDataset(root))
+
+    assert [item.video_path.name for item in items] == ["quiet.jpg", "sample.jpg"]
+    assert items[0].events == []
+    assert items[0].image_size == (80, 40)
+    assert items[1].events == [
+        GroundTruthEvent("smoke", 0.0, 0.0, (0.50, 0.50, 0.25, 0.50)),
+        GroundTruthEvent("fire", 0.0, 0.0, (0.25, 0.25, 0.20, 0.20)),
+    ]
+
+
+def test_dfire_dataset_rejects_malformed_label(tmp_path: Path):
+    root = tmp_path / "dfire-mini"
+    (root / "images").mkdir(parents=True)
+    (root / "labels").mkdir()
+    Image.new("RGB", (10, 10), color="black").save(root / "images" / "bad.jpg")
+    (root / "labels" / "bad.txt").write_text("0 0.5 0.5 0.0 0.2\n")
+
+    with pytest.raises(ValueError, match="width/height"):
+        list(DFireDataset(root))
 
 
 # ─── harness integration (stubbed pipeline) ────────────────────────────
@@ -255,6 +358,70 @@ def test_harness_scores_per_video_and_aggregates(tmp_path: Path):
     # to_dict is JSON-serializable — smoke-test the CLI report shape
     blob = json.dumps(result.to_dict())
     assert "aggregate" in blob and "per_video" in blob
+
+
+def test_harness_uses_bbox_scoring_for_dfire_dataset(tmp_path: Path):
+    from vrs.eval import evaluate
+
+    root = tmp_path / "dfire-mini"
+    images = root / "images"
+    labels = root / "labels"
+    images.mkdir(parents=True)
+    labels.mkdir()
+    Image.new("RGB", (100, 50), color="black").save(images / "frame.jpg")
+    (labels / "frame.txt").write_text("1 0.40 0.40 0.40 0.40\n")
+
+    alerts_per_video = {
+        "frame": [
+            {
+                "class_name": "fire",
+                "peak_pts_s": 100.0,
+                "true_alert": True,
+                "peak_detections": [{"score": 0.8, "xyxy": [20, 10, 60, 30]}],
+            }
+        ]
+    }
+
+    def factory(od):
+        return _StubPipeline(od, alerts_per_video)
+
+    result = evaluate(
+        dataset=DFireDataset(root),
+        pipeline_factory=factory,
+        out_dir=tmp_path / "out",
+        tolerance_s=0.0,
+        bbox_iou_threshold=0.5,
+    )
+
+    assert result.aggregate.per_class["fire"].tp == 1
+
+
+def test_harness_can_score_bbox_dataset_at_image_level(tmp_path: Path):
+    from vrs.eval import evaluate
+
+    root = tmp_path / "dfire-mini"
+    images = root / "images"
+    labels = root / "labels"
+    images.mkdir(parents=True)
+    labels.mkdir()
+    Image.new("RGB", (100, 50), color="black").save(images / "frame.jpg")
+    (labels / "frame.txt").write_text("1 0.40 0.40 0.40 0.40\n")
+
+    alerts_per_video = {
+        "frame": [_alert("fire", 0.0, true_alert=True)],
+    }
+
+    def factory(od):
+        return _StubPipeline(od, alerts_per_video)
+
+    result = evaluate(
+        dataset=DFireDataset(root),
+        pipeline_factory=factory,
+        out_dir=tmp_path / "out",
+        bbox_scoring="image",
+    )
+
+    assert (result.aggregate.per_class["fire"].tp, result.aggregate.per_class["fire"].fp) == (1, 0)
 
 
 def test_eval_report_round_trip_is_stable():
@@ -348,11 +515,17 @@ def test_eval_cli_accepts_detector_only_mode():
             "configs/policies/safety.yaml",
             "--mode",
             "detector_only",
+            "--dataset-format",
+            "dfire",
+            "--bbox-scoring",
+            "image",
             "--out",
             "runs/eval-detector",
         ]
     )
     assert args.mode == "detector_only"
+    assert args.dataset_format == "dfire"
+    assert args.bbox_scoring == "image"
 
 
 def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_path: Path):

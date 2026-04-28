@@ -5,22 +5,28 @@ knob (thresholds, prompts, verifier model, tracking) stops being guesswork.
 
 Current scope:
   * Dataclasses for ground-truth events and eval results (``schemas``).
-  * Per-class P/R/F1 + verifier-flip rate + FN-flag rate (``metrics``).
+  * Per-class P/R/F1 + verifier-flip rate + FN-flag rate (``metrics``),
+    including event-level, bbox-level, and image-level scoring.
   * Stable, versioned ``EvalReport`` JSON contract (``report``).
   * Harness that iterates a dataset → runs the cascade → scores
-    (``harness``), with the labeled-directory adapter under ``datasets``.
+    (``harness``), with labeled-directory and D-Fire adapters under
+    ``datasets``.
   * Regression gate that compares two reports and exits non-zero on F1
     drops beyond a tolerance (``ci``, run as ``python -m vrs.eval.ci``).
 
 Upcoming:
-  * ``datasets/dfire.py`` and ``datasets/le2i.py`` — real public datasets.
-  * Detector-only evaluation mode reusing the same report schema.
+  * ``datasets/le2i.py`` and other real public datasets.
 """
 
 from __future__ import annotations
 
-from .harness import EvalMode, HarnessResult, config_for_eval_mode, evaluate
-from .metrics import aggregate_scores, score_alerts_against_truth
+from .harness import BBoxScoringMode, EvalMode, HarnessResult, config_for_eval_mode, evaluate
+from .metrics import (
+    aggregate_scores,
+    score_alerts_against_truth,
+    score_detections_against_truth,
+    score_image_level_against_truth,
+)
 from .report import (
     SCHEMA_VERSION,
     EvalReport,
@@ -43,6 +49,7 @@ from .schemas import ClassMetrics, EvalItem, GroundTruthEvent, RunScore
 
 __all__ = [
     "SCHEMA_VERSION",
+    "BBoxScoringMode",
     "ClassMetrics",
     "EvalItem",
     "EvalMode",
@@ -63,4 +70,6 @@ __all__ = [
     "config_for_eval_mode",
     "evaluate",
     "score_alerts_against_truth",
+    "score_detections_against_truth",
+    "score_image_level_against_truth",
 ]

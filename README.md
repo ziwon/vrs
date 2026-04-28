@@ -313,6 +313,45 @@ vrs/
 `scripts/eval.py` writes `<out>/report.json` using the stable schema version
 `vrs.eval.report.v1`.
 
+### Dataset Layouts
+
+The generic `labeled_dir` adapter expects MP4 files with optional sidecar JSON
+labels, as documented in `vrs/eval/datasets/labeled_dir.py`.
+
+The D-Fire adapter expects a local image dataset in YOLO format:
+
+```text
+datasets/dfire-mini/
+  images/
+    sample.jpg
+    quiet.jpg
+  labels/
+    sample.txt
+```
+
+Each label file uses one object per line:
+
+```text
+<class_id> <x_center> <y_center> <width> <height>
+```
+
+Coordinates are normalized to `0..1`. Missing label files are treated as quiet
+images. The default D-Fire class mapping is `0=smoke`, `1=fire`. D-Fire runs
+score bbox localization by default; pass `--bbox-scoring image` to collapse
+multiple boxes into class-present image-level metrics.
+
+Run a detector-only eval over a local D-Fire layout with:
+
+```bash
+uv run scripts/eval.py \
+  --dataset datasets/dfire-mini \
+  --dataset-format dfire \
+  --config configs/default.yaml \
+  --policy configs/policies/safety.yaml \
+  --mode detector_only \
+  --out runs/eval-dfire-detector
+```
+
 Top-level sections:
 - `schema_version` — explicit report-contract identifier for compatibility checks.
 - `run` — dataset name, run ID, timestamp, mode, and config/policy paths.
@@ -323,9 +362,9 @@ Top-level sections:
 - `quality_signals` — verifier flip rate, false-negative flag rate, and reserved diagnostic slots.
 - `per_video` — optional per-clip breakdown using the same metrics/quality shape.
 
-Today the CLI emits `mode: "full_cascade"` for the current detector+verifier
-path. A future detector-only scoring mode can reuse the same report schema with
-`mode: "detector_only"` instead of changing the JSON contract again.
+The CLI emits `mode: "full_cascade"` for the detector+verifier path and
+`mode: "detector_only"` when the verifier is disabled; both use the same JSON
+contract.
 
 `run.created_at` and `runtime.*` are diagnostic — they vary across runs and
 machines and are not part of the regression contract. The CI gate

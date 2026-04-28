@@ -22,7 +22,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from .datasets.base import Dataset
-from .metrics import aggregate_scores, score_alerts_against_truth
+from .metrics import (
+    aggregate_scores,
+    score_alerts_against_truth,
+    score_detections_against_truth,
+    score_image_level_against_truth,
+)
 from .schemas import RunScore
 
 logger = logging.getLogger(__name__)
@@ -30,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 PipelineFactory = Callable[[Path], Any]  # (out_dir) -> something with .run(source)
 EvalMode = Literal["full_cascade", "detector_only"]
+BBoxScoringMode = Literal["bbox", "image"]
 
 
 @dataclass
@@ -62,6 +68,8 @@ def evaluate(
     out_dir: str | Path,
     *,
     tolerance_s: float = 1.0,
+    bbox_iou_threshold: float = 0.5,
+    bbox_scoring: BBoxScoringMode = "bbox",
     alerts_filename: str = "alerts.jsonl",
     classes: Iterable[str] | None = None,
 ) -> HarnessResult:
@@ -74,10 +82,16 @@ def evaluate(
         out_dir: parent dir; each item gets its own subdir keyed by
             ``video_path.stem``.
         tolerance_s: temporal slack around ground-truth event windows.
+        bbox_iou_threshold: IoU threshold for image/bbox datasets.
+        bbox_scoring: score bbox-labeled sources by object IoU or image-level
+            class presence.
         alerts_filename: name of the JSONL the pipeline writes in its out dir.
         classes: restrict scoring to these class names (``None`` = union of
             classes seen in alerts / events).
     """
+    if bbox_scoring not in ("bbox", "image"):
+        raise ValueError(f"unknown bbox scoring mode: {bbox_scoring!r}")
+
     root = Path(out_dir)
     root.mkdir(parents=True, exist_ok=True)
 
@@ -95,12 +109,28 @@ def evaluate(
             logger.error("pipeline run failed on %s: %s", item.video_path, e)
 
         alerts = _load_alerts(video_out / alerts_filename)
-        score = score_alerts_against_truth(
-            alerts,
-            item.events,
-            tolerance_s=tolerance_s,
-            classes=classes_set,
-        )
+        if item.image_size is not None or any(e.bbox_xywh_norm is not None for e in item.events):
+            if bbox_scoring == "image":
+                score = score_image_level_against_truth(
+                    alerts,
+                    item.events,
+                    classes=classes_set,
+                )
+            else:
+                score = score_detections_against_truth(
+                    alerts,
+                    item.events,
+                    image_size=item.image_size,
+                    iou_threshold=bbox_iou_threshold,
+                    classes=classes_set,
+                )
+        else:
+            score = score_alerts_against_truth(
+                alerts,
+                item.events,
+                tolerance_s=tolerance_s,
+                classes=classes_set,
+            )
         per_video.append((item.video_path, score))
         logger.info(
             "scored %s — alerts=%d events=%d per_class=%s flip_rate=%.3f",

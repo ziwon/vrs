@@ -44,6 +44,13 @@ multistream:
   # pipeline. Raise if you have many streams and want quieter logs.
   drop_log_interval_s: 5.0
 
+  # Shutdown behavior:
+  #   fast   — stop all workers immediately and close queues quickly.
+  #   drain  — stop decoders first, then let frame/candidate/sink queues drain
+  #            until shutdown_drain_timeout_s elapses.
+  shutdown_mode: fast
+  shutdown_drain_timeout_s: 10.0
+
 # Stream manifest — one entry per camera / file.
 # ``id`` becomes the output subdirectory name:
 # runs/<out>/<id>/{alerts.jsonl,thumbnails/*.jpg}

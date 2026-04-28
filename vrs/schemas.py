@@ -1,6 +1,6 @@
 """Data contracts that flow through the cascade.
 
-Frame ──► Detection (per object, YOLOE) ──► CandidateAlert (event-state) ──► VerifiedAlert (Cosmos)
+Frame ──► Detection (per object, YOLOE) ──► CandidateAlert (event-state) ──► VerifiedAlert (VLM)
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ class VerifiedAlert:
     confidence: float  # 0.0 .. 1.0
     false_negative_class: str | None  # detector missed this listed event
     rationale: str  # one short sentence
-    bbox_xywh_norm: tuple[float, float, float, float] | None = None  # Cosmos bbox
+    bbox_xywh_norm: tuple[float, float, float, float] | None = None  # verifier bbox
     trajectory_xy_norm: list[tuple[float, float]] = field(default_factory=list)
     verifier_raw: str = ""
     thumbnail_path: str | None = None

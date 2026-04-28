@@ -517,11 +517,11 @@ def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_pat
         def batch(self, frames):
             return [[] for _ in frames]
 
-    def fail_build_cosmos_backend(*args, **kwargs):
+    def fail_build_vlm_backend(*args, **kwargs):
         raise AssertionError("detector-only eval must not construct a VLM backend")
 
     monkeypatch.setattr("vrs.pipeline.build_detector", lambda *args, **kwargs: _FakeDetector())
-    monkeypatch.setattr("vrs.pipeline.build_cosmos_backend", fail_build_cosmos_backend)
+    monkeypatch.setattr("vrs.pipeline.build_vlm_backend", fail_build_vlm_backend)
 
     policy = WatchPolicy(
         [

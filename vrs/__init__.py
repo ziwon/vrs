@@ -2,7 +2,7 @@
 
 Two-stage cascade:
   1. YOLOE-L open-vocabulary detector (fast path, ~6 ms / frame).
-  2. Cosmos-Reason2-2B physical-reasoning VLM (slow path, runs only on candidates).
+  2. Pluggable physical-reasoning VLM (slow path, runs only on candidates).
 """
 
 from __future__ import annotations

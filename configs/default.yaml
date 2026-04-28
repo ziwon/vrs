@@ -40,10 +40,10 @@ tracker:
 
 verifier:
   enabled: true
-  # Current backend names are Cosmos-shaped. Treat Cosmos-Reason2-2B as a
-  # baseline verifier, not a final model choice. Internal benchmarks and
-  # 2026 Qwen releases justify adding/evaluating Qwen3.5/Qwen3.6-class
-  # verifier backends before production model lock-in.
+  # VLM backend selector. Cosmos-Reason2-2B is the current baseline verifier,
+  # not a final model choice. Internal benchmarks and 2026 Qwen releases
+  # justify adding/evaluating Qwen3.5/Qwen3.6-class verifier backends before
+  # production model lock-in.
   backend: "transformers"    # transformers (default) | vllm | trtllm (reserved).
                              # vllm: higher gen throughput, needs `uv sync --extra vllm`
                              # and a GPU-local smoke run before prod — see vrs/runtime/vllm_cosmos.py.
@@ -51,13 +51,13 @@ verifier:
   model_id: "nvidia/Cosmos-Reason2-2B"  # baseline; compare against Qwen candidates via eval
   dtype: "bf16"              # "bf16" | "fp16" | "w4a16" (requires bitsandbytes)
   device: "cuda"
-  context_window_s: 4.0      # video clip handed to Cosmos: ±2s around the alert peak
+  context_window_s: 4.0      # video clip handed to the VLM: ±2s around the alert peak
   clip_fps: 4                # Cosmos-Reason2 was trained at FPS=4
   max_new_tokens: 1024       # CoT can run long; 1024 is safe for verify
   temperature: 0.2
   failure_policy: pass_through  # pass_through: surface verifier failures as low-confidence alerts.
                                 # reject: log/suppress malformed verifier outputs.
-  request_bbox: true         # ask Cosmos for {x,y,w,h} of the event in normalized coords
+  request_bbox: true         # ask the VLM for {x,y,w,h} of the event in normalized coords
   request_trajectory: true   # ask for a 2D trajectory (point list) for moving subjects
 
 sink:

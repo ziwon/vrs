@@ -118,6 +118,21 @@ def _read_f1(value: Any, path: str) -> float:
         raise ReportStructureError(f"expected numeric field '{path}.f1'") from exc
 
 
+def _read_optional_float(
+    metrics: Mapping[str, Any],
+    primary_key: str,
+    legacy_key: str,
+    path: str,
+) -> float:
+    value = metrics.get(primary_key, metrics.get(legacy_key, 0.0))
+    if value is None:
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise ReportStructureError(f"expected numeric field '{path}'") from exc
+
+
 def _metrics_section(report: Mapping[str, Any]) -> Mapping[str, Any]:
     if report.get("schema_version") not in (None, SCHEMA_VERSION):
         raise ReportStructureError(
@@ -166,8 +181,10 @@ def compare_reports(
     """
     if max_f1_drop < 0:
         raise ValueError("max_f1_drop must be >= 0")
-    if not _metrics_section(baseline) or not _metrics_section(current):
-        raise ValueError("both reports must have either a 'metrics' or 'aggregate' key")
+    baseline = _as_mapping(baseline, "baseline")
+    current = _as_mapping(current, "current")
+    _metrics_section(baseline)
+    _metrics_section(current)
 
     b_pc = _per_class_f1(baseline)
     c_pc = _per_class_f1(current)
@@ -215,17 +232,29 @@ def compare_reports(
         per_class=per_class,
         overall=overall,
         max_f1_drop=max_f1_drop,
-        baseline_flip_rate=float(
-            b_quality.get("verifier_flip_rate", b_quality.get("flip_rate", 0.0))
+        baseline_flip_rate=_read_optional_float(
+            b_quality,
+            "verifier_flip_rate",
+            "flip_rate",
+            "quality_signals.verifier_flip_rate",
         ),
-        current_flip_rate=float(
-            c_quality.get("verifier_flip_rate", c_quality.get("flip_rate", 0.0))
+        current_flip_rate=_read_optional_float(
+            c_quality,
+            "verifier_flip_rate",
+            "flip_rate",
+            "quality_signals.verifier_flip_rate",
         ),
-        baseline_fn_flag_rate=float(
-            b_quality.get("false_negative_flag_rate", b_quality.get("fn_flag_rate", 0.0))
+        baseline_fn_flag_rate=_read_optional_float(
+            b_quality,
+            "false_negative_flag_rate",
+            "fn_flag_rate",
+            "quality_signals.false_negative_flag_rate",
         ),
-        current_fn_flag_rate=float(
-            c_quality.get("false_negative_flag_rate", c_quality.get("fn_flag_rate", 0.0))
+        current_fn_flag_rate=_read_optional_float(
+            c_quality,
+            "false_negative_flag_rate",
+            "fn_flag_rate",
+            "quality_signals.false_negative_flag_rate",
         ),
     )
 

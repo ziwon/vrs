@@ -5,8 +5,8 @@ verifier backend, dtype/quantization profile, and benchmark artifact. A row is
 validated only when it links to a benchmark note under `docs/benchmarks/` and the
 commands below can reproduce the same profile on equivalent hardware.
 
-The current repository does not commit a GPU benchmark artifact yet. Until a row
-is promoted into the validated section, treat it as an implementation target or
+The repository may include exploratory GPU smoke artifacts. Until a row is
+promoted into the validated section, treat it as an implementation target or
 smoke-test candidate, not a capacity guarantee.
 
 ## Status definitions
@@ -14,6 +14,7 @@ smoke-test candidate, not a capacity guarantee.
 | Status | Meaning |
 |--------|---------|
 | Validated | Run on the named GPU class with the listed driver, CUDA, Python, torch, transformers, ultralytics, detector, verifier backend, dtype/quantization, peak VRAM, throughput, queue drops, and verifier latency recorded. |
+| Smoke-tested | End-to-end runtime path has been exercised on target hardware, but the repo does not yet include the complete throughput, queue, and p50/p95/p99 evidence required for deployment sizing. |
 | Unvalidated | Config exists or is expected to run, but the repo does not yet include a complete benchmark note for the exact runtime combination. |
 | Planned | Design target or reserved backend that still needs implementation or an end-to-end benchmark. |
 
@@ -28,6 +29,15 @@ from model size estimates alone.
 | GPU model | VRAM | Driver | CUDA | Python | torch | transformers | ultralytics | Detector | Verifier backend/model | dtype/quantization | Peak VRAM | Single-stream FPS | Multi-stream queue drops | Verifier p50/p95/p99 | Evidence |
 |-----------|------|--------|------|--------|-------|--------------|-------------|----------|------------------------|--------------------|-----------|-------------------|--------------------------|--------------------|----------|
 | _None committed_ | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+
+## Smoke-tested profiles
+
+These profiles have a concrete hardware smoke result, but they are not yet
+validated for deployment sizing.
+
+| Target class | Hardware | Config / install | Detector | Verifier backend/model | dtype/quantization | Status notes |
+|--------------|----------|------------------|----------|------------------------|--------------------|--------------|
+| Jetson Orin local VLM verifier | Jetson Orin 64GB, L4T R36.4.3, CUDA 12.6, torch 2.7.0 | `scripts/setup_jetson_venv.sh` with `configs/jetson-qwen3vl2b.yaml` | YOLOE-S FP16 (`yoloe-11s-seg.pt`) | `transformers`, `Qwen/Qwen3-VL-2B-Instruct` | BF16 | Exploratory RTSP falldown smoke only. Memory headroom is comfortable, but verifier latency is still slow-path only. See `docs/benchmarks/jetson-orin-qwen3vl2b-vlm-2026-05-12.md`. |
 
 ## Unvalidated profiles
 

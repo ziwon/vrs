@@ -1,0 +1,19 @@
+# Jetson/Orin Python 3.10 environment additions.
+#
+# This file intentionally does NOT install torch or torchvision.
+# Jetson CUDA PyTorch wheels are tied to JetPack/L4T, Python ABI, and aarch64.
+# Create the environment with --system-site-packages so it reuses the JetPack
+# torch/torchvision installation, then install these small project/test helpers.
+
+pytest>=7
+pytest-cov>=5.0
+pytest-xdist>=3.6
+ruff>=0.8
+pre-commit>=4.0
+ftfy>=6.3
+clip @ git+https://github.com/openai/CLIP.git
+transformers>=5.8.0
+qwen-vl-utils>=0.0.14
+accelerate>=1.13.0
+safetensors>=0.7.0
+pillow>=10.2

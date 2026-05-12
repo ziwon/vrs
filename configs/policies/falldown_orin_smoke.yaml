@@ -1,0 +1,14 @@
+# Orin smoke policy for the falldown RTSP test stream.
+# Lower persistence than production safety.yaml so we can exercise the
+# detector -> candidate -> Qwen verifier path in a short bounded run.
+
+watch:
+  - name: falldown
+    detector:
+      - "person lying on the ground"
+      - "fallen person"
+      - "collapsed person"
+    verifier: "A person has collapsed and is lying motionless on the floor"
+    severity: high
+    min_score: 0.35
+    min_persist_frames: 2

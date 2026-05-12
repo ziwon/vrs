@@ -117,6 +117,11 @@ class VRSPipeline:
                     base_url=ver_cfg.get("base_url"),
                     api_key_env=ver_cfg.get("api_key_env"),
                     timeout_s=float(ver_cfg.get("timeout_s", 60.0)),
+                    max_frame_width=(
+                        int(ver_cfg["max_frame_width"])
+                        if ver_cfg.get("max_frame_width") is not None
+                        else None
+                    ),
                 ),
                 backend=ver_cfg.get("backend", "transformers"),
             )

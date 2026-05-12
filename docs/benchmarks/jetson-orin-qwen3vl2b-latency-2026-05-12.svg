@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="550" viewBox="0 0 980 550" role="img" aria-labelledby="title desc">
+<title id="title">Qwen3-VL-2B verifier latency on Jetson Orin</title>
+<desc id="desc">Horizontal bar chart of verifier latency for resolution, keyframe, and token-budget variants.</desc>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<style>text{font-family:Inter,Segoe UI,Arial,sans-serif;fill:#1f2937}.axis{stroke:#9ca3af;stroke-width:1}.grid{stroke:#e5e7eb;stroke-width:1}.label{font-size:13px}.small{font-size:12px;fill:#4b5563}.title{font-size:22px;font-weight:700}.subtitle{font-size:13px;fill:#4b5563}.value{font-size:12px;font-weight:600}.bar{fill:#2563eb}.bar2{fill:#0f766e}.warn{fill:#d97706}</style>
+<text x="32" y="34" class="title">Qwen3-VL-2B verifier latency on Jetson Orin</text>
+<text x="32" y="57" class="subtitle">BF16 local transformers backend; model load excluded from per-case latency. Asterisk marks a truncated JSON case.</text>
+<line x1="210.0" y1="74" x2="210.0" y2="488" class="grid"/>
+<text x="210.0" y="512" text-anchor="middle" class="small">0s</text>
+<line x1="337.9" y1="74" x2="337.9" y2="488" class="grid"/>
+<text x="337.9" y="512" text-anchor="middle" class="small">2s</text>
+<line x1="465.8" y1="74" x2="465.8" y2="488" class="grid"/>
+<text x="465.8" y="512" text-anchor="middle" class="small">4s</text>
+<line x1="593.7" y1="74" x2="593.7" y2="488" class="grid"/>
+<text x="593.7" y="512" text-anchor="middle" class="small">6s</text>
+<line x1="721.5" y1="74" x2="721.5" y2="488" class="grid"/>
+<text x="721.5" y="512" text-anchor="middle" class="small">8s</text>
+<line x1="849.4" y1="74" x2="849.4" y2="488" class="grid"/>
+<text x="849.4" y="512" text-anchor="middle" class="small">10s</text>
+<line x1="210" y1="488" x2="885" y2="488" class="axis"/>
+<text x="198" y="103" text-anchor="end" class="label">1080p / 4f / 256tok</text>
+<rect x="210" y="86" width="675.0" height="24" rx="3" class="bar"/>
+<text x="893.0" y="103" class="value">10.56s</text>
+<text x="198" y="144" text-anchor="end" class="label">640w / 4f / 256tok</text>
+<rect x="210" y="127" width="432.4" height="24" rx="3" class="bar"/>
+<text x="650.4" y="144" class="value">6.76s</text>
+<text x="198" y="185" text-anchor="end" class="label">448w / 4f / 256tok</text>
+<rect x="210" y="168" width="433.1" height="24" rx="3" class="bar"/>
+<text x="651.1" y="185" class="value">6.77s</text>
+<text x="198" y="226" text-anchor="end" class="label">224w / 4f / 256tok</text>
+<rect x="210" y="209" width="408.6" height="24" rx="3" class="bar"/>
+<text x="626.6" y="226" class="value">6.39s</text>
+<text x="198" y="267" text-anchor="end" class="label">448w / 1f / 128tok</text>
+<rect x="210" y="250" width="409.8" height="24" rx="3" class="bar"/>
+<text x="627.8" y="267" class="value">6.41s</text>
+<text x="198" y="308" text-anchor="end" class="label">448w / 2f / 128tok</text>
+<rect x="210" y="291" width="403.0" height="24" rx="3" class="bar2"/>
+<text x="621.0" y="308" class="value">6.30s</text>
+<text x="198" y="349" text-anchor="end" class="label">448w / 4f / 128tok</text>
+<rect x="210" y="332" width="433.2" height="24" rx="3" class="bar"/>
+<text x="651.2" y="349" class="value">6.77s</text>
+<text x="198" y="390" text-anchor="end" class="label">448w / 2f / 64tok*</text>
+<rect x="210" y="373" width="340.1" height="24" rx="3" class="warn"/>
+<text x="558.1" y="390" class="value">5.32s</text>
+<text x="198" y="431" text-anchor="end" class="label">448w / 2f / 256tok</text>
+<rect x="210" y="414" width="400.5" height="24" rx="3" class="bar"/>
+<text x="618.5" y="431" class="value">6.26s</text>
+<text x="210" y="530" class="small">Recommended runtime point: 448w / 2 keyframes / 128 max tokens. It keeps valid JSON and reduces matrix latency from 10.56s to about 6.30s.</text>
+</svg>

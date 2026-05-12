@@ -36,6 +36,7 @@ class VLMConfig:
     base_url: str | None = None
     api_key_env: str | None = None
     timeout_s: float = 60.0
+    max_frame_width: int | None = None
 
 
 CosmosConfig = VLMConfig
@@ -45,13 +46,19 @@ def _torch_dtype(name: str) -> torch.dtype:
     return {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[name]
 
 
-def _bgr_list_to_pil_rgb(frames_bgr: list[np.ndarray]):
-    """Convert a list of OpenCV BGR uint8 frames to PIL RGB images."""
+def _bgr_list_to_pil_rgb(frames_bgr: list[np.ndarray], max_width: int | None = None):
+    """Convert OpenCV BGR uint8 frames to PIL RGB images, optionally downscaling."""
     import cv2
     from PIL import Image
 
     out = []
     for bgr in frames_bgr:
+        if max_width is not None and max_width > 0:
+            height, width = bgr.shape[:2]
+            if width > max_width:
+                scale = max_width / width
+                new_size = (max_width, max(1, int(round(height * scale))))
+                bgr = cv2.resize(bgr, new_size, interpolation=cv2.INTER_AREA)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         out.append(Image.fromarray(rgb))
     return out
@@ -77,7 +84,7 @@ class CosmosReason2:
             # let transformers materialize it.
             kwargs["device_map"] = cfg.device
         else:
-            kwargs["torch_dtype"] = _torch_dtype(cfg.dtype)
+            kwargs["dtype"] = _torch_dtype(cfg.dtype)
             kwargs["device_map"] = cfg.device
 
         self.processor = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=True)
@@ -103,7 +110,7 @@ class CosmosReason2:
         if not frames_bgr:
             raise ValueError("chat_video requires at least one frame")
 
-        pil_frames = _bgr_list_to_pil_rgb(frames_bgr)
+        pil_frames = _bgr_list_to_pil_rgb(frames_bgr, self.cfg.max_frame_width)
         fps = int(clip_fps if clip_fps is not None else self.cfg.clip_fps)
 
         # Qwen3-VL / Cosmos-Reason2 chat schema accepts a "video" content item
@@ -122,11 +129,31 @@ class CosmosReason2:
         text = self.processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        # Some processors still want videos passed via the explicit kwarg
+        # Some processors still want videos passed via the explicit kwarg.
+        # Qwen3-VL also needs explicit metadata when the caller passes an
+        # already-sampled list of frames; otherwise it assumes 24 fps and emits
+        # a warning while constructing timestamp tokens.
+        video_metadata = None
+        if pil_frames:
+            from transformers.video_utils import VideoMetadata
+
+            width, height = pil_frames[0].size
+            video_metadata = [
+                VideoMetadata(
+                    total_num_frames=len(pil_frames),
+                    fps=float(fps),
+                    width=width,
+                    height=height,
+                    duration=len(pil_frames) / max(float(fps), 1e-6),
+                    frames_indices=list(range(len(pil_frames))),
+                )
+            ]
         try:
             inputs = self.processor(
                 text=[text],
                 videos=[pil_frames],
+                video_metadata=video_metadata,
+                fps=fps,
                 return_tensors="pt",
                 padding=True,
             )
@@ -140,11 +167,13 @@ class CosmosReason2:
             )
         inputs = {k: v.to(self.cfg.device) for k, v in inputs.items()}
 
+        do_sample = self.cfg.temperature > 0.0
         gen_kwargs = dict(
             max_new_tokens=self.cfg.max_new_tokens,
-            do_sample=self.cfg.temperature > 0.0,
-            temperature=max(self.cfg.temperature, 1e-5),
+            do_sample=do_sample,
         )
+        if do_sample:
+            gen_kwargs["temperature"] = max(self.cfg.temperature, 1e-5)
         if response_schema is not None:
             proc = self._build_logits_processor(response_schema)
             if proc is not None:

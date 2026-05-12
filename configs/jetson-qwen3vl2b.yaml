@@ -1,0 +1,66 @@
+# Jetson Orin 64GB profile for a lightweight Qwen VLM verifier.
+# Uses the system Jetson CUDA PyTorch through .venv-jetson.
+
+ingest:
+  target_fps: 2
+  roi_polygon: null
+
+detector:
+  backend: "ultralytics"
+  model: "yoloe-11s-seg.pt"
+  device: "cuda"
+  imgsz: 640
+  conf_floor: 0.20
+  iou: 0.50
+  half: true
+
+event_state:
+  window: 4
+  default_min_persist_frames: 2
+  cooldown_s: 10.0
+
+tracker:
+  backend: simple_iou
+  iou_threshold: 0.30
+  max_gap_frames: 5
+
+verifier:
+  enabled: true
+  backend: "transformers"
+  model_id: "Qwen/Qwen3-VL-2B-Instruct"
+  dtype: "bf16"
+  device: "cuda"
+  context_window_s: 2.0
+  keyframes: 2
+  clip_fps: 2
+  max_frame_width: 448
+  max_new_tokens: 128
+  temperature: 0.0
+  failure_policy: pass_through
+  request_bbox: true
+  request_trajectory: false
+
+sink:
+  jsonl: alerts.jsonl
+  write_thumbnails: true
+  thumbnails_dir: thumbnails
+  thumbnail_ext: jpg
+  thumbnail_quality: 90
+  annotated_mp4: annotated.mp4
+  write_annotated: false
+
+audit:
+  enabled: false
+
+privacy:
+  enabled: false
+  backend: none
+
+calibration:
+  enabled: false
+
+observability:
+  metrics:
+    enabled: false
+    host: "127.0.0.1"
+    port: 9108

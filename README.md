@@ -77,6 +77,18 @@ RTSP/mp4 ─► Reader ─► YOLOE-L ─► per-class score+bbox ─► EventSt
                                               alerts.jsonl + thumbnails/*.jpg
 ```
 
+## Documentation
+
+- [System review](docs/01-system-review.md) — current implementation status,
+  known gaps, and engineering review.
+- [Roadmap](docs/02-roadmap.md) — near-term prioritized work.
+- [VSS + SAM3 blueprint](docs/03-vss-sam3-blueprint.md) — long-term
+  vendor-neutral platform direction, including optional SAM3 workers,
+  DeepStream runtime adapter planning, platform contracts, semantic search, and
+  enterprise storage.
+- [Runtime validation matrix](docs/runtime-matrix.md) — validated,
+  unvalidated, and planned GPU/runtime profiles.
+
 ## Install
 
 ```bash
@@ -377,15 +389,16 @@ RTSP[i] ─► DecoderThread[i] ──┐
                     SinkWorker[i]  ─► runs/<out>/<stream_id>/{alerts.jsonl, thumbnails/*.jpg}
 ```
 
-Decoder backends (`multistream.decoder_backend`):
+Decoder backends implemented today (`multistream.decoder_backend`):
 - `opencv` (default) — FFmpeg CPU decode. Works everywhere.
 - `nvdec` — `cv2.cudacodec.VideoReader` for hardware-accelerated NVDEC decode.
   Requires OpenCV built with CUDA; gracefully falls back to `opencv` otherwise.
-- `deepstream` — reserved. A full DeepStream 8.0 path (pyds → `nvstreammux` →
-  `nvinfer` with TRT-exported YOLOE → custom verifier serving path) would
-  keep frames in NVMM (zero-copy) end-to-end; it also requires TRT export of
-  both models. Out of scope for this release — the Reader interface is small
-  enough that adding it is additive.
+
+DeepStream is not implemented as a selectable reader backend in this release. It
+is tracked as a future NVIDIA runtime adapter for high-density RTSP ingest,
+NVDEC/NVMM pipelines, TensorRT detector execution, tracker metadata, and broker
+publishing. See [VSS + SAM3 blueprint](docs/03-vss-sam3-blueprint.md) for the
+planning constraints.
 
 ## Layout
 
@@ -395,7 +408,7 @@ vrs/
 ├── triage/        YOLOE detector (+ batched inference), per-stream event-state queue
 ├── verifier/      VLM verifier prompts + structured-output parsing
 ├── policy/        Plain-English watch policy parser
-├── runtime/       VLM runtime backends (Cosmos baseline today)
+├── runtime/       VLM backends: transformers/Cosmos, vLLM, OpenAI-compatible, reserved TRT-LLM
 ├── sinks/         JSONL writer, event thumbnails, optional annotated-video writer
 ├── multistream/   N-stream cascade: decoders, workers, queues, pipeline
 ├── pipeline.py    Single-stream cascade orchestration

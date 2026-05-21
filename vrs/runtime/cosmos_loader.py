@@ -57,7 +57,7 @@ def _bgr_list_to_pil_rgb(frames_bgr: list[np.ndarray], max_width: int | None = N
             height, width = bgr.shape[:2]
             if width > max_width:
                 scale = max_width / width
-                new_size = (max_width, max(1, int(round(height * scale))))
+                new_size = (max_width, max(1, round(height * scale)))
                 bgr = cv2.resize(bgr, new_size, interpolation=cv2.INTER_AREA)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         out.append(Image.fromarray(rgb))

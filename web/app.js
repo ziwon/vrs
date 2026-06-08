@@ -54,12 +54,12 @@ let policyByName = Object.fromEntries(POLICY.map((p) => [p.name, p]));
 function setPolicy(entries) {
   if (!Array.isArray(entries) || !entries.length) return;
   POLICY = entries.map((p) => ({
-    name: p.name,
-    severity: p.severity || "info",
+    name: String(p.name || ""),
+    severity: String(p.severity || "info"),
     min_score: Number(p.min_score ?? 0),
     min_persist_frames: Number(p.min_persist_frames ?? 1),
-    detector: Array.isArray(p.detector) ? p.detector : [],
-    verifier: p.verifier || "",
+    detector: Array.isArray(p.detector) ? p.detector.map((d) => String(d)) : [],
+    verifier: String(p.verifier || ""),
   })).filter((p) => p.name);
   policyByName = Object.fromEntries(POLICY.map((p) => [p.name, p]));
 }
@@ -171,9 +171,11 @@ async function apiJSON(path) {
 function normalizeAlert(raw) {
   const fallback = policyByName[raw.class_name] || POLICY[0];
   return {
+    ...raw,
     ts: raw.ts || raw.created_at || raw.written_at || "",
-    stream_id: raw.stream_id || "cam-01",
-    severity: raw.severity || fallback.severity,
+    stream_id: String(raw.stream_id || "cam-01"),
+    class_name: String(raw.class_name || fallback.name),
+    severity: String(raw.severity || fallback.severity),
     true_alert: Boolean(raw.true_alert),
     confidence: Number(raw.confidence ?? 0),
     peak_pts_s: Number(raw.peak_pts_s ?? raw.start_pts_s ?? 0),
@@ -182,13 +184,13 @@ function normalizeAlert(raw) {
       ? raw.peak_detections
       : [{ score: Number(raw.confidence ?? 0), xyxy: [], raw_label: raw.class_name, track_id: raw.track_id ?? null }],
     num_keyframes: Number(raw.num_keyframes ?? 0),
-    rationale: raw.rationale || "No verifier rationale recorded.",
+    rationale: String(raw.rationale || "No verifier rationale recorded."),
     bbox_xywh_norm: Array.isArray(raw.bbox_xywh_norm) ? raw.bbox_xywh_norm : [0.2, 0.2, 0.35, 0.35],
     trajectory_xy_norm: Array.isArray(raw.trajectory_xy_norm) ? raw.trajectory_xy_norm : [],
-    verifier_raw: raw.verifier_raw || JSON.stringify(raw, null, 2),
-    thumbnail_path: raw.thumbnail_path || "",
-    thumbnail_url: raw.thumbnail_url || "",
-    ...raw,
+    verifier_raw: String(raw.verifier_raw || JSON.stringify(raw, null, 2)),
+    thumbnail_path: String(raw.thumbnail_path || ""),
+    thumbnail_url: String(raw.thumbnail_url || ""),
+    false_negative_class: raw.false_negative_class == null ? null : String(raw.false_negative_class),
   };
 }
 
@@ -204,7 +206,7 @@ function mergeByAlertId(current, incoming) {
 
 function thumbMarkup(a, w = 168, h = 94) {
   if (a.thumbnail_url) {
-    return `<img src="${apiUrl(a.thumbnail_url)}" width="${w}" height="${h}" alt="${esc(a.class_name)} thumbnail" class="rounded-md block object-cover bg-gray-900" style="width:${w}px;height:${h}px">`;
+    return `<img src="${esc(apiUrl(a.thumbnail_url))}" width="${w}" height="${h}" alt="${esc(a.class_name)} thumbnail" class="rounded-md block object-cover bg-gray-900" style="width:${w}px;height:${h}px">`;
   }
   return thumbSVG(a, w, h);
 }
@@ -243,9 +245,9 @@ function thumbSVG(a, w = 168, h = 94) {
       <path d="M${x} ${y + tick} L${x} ${y} L${x + tick} ${y}" stroke="#fff" stroke-width="1.4" fill="none"/>
       <path d="M${x + bw - tick} ${y + bh} L${x + bw} ${y + bh} L${x + bw} ${y + bh - tick}" stroke="#fff" stroke-width="1.4" fill="none"/>
     </g>
-    <rect x="${x}" y="${Math.max(0, y - 11)}" width="${Math.max(34, a.class_name.length * 6.2 + 16)}" height="11" fill="${s.hex}"/>
-    <text x="${x + 3}" y="${Math.max(8, y - 2.5)}" font-family="monospace" font-size="7.5" fill="#0b0f16" font-weight="bold">${a.class_name} ${a.peak_detections[0].score.toFixed(2)}</text>
-    <text x="4" y="10" font-family="monospace" font-size="7" fill="#9fb84f">${a.stream_id}</text>
+    <rect x="${x}" y="${Math.max(0, y - 11)}" width="${Math.max(34, String(a.class_name).length * 6.2 + 16)}" height="11" fill="${s.hex}"/>
+    <text x="${x + 3}" y="${Math.max(8, y - 2.5)}" font-family="monospace" font-size="7.5" fill="#0b0f16" font-weight="bold">${esc(a.class_name)} ${a.peak_detections[0].score.toFixed(2)}</text>
+    <text x="4" y="10" font-family="monospace" font-size="7" fill="#9fb84f">${esc(a.stream_id)}</text>
     <circle cx="${w - 18}" cy="8" r="2.2" fill="#ef4444"/>
     <text x="${w - 13}" y="10.5" font-family="monospace" font-size="7" fill="#cbd5e1">REC</text>
     <text x="4" y="${h - 4}" font-family="monospace" font-size="7" fill="#9aa6b2">${fmtPts(a.peak_pts_s)}</text>
@@ -259,7 +261,7 @@ const verdictChip = (a) =>
 
 const sevChip = (s) => {
   const c = sev(s);
-  return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border ${c.chip} dark:bg-transparent ${c.chipLight}"><span class="w-1.5 h-1.5 rounded-full ${c.dot}"></span>${s}</span>`;
+  return `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border ${c.chip} dark:bg-transparent ${c.chipLight}"><span class="w-1.5 h-1.5 rounded-full ${c.dot}"></span>${esc(s)}</span>`;
 };
 
 const confBar = (a) => {
@@ -328,7 +330,7 @@ function renderRuntimePanel() {
         <span class="text-nv-green mt-0.5">${icon(ic, 14)}</span>
         <div class="min-w-0">
           <div class="text-xs text-gray-400 dark:text-gray-500">${k}</div>
-          <div class="text-[13px] text-gray-700 dark:text-gray-200 truncate">${v}</div>
+          <div class="text-[13px] text-gray-700 dark:text-gray-200 truncate">${esc(v)}</div>
         </div>
       </div>`).join("") +
     `<div class="text-[11px] text-gray-400 dark:text-gray-500 pt-1 leading-snug">Docker Compose starts RTSP sample streaming, FastAPI, and this dashboard together.</div>`;
@@ -354,9 +356,9 @@ function statCard(label, value, sub, accent) {
 
 function selectFilter(key, label, options) {
   const opts = options.map((o) =>
-    `<option value="${o.v}" ${state.filters[key] === o.v ? "selected" : ""}>${o.t}</option>`).join("");
+    `<option value="${esc(o.v)}" ${state.filters[key] === o.v ? "selected" : ""}>${esc(o.t)}</option>`).join("");
   return `<label class="flex items-center gap-1.5 text-sm">
-    <span class="text-gray-500 dark:text-gray-400">${label}</span>
+    <span class="text-gray-500 dark:text-gray-400">${esc(label)}</span>
     <select data-filter="${key}" class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-nv-green">${opts}</select>
   </label>`;
 }
@@ -373,16 +375,16 @@ function renderAlerts() {
     <tr class="border-b border-gray-100 dark:border-gray-700/60 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer" data-alert="${all.indexOf(a)}">
       <td class="py-2 pl-4 pr-2">${thumbMarkup(a, 132, 74)}</td>
       <td class="px-2 align-middle">
-        <div class="flex items-center gap-2">${icon("camera", 14, "text-gray-400")}<span class="font-medium">${a.stream_id}</span></div>
+        <div class="flex items-center gap-2">${icon("camera", 14, "text-gray-400")}<span class="font-medium">${esc(a.stream_id)}</span></div>
         <div class="text-xs text-gray-400 dark:text-gray-500">${fmtTime(a.ts)} · t=${fmtPts(a.peak_pts_s)}</div>
       </td>
-      <td class="px-2 align-middle">${sevChip(a.severity)}<div class="text-sm mt-1 font-medium">${a.class_name}</div></td>
+      <td class="px-2 align-middle">${sevChip(a.severity)}<div class="text-sm mt-1 font-medium">${esc(a.class_name)}</div></td>
       <td class="px-2 align-middle">${verdictChip(a)}</td>
       <td class="px-2 align-middle">${confBar(a)}</td>
       <td class="px-2 align-middle text-sm text-gray-500 dark:text-gray-400">${a.track_id == null ? "—" : "#" + a.track_id}</td>
       <td class="px-2 pr-4 align-middle max-w-[280px]">
         <div class="text-sm text-gray-700 dark:text-gray-200 line-clamp-2">${esc(a.rationale)}</div>
-        ${a.false_negative_class ? `<div class="text-xs mt-1 inline-flex items-center gap-1 text-amber-500">${icon("alert", 12)} verifier flagged missed: ${a.false_negative_class}</div>` : ""}
+        ${a.false_negative_class ? `<div class="text-xs mt-1 inline-flex items-center gap-1 text-amber-500">${icon("alert", 12)} verifier flagged missed: ${esc(a.false_negative_class)}</div>` : ""}
       </td>
     </tr>`).join("");
 
@@ -512,17 +514,17 @@ function renderStreams() {
       <div class="relative">
         ${last ? thumbMarkup(last, 640, 240).replace('style="width:640px;height:240px"', 'style="width:100%;height:240px"') : `<div class="w-full aspect-video bg-gray-900 flex items-center justify-center text-gray-600">${icon("video", 32)}</div>`}
         <div class="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded bg-black/55 text-xs text-white">
-          <span class="live-dot w-2 h-2 rounded-full ${dotCls}"></span>${s.status.toUpperCase()} · ${s.fps} fps
+          <span class="live-dot w-2 h-2 rounded-full ${dotCls}"></span>${esc(String(s.status || "").toUpperCase())} · ${Number(s.fps || 0)} fps
         </div>
       </div>
       <div class="p-3">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2"><span class="text-gray-400">${icon("camera", 16)}</span>
-            <span class="font-semibold">${s.name}</span>
-            <span class="text-xs text-gray-400 dark:text-gray-500">${s.id}</span></div>
+            <span class="font-semibold">${esc(s.name)}</span>
+            <span class="text-xs text-gray-400 dark:text-gray-500">${esc(s.id)}</span></div>
           <span class="text-xs px-1.5 py-0.5 rounded bg-nv-green/15 text-nv-green font-semibold">${recent.length} alerts</span>
         </div>
-        <div class="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 mt-1">${icon("pin", 12)} ${s.location}</div>
+        <div class="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 mt-1">${icon("pin", 12)} ${esc(s.location)}</div>
         ${streamUrl ? `<div class="mt-1 text-xs text-gray-400 dark:text-gray-500 font-mono break-all">RTSP ${esc(streamUrl)}</div>` : ""}
         ${last ? `<div class="mt-2 flex items-center gap-2 text-sm">${sevChip(last.severity)}<span class="text-gray-500 dark:text-gray-400 truncate">${esc(last.rationale)}</span></div>` : ""}
       </div>
@@ -543,12 +545,12 @@ function renderPolicy() {
     return `<div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full ${c.dot}"></span>
-          <h3 class="font-bold text-md">${p.name}</h3>${sevChip(p.severity)}</div>
+          <h3 class="font-bold text-md">${esc(p.name)}</h3>${sevChip(p.severity)}</div>
         <span class="text-xs text-gray-400 dark:text-gray-500">${count} alerts</span>
       </div>
-      <div class="text-sm text-gray-600 dark:text-gray-300 mb-3 italic">"${p.verifier}"</div>
+      <div class="text-sm text-gray-600 dark:text-gray-300 mb-3 italic">"${esc(p.verifier)}"</div>
       <div class="flex flex-wrap gap-1.5 mb-3">
-        ${p.detector.map((d) => `<span class="text-xs px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">${d}</span>`).join("")}
+        ${p.detector.map((d) => `<span class="text-xs px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">${esc(d)}</span>`).join("")}
       </div>
       <div class="grid grid-cols-2 gap-2 text-xs">
         <div class="rounded bg-gray-50 dark:bg-gray-900 px-2 py-1"><span class="text-gray-400">min_score</span> <span class="font-mono font-semibold">${p.min_score.toFixed(2)}</span></div>
@@ -576,7 +578,7 @@ function openDrawer(a) {
       <div class="flex items-start justify-between mb-4">
         <div>
           <div class="flex items-center gap-2">${sevChip(a.severity)}${verdictChip(a)}</div>
-          <h2 class="text-xl font-bold mt-2">${a.class_name} · ${a.stream_id}</h2>
+          <h2 class="text-xl font-bold mt-2">${esc(a.class_name)} · ${esc(a.stream_id)}</h2>
           <div class="text-sm text-gray-400 dark:text-gray-500">${new Date(a.ts).toLocaleString()} · frame ${a.peak_frame_index} · t=${fmtPts(a.peak_pts_s)}</div>
         </div>
         <button id="drawer-close" class="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">${icon("x", 20)}</button>
@@ -588,7 +590,7 @@ function openDrawer(a) {
         <div class="rounded bg-gray-50 dark:bg-gray-900 px-3 py-2"><div class="text-xs text-gray-400">Track id</div><div class="font-semibold">${a.track_id == null ? "untracked" : "#" + a.track_id}</div></div>
         <div class="rounded bg-gray-50 dark:bg-gray-900 px-3 py-2"><div class="text-xs text-gray-400">Keyframes</div><div class="font-semibold">${a.num_keyframes}</div></div>
       </div>
-      ${a.false_negative_class ? `<div class="mb-4 flex items-center gap-2 text-sm text-amber-500 border border-amber-500/40 rounded px-3 py-2">${icon("alert", 16)} Verifier flagged a missed event the detector did not box: <b>${a.false_negative_class}</b></div>` : ""}
+      ${a.false_negative_class ? `<div class="mb-4 flex items-center gap-2 text-sm text-amber-500 border border-amber-500/40 rounded px-3 py-2">${icon("alert", 16)} Verifier flagged a missed event the detector did not box: <b>${esc(a.false_negative_class)}</b></div>` : ""}
       <div class="mb-4">
         <div class="text-xs uppercase tracking-wider text-gray-400 mb-1">Rationale</div>
         <p class="text-sm text-gray-700 dark:text-gray-200">${esc(a.rationale)}</p>

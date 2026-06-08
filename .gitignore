@@ -34,6 +34,8 @@ runs/
 *.mp4
 *.jsonl
 !configs/**/*.mp4          # allow policy examples if ever checked in
+# web/sample_alerts.jsonl is demo data for the web UI, not a runtime artifact:
+!web/sample_alerts.jsonl
 
 # Model weights (downloaded at first run)
 *.pt

@@ -6,10 +6,28 @@ services:
       - "8888:8888"
       - "8889:8889"
 
+  clip-init:
+    image: jrottenberg/ffmpeg:6.1-alpine
+    volumes:
+      - ./runs/pr-integration/clips:/clips
+    entrypoint:
+      - sh
+      - -c
+    command:
+      - |
+        if [ ! -s /clips/falldown_test.mp4 ]; then
+          ffmpeg -y -f lavfi -i testsrc2=size=640x360:rate=30 -t 10 \
+            -vf "drawbox=x=220:y=210:w=210:h=28:color=white@0.8:t=fill,format=yuv420p" \
+            -c:v libx264 -preset veryfast -pix_fmt yuv420p /clips/falldown_test.mp4;
+        fi
+
   rtsp-falldown:
     image: jrottenberg/ffmpeg:6.1-alpine
     depends_on:
-      - rtsp
+      rtsp:
+        condition: service_started
+      clip-init:
+        condition: service_completed_successfully
     restart: unless-stopped
     volumes:
       - ./runs/pr-integration/clips:/clips:ro
@@ -77,6 +95,7 @@ services:
     environment:
       VRS_RUNS_ROOT: /app/runs
       VRS_SAMPLE_RTSP_URL: rtsp://127.0.0.1:8554/falldown
+      VRS_POLICY_PATH: /app/configs/policies/safety.yaml
     volumes:
       - vrs-runs:/app/runs
     ports:
@@ -87,8 +106,10 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     depends_on:
-      - backend
-      - rtsp-falldown
+      backend:
+        condition: service_healthy
+      rtsp-falldown:
+        condition: service_started
     ports:
       - "5173:80"
 

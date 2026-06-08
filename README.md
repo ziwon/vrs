@@ -32,19 +32,19 @@ NVIDIA's 2026 model card lists a 24 GB minimum for the reference inference path.
 
 ## Dashboard
 
-![VRS Console live alerts view showing detector candidates, verifier verdicts, confidence, and falldown thumbnails.](assets/vrs-console-live-alerts.png)
+![VRS Console live alerts view showing detector candidates, verifier verdicts, confidence, and falldown thumbnails.](docs/assets/vrs-console-live-alerts.png)
 
 The local console reads `runs/live/alerts.jsonl` and thumbnails through a
 CPU-light FastAPI backend. It shows detector candidates, VLM verdicts,
 confidence, rationale, live RTSP state, and the two-stage cascade.
 
-![VRS Console streams view showing the local falldown RTSP source and latest live keyframe.](assets/vrs-console-streams.png)
+![VRS Console streams view showing the local falldown RTSP source and latest live keyframe.](docs/assets/vrs-console-streams.png)
 
-![VRS Console cascade view showing the decode, YOLOE, event-state, VLM verifier, and sink stages.](assets/vrs-console-cascade.png)
+![VRS Console cascade view showing the decode, YOLOE, event-state, VLM verifier, and sink stages.](docs/assets/vrs-console-cascade.png)
 
 ## Quick Start
 
-![Animated diagram of the local Docker Compose runtime: falldown MP4 to RTSP, GPU inference, runs/live artifacts, FastAPI, and VRS Console.](assets/vrs-local-runtime.svg)
+![Animated diagram of the local Docker Compose runtime: falldown MP4 to RTSP, GPU inference, runs/live artifacts, FastAPI, and VRS Console.](docs/assets/vrs-local-runtime.svg)
 
 Start the local RTSP/API/UI stack:
 
@@ -107,7 +107,7 @@ Sources:
 
 ## Architecture
 
-![Animated diagram of the VRS two-stage architecture: RTSP input, reader, YOLOE fast path, event-state promotion, VLM verifier slow path, and alert sinks.](assets/vrs-architecture-flow.svg)
+![Animated diagram of the VRS two-stage architecture: RTSP input, reader, YOLOE fast path, event-state promotion, VLM verifier slow path, and alert sinks.](docs/assets/vrs-architecture-flow.svg)
 
 The detector runs on every sampled frame, while the verifier only runs after
 event-state promotes a stable candidate. This keeps the local GPU budget focused

@@ -9,6 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from scripts.make_fixture_runs import write_fixture_run
+from vrs.schemas import CandidateAlert, Detection, VerifiedAlert
+from vrs.sinks.jsonl_sink import JsonlSink
 from vrs.web.api import create_app
 from vrs.web.artifacts import RunArtifactStore, UnsafePathError
 
@@ -19,7 +21,9 @@ def test_web_api_import_does_not_load_heavy_modules() -> None:
         "mods={'torch','ultralytics','transformers','cv2'} & set(sys.modules); "
         "print(','.join(sorted(mods))); raise SystemExit(1 if mods else 0)"
     )
-    result = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True, check=False)
+    result = subprocess.run(
+        [sys.executable, "-c", code], text=True, capture_output=True, check=False
+    )
     assert result.returncode == 0, result.stderr or result.stdout
 
 
@@ -41,7 +45,9 @@ def test_single_stream_run_lists_and_reads_alerts(tmp_path: Path) -> None:
     assert body["alerts"][0]["thumbnail_url"].startswith("/api/runs/fixture/thumbnails/")
 
 
-def test_streams_endpoint_reports_rtsp_sample(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_streams_endpoint_reports_rtsp_sample(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("VRS_SAMPLE_RTSP_URL", "rtsp://example.local:8554/falldown")
     write_fixture_run(tmp_path)
     client = TestClient(create_app(tmp_path))
@@ -74,7 +80,9 @@ def test_missing_run_and_missing_alerts_are_empty(tmp_path: Path) -> None:
     client = TestClient(create_app(tmp_path))
 
     runs = client.get("/api/runs").json()["runs"]
-    assert runs == [{"name": "empty", "layout": "empty", "streams": [], "alert_count": 0, "updated_at": None}]
+    assert runs == [
+        {"name": "empty", "layout": "empty", "streams": [], "alert_count": 0, "updated_at": None}
+    ]
 
     body = client.get("/api/runs/does-not-exist/alerts").json()
     assert body["run"]["layout"] == "empty"
@@ -128,6 +136,102 @@ def test_alert_filters_limit_offset_and_since_line(tmp_path: Path) -> None:
 
     tail = client.get("/api/runs/fixture/tail", params={"since_line": 2}).json()
     assert [alert["_line"] for alert in tail["alerts"]] == [3, 4]
+    assert tail["next_cursor"]
+
+
+def test_tail_cursor_is_per_stream(tmp_path: Path) -> None:
+    run = tmp_path / "fixture_multi"
+    cam01 = run / "cam-01"
+    cam02 = run / "cam-02"
+    cam01.mkdir(parents=True)
+    cam02.mkdir(parents=True)
+    with (cam01 / "alerts.jsonl").open("w", encoding="utf-8") as fh:
+        for idx in range(100):
+            fh.write(json.dumps({"class_name": "fire", "severity": "critical", "idx": idx}) + "\n")
+    (cam02 / "alerts.jsonl").write_text(
+        json.dumps({"class_name": "smoke", "severity": "high", "idx": 1}) + "\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(tmp_path))
+
+    first = client.get("/api/runs/fixture_multi/tail", params={"limit": 500}).json()
+    cursor = first["next_cursor"]
+    assert max(alert["_line"] for alert in first["alerts"] if alert["stream_id"] == "cam-01") == 100
+
+    with (cam02 / "alerts.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"class_name": "weapon", "severity": "critical", "idx": 2}) + "\n")
+
+    second = client.get("/api/runs/fixture_multi/tail", params={"cursor": cursor}).json()
+    assert [
+        (alert["stream_id"], alert["_line"], alert["class_name"]) for alert in second["alerts"]
+    ] == [("cam-02", 2, "weapon")]
+
+
+def test_jsonl_cache_invalidates_when_file_grows(tmp_path: Path) -> None:
+    run = tmp_path / "cache"
+    run.mkdir()
+    path = run / "alerts.jsonl"
+    path.write_text(json.dumps({"class_name": "fire"}) + "\n", encoding="utf-8")
+    store = RunArtifactStore(tmp_path)
+
+    assert store.read_alerts("cache").total == 1
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"class_name": "smoke"}) + "\n")
+    result = store.read_alerts("cache")
+
+    assert result.total == 2
+    assert [alert["class_name"] for alert in result.alerts] == ["fire", "smoke"]
+
+
+def test_jsonl_sink_adds_written_at_without_breaking_shape(tmp_path: Path) -> None:
+    candidate = CandidateAlert(
+        class_name="fire",
+        severity="critical",
+        start_pts_s=0.0,
+        peak_pts_s=1.0,
+        peak_frame_index=5,
+        peak_detections=[Detection(class_name="fire", score=0.9, xyxy=(1, 2, 3, 4))],
+    )
+    alert = VerifiedAlert(
+        candidate=candidate,
+        true_alert=True,
+        confidence=0.8,
+        false_negative_class=None,
+        rationale="test",
+    )
+    path = tmp_path / "alerts.jsonl"
+
+    with JsonlSink(path) as sink:
+        sink.write(alert)
+
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert record["class_name"] == "fire"
+    assert record["written_at"].endswith("Z")
+
+
+def test_policy_endpoint_reads_configured_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    policy_path = tmp_path / "policy.yaml"
+    policy_path.write_text(
+        """
+watch:
+  - name: test-event
+    detector: ["test prompt"]
+    verifier: "test verifier"
+    severity: low
+    min_score: 0.1
+    min_persist_frames: 1
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VRS_POLICY_PATH", str(policy_path))
+    client = TestClient(create_app(tmp_path))
+
+    body = client.get("/api/policy").json()
+
+    assert body["path"] == str(policy_path)
+    assert body["watch"][0]["name"] == "test-event"
 
 
 def test_thumbnail_serving_and_path_traversal_prevention(tmp_path: Path) -> None:

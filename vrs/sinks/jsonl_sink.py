@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 
@@ -29,6 +30,7 @@ class JsonlSink:
     def write(self, alert: VerifiedAlert) -> None:
         assert self._fp is not None, "JsonlSink used outside of a with-block"
         record = alert.to_json()
+        record.setdefault("written_at", datetime.now(UTC).isoformat().replace("+00:00", "Z"))
         if self._audit_signer is not None:
             record = self._audit_signer.sign(record)
         self._fp.write(json.dumps(record, ensure_ascii=False) + "\n")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +16,7 @@ from .artifacts import RunArtifactStore, UnsafePathError
 
 def create_app(runs_root: str | Path | None = None) -> FastAPI:
     root = Path(runs_root or os.environ.get("VRS_RUNS_ROOT", "runs"))
+    policy_path = Path(os.environ.get("VRS_POLICY_PATH", "configs/policies/safety.yaml"))
     rtsp_url = os.environ.get("VRS_SAMPLE_RTSP_URL", "rtsp://127.0.0.1:8554/sample")
     store = RunArtifactStore(root)
     app = FastAPI(title="VRS Local Run Browser", version="0.1.0")
@@ -70,6 +71,16 @@ def create_app(runs_root: str | Path | None = None) -> FastAPI:
             "streams": streams,
         }
 
+    @app.get("/api/policy")
+    def read_policy() -> dict[str, object]:
+        try:
+            policy = load_watch_policy(policy_path)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="policy file not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        return policy
+
     @app.get("/api/runs/{run_name}/alerts")
     def read_alerts(
         run_name: str,
@@ -108,13 +119,31 @@ def create_app(runs_root: str | Path | None = None) -> FastAPI:
     @app.get("/api/runs/{run_name}/tail")
     def tail_alerts(
         run_name: str,
-        since_line: int = Query(default=0, ge=0),
+        cursor: str | None = None,
+        since_line: int | None = Query(default=None, ge=0),
         stream_id: str | None = None,
         limit: int = Query(default=100, ge=0, le=5000),
     ) -> dict[str, object]:
-        return read_alerts(
-            run_name, stream_id=stream_id, since_line=since_line, limit=limit, offset=0
-        )
+        try:
+            info = store.describe_run(run_name)
+            result = store.tail_alerts(
+                run_name,
+                cursor=cursor,
+                since_line=since_line,
+                stream_id=stream_id,
+                limit=limit,
+            )
+        except UnsafePathError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "run": asdict(info),
+            "alerts": result.alerts,
+            "errors": [asdict(error) for error in result.errors],
+            "total": result.total,
+            "limit": limit,
+            "cursor": cursor,
+            "next_cursor": result.next_cursor,
+        }
 
     @app.get("/api/runs/{run_name}/thumbnails/{thumbnail_path:path}")
     def read_thumbnail(
@@ -134,3 +163,24 @@ def create_app(runs_root: str | Path | None = None) -> FastAPI:
 
 
 app = create_app()
+
+
+def load_watch_policy(path: Path) -> dict[str, Any]:
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ValueError("PyYAML is required to read watch policy files") from exc
+
+    with path.open(encoding="utf-8") as fh:
+        raw = yaml.safe_load(fh) or {}
+    if not isinstance(raw, dict):
+        raise ValueError("policy file must contain a mapping")
+    watch = raw.get("watch", [])
+    if not isinstance(watch, list):
+        raise ValueError("policy watch must be a list")
+    policies: list[dict[str, Any]] = []
+    for item in watch:
+        if not isinstance(item, dict):
+            raise ValueError("policy watch entries must be mappings")
+        policies.append(dict(item))
+    return {"path": str(path), "watch": policies}

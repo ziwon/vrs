@@ -34,7 +34,7 @@ const icon = (name, size = 18, cls = "") =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${cls}">${ICON[name] || ""}</svg>`;
 
 /* ───────────────────────── Watch policy (configs/policies/safety.yaml) ───────────────────────── */
-const POLICY = [
+const DEFAULT_POLICY = [
   { name: "fire", severity: "critical", min_score: 0.3, min_persist_frames: 2,
     detector: ["fire", "open flame", "burning object"],
     verifier: "Open flames or active fire indoors that pose a safety risk" },
@@ -48,7 +48,21 @@ const POLICY = [
     detector: ["handgun", "knife", "rifle"],
     verifier: "A person is visibly holding or brandishing a weapon" },
 ];
-const policyByName = Object.fromEntries(POLICY.map((p) => [p.name, p]));
+let POLICY = DEFAULT_POLICY.slice();
+let policyByName = Object.fromEntries(POLICY.map((p) => [p.name, p]));
+
+function setPolicy(entries) {
+  if (!Array.isArray(entries) || !entries.length) return;
+  POLICY = entries.map((p) => ({
+    name: p.name,
+    severity: p.severity || "info",
+    min_score: Number(p.min_score ?? 0),
+    min_persist_frames: Number(p.min_persist_frames ?? 1),
+    detector: Array.isArray(p.detector) ? p.detector : [],
+    verifier: p.verifier || "",
+  })).filter((p) => p.name);
+  policyByName = Object.fromEntries(POLICY.map((p) => [p.name, p]));
+}
 
 const STREAMS = [
   { id: "cam-01", name: "Lobby", location: "Bldg A · Floor 1", status: "online", fps: 12 },
@@ -133,7 +147,9 @@ const SEVERITY = {
 const sev = (s) => SEVERITY[s] || SEVERITY.info;
 
 const fmtTime = (iso) => {
+  if (!iso) return "recorded";
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "recorded";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 };
 const fmtPts = (s) => {
@@ -155,7 +171,7 @@ async function apiJSON(path) {
 function normalizeAlert(raw) {
   const fallback = policyByName[raw.class_name] || POLICY[0];
   return {
-    ts: raw.ts || new Date().toISOString(),
+    ts: raw.ts || raw.created_at || raw.written_at || "",
     stream_id: raw.stream_id || "cam-01",
     severity: raw.severity || fallback.severity,
     true_alert: Boolean(raw.true_alert),
@@ -274,7 +290,7 @@ const state = {
   backend: "sample",
   rtsp: null,
   jsonlErrors: [],
-  lastLine: 0,
+  tailCursor: "",
   autoSelectedFallback: true,
   filters: { severity: "all", class: "all", verdict: "all", stream: "all" },
   autorefresh: true,
@@ -416,7 +432,7 @@ function renderAlerts() {
       state.selectedRun = s.value;
       state.autoSelectedFallback = false;
       state.alerts = [];
-      state.lastLine = 0;
+      state.tailCursor = "";
       refreshFromApi(true).catch(() => renderAlerts());
     }));
   $("view").querySelectorAll("[data-alert]").forEach((r) =>
@@ -637,12 +653,12 @@ function maybePushAlert() {
 async function refreshFromApi(reset) {
   if (!state.selectedRun) return;
   const params = new URLSearchParams({ limit: "500" });
-  if (!reset && state.lastLine > 0) params.set("since_line", String(state.lastLine));
-  const body = await apiJSON(`/api/runs/${encodeURIComponent(state.selectedRun)}/alerts?${params}`);
+  if (!reset && state.tailCursor) params.set("cursor", state.tailCursor);
+  const body = await apiJSON(`/api/runs/${encodeURIComponent(state.selectedRun)}/tail?${params}`);
   const incoming = body.alerts.map(normalizeAlert);
   state.jsonlErrors = body.errors || [];
   state.alerts = reset ? incoming : mergeByAlertId(state.alerts, incoming);
-  state.lastLine = Math.max(0, ...state.alerts.map((a) => Number(a._line || 0)));
+  state.tailCursor = body.next_cursor || state.tailCursor || "";
   state.backend = "ok";
   renderRuntimePanel();
   render();
@@ -663,13 +679,13 @@ async function syncBackendMetadata() {
   if (hasDefault && state.autoSelectedFallback && state.selectedRun !== DEFAULT_RUN) {
     state.selectedRun = DEFAULT_RUN;
     state.alerts = [];
-    state.lastLine = 0;
+    state.tailCursor = "";
   } else if (!hasSelected) {
     state.selectedRun = hasDefault ? DEFAULT_RUN : state.runs[0]?.name || "";
     state.autoSelectedFallback = true;
     if (state.selectedRun !== previousRun) {
       state.alerts = [];
-      state.lastLine = 0;
+      state.tailCursor = "";
     }
   }
 }
@@ -677,6 +693,12 @@ async function syncBackendMetadata() {
 async function loadBackend() {
   try {
     await syncBackendMetadata();
+    try {
+      const policyBody = await apiJSON("/api/policy");
+      setPolicy(policyBody.watch);
+    } catch (err) {
+      // Keep embedded defaults when the backend has no configured policy.
+    }
     await refreshFromApi(true);
   } catch (err) {
     state.backend = "sample";

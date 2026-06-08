@@ -35,7 +35,7 @@ The stack starts:
 - `rtsp-falldown` — FFmpeg publisher for
   `runs/pr-integration/clips/falldown_test.mp4`.
 - `backend` — FastAPI filesystem API over `runs/`.
-- `frontend` — the `feat/web` VSS-themed dashboard served by nginx.
+- `frontend` — the VRS Console dashboard served by nginx.
 
 The falldown RTSP stream is available at:
 
@@ -77,8 +77,31 @@ The default `configs/tiny.yaml` verifier uses
 two-stage verification, authenticate before starting the profile:
 
 ```bash
-export HF_TOKEN=hf_...
+cp .env.example .env
+# edit .env and set HF_TOKEN / HUGGING_FACE_HUB_TOKEN
 docker compose --profile inference up --build
+```
+
+To reuse a host-side Hugging Face cache, keep `docker-compose.hf-local.yaml`
+enabled and adjust its bind mount if needed. The default local override maps:
+
+```text
+/data/LLM/models/hugging-face:/models/huggingface
+```
+
+Run the full local override stack with:
+
+```bash
+docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml \
+  --profile inference up --build
+```
+
+Equivalent Just helpers:
+
+```bash
+just local-up
+just local-logs
+just local-down
 ```
 
 If no token is present, the worker still validates the real-video RTSP decode,

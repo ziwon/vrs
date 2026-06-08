@@ -44,6 +44,8 @@ confidence, rationale, live RTSP state, and the two-stage cascade.
 
 ## Quick Start
 
+![Animated diagram of the local Docker Compose runtime: falldown MP4 to RTSP, GPU inference, runs/live artifacts, FastAPI, and VRS Console.](assets/vrs-local-runtime.svg)
+
 Start the local RTSP/API/UI stack:
 
 ```bash
@@ -105,24 +107,11 @@ Sources:
 
 ## Architecture
 
-```
-                ┌─── FAST PATH (every frame, ~6 ms) ─────────────┐
-RTSP/mp4 ─► Reader ─► YOLOE-L ─► per-class score+bbox ─► EventState
-                       │                                          │
-                       │       (VRAM ~0.5 GB)                     │ candidate
-                       └──────────────────────────────────────────┘
-                                                                  │
-                                                                  ▼
-                ┌─── SLOW PATH (only on candidate) ──────────────┐
-                │ VLM verifier backend                           │
-                │  • default: Cosmos-Reason2-2B baseline         │
-                │  • candidates: Qwen3.5/Qwen3.6 served VLMs     │
-                │  • returns true_alert / false_alarm / FN-class │
-                └────────────────────────────────────────────────┘
-                                                                  │
-                                                                  ▼
-                                              alerts.jsonl + thumbnails/*.jpg
-```
+![Animated diagram of the VRS two-stage architecture: RTSP input, reader, YOLOE fast path, event-state promotion, VLM verifier slow path, and alert sinks.](assets/vrs-architecture-flow.svg)
+
+The detector runs on every sampled frame, while the verifier only runs after
+event-state promotes a stable candidate. This keeps the local GPU budget focused
+on real alert decisions instead of spending VLM time on quiet frames.
 
 ## Documentation
 
@@ -213,14 +202,22 @@ Outputs:
 ## Layout
 
 ```
-vrs/
-├── ingest/        RTSP/mp4 frame iterator (single-stream, OpenCV)
-├── triage/        YOLOE detector (+ batched inference), per-stream event-state queue
-├── verifier/      VLM verifier prompts + structured-output parsing
-├── policy/        Plain-English watch policy parser
-├── runtime/       VLM backends: transformers/Cosmos, vLLM, OpenAI-compatible, reserved TRT-LLM
-├── sinks/         JSONL writer, event thumbnails, optional annotated-video writer
-├── multistream/   N-stream cascade: decoders, workers, queues, pipeline
-├── pipeline.py    Single-stream cascade orchestration
-└── schemas.py     Frame / Detection / CandidateAlert / VerifiedAlert
+.
+├── web/                    Static VRS Console frontend
+├── docker/                 nginx config for frontend/API proxying
+├── docs/                   Current docs, operations notes, benchmarks, archive
+├── configs/                Runtime configs, stream manifests, watch policies
+├── scripts/                CLI runners, fixtures, benchmarks, eval helpers
+├── docker-compose.yaml     RTSP, backend, frontend, and inference workflow
+├── Dockerfile.*            Backend, frontend, and GPU inference images
+└── vrs/
+    ├── web/                FastAPI artifact browser for dashboard data
+    ├── ingest/             RTSP/mp4 frame iterator
+    ├── triage/             YOLOE detector, tracking, event-state queue
+    ├── verifier/           VLM prompts and structured-output parsing
+    ├── runtime/            transformers, vLLM, OpenAI-compatible backends
+    ├── sinks/              JSONL, thumbnails, optional annotated video
+    ├── multistream/        N-stream cascade workers and queues
+    ├── pipeline.py         Single-stream cascade orchestration
+    └── schemas.py          Frame, detection, candidate, verified alert models
 ```

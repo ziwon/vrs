@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">VRS two-stage video reasoning architecture</title>
+  <desc id="desc">Animated architecture diagram showing RTSP or MP4 input flowing through reader, YOLOE detection, event-state gating, VLM verification, and alert sinks.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="0.62" stop-color="#172033"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="fast" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#84cc16"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="slow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#ef4444"/>
+    </linearGradient>
+    <linearGradient id="sink" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#020617" flood-opacity="0.42"/>
+    </filter>
+    <marker id="arrowFast" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#84cc16"/>
+    </marker>
+    <marker id="arrowSlow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowSink" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#38bdf8"/>
+    </marker>
+    <style>
+      text{font-family:sans-serif;fill:#f8fafc;font-style:normal}
+      .label{fill:#f8fafc;font-style:normal}
+      .muted{fill:#94a3b8;font-style:normal}
+      .tiny{font-size:13px}
+      .small{font-size:15px}
+      .medium{font-size:20px;font-weight:700}
+      .large{font-size:30px;font-weight:800}
+      .panel{fill:#1f2937;stroke:#334155;stroke-width:1.5;filter:url(#shadow)}
+      .node{fill:#243044;stroke:#475569;stroke-width:1.4;filter:url(#shadow)}
+      .chip{fill:#111827;stroke:#334155;stroke-width:1}
+      .flow{fill:none;stroke-linecap:round;stroke-width:5;stroke-dasharray:13 16}
+      .fastStroke{stroke:url(#fast);marker-end:url(#arrowFast)}
+      .slowStroke{stroke:url(#slow);marker-end:url(#arrowSlow)}
+      .sinkStroke{stroke:url(#sink);marker-end:url(#arrowSink)}
+      .pulseFast{fill:#84cc16}
+      .pulseSlow{fill:#f59e0b}
+      .pulseSink{fill:#38bdf8}
+      .pulseFast,.pulseSlow,.pulseSink{filter:url(#shadow)}
+      @media (prefers-reduced-motion:no-preference){
+        .flow{animation:dash 1.8s linear infinite}
+        .pulseFast{animation:moveFast 5.2s linear infinite}
+        .pulseSlow{animation:moveSlow 5.2s linear infinite}
+        .pulseSink{animation:moveSink 5.2s linear infinite}
+      }
+      @keyframes dash{to{stroke-dashoffset:-58}}
+      @keyframes moveFast{
+        0%{transform:translate(88px,228px);opacity:0}
+        8%{opacity:1}
+        27%{transform:translate(332px,228px)}
+        47%{transform:translate(579px,228px)}
+        62%{transform:translate(702px,228px);opacity:1}
+        70%,100%{transform:translate(702px,228px);opacity:0}
+      }
+      @keyframes moveSlow{
+        0%,50%{transform:translate(702px,228px);opacity:0}
+        58%{opacity:1}
+        76%{transform:translate(856px,336px)}
+        88%{opacity:1}
+        96%,100%{transform:translate(856px,336px);opacity:0}
+      }
+      @keyframes moveSink{
+        0%,76%{transform:translate(856px,336px);opacity:0}
+        82%{opacity:1}
+        94%{transform:translate(1034px,336px);opacity:1}
+        100%{transform:translate(1034px,336px);opacity:0}
+      }
+    </style>
+  </defs>
+
+  <rect width="1200" height="560" rx="28" fill="url(#bg)"/>
+  <path d="M0 82H1200" stroke="#334155" stroke-width="1"/>
+  <text fill="#f8fafc" class="label large" x="42" y="54">Two-stage video reasoning pipeline</text>
+  <text fill="#94a3b8" class="label muted small" x="760" y="52">Fast detector every frame, VLM only on candidates</text>
+
+  <rect class="panel" x="42" y="112" width="734" height="210" rx="18"/>
+  <text fill="#f8fafc" class="label medium" x="68" y="150">Fast path</text>
+  <text fill="#94a3b8" class="label muted small" x="166" y="150">low latency, every frame</text>
+
+  <rect class="panel" x="704" y="286" width="444" height="154" rx="18"/>
+  <text fill="#f8fafc" class="label medium" x="732" y="326">Slow path</text>
+  <text fill="#94a3b8" class="label muted small" x="832" y="326">verify only when event-state promotes a candidate</text>
+
+  <rect class="node" x="68" y="178" width="152" height="88" rx="14"/>
+  <text fill="#f8fafc" class="label medium" x="92" y="214">RTSP / MP4</text>
+  <text fill="#94a3b8" class="label muted tiny" x="92" y="238">camera streams</text>
+
+  <rect class="node" x="280" y="178" width="152" height="88" rx="14"/>
+  <text fill="#f8fafc" class="label medium" x="314" y="214">Reader</text>
+  <text fill="#94a3b8" class="label muted tiny" x="302" y="238">frames + timestamps</text>
+
+  <rect class="node" x="492" y="178" width="152" height="88" rx="14"/>
+  <text fill="#f8fafc" class="label medium" x="532" y="214">YOLOE</text>
+  <text fill="#94a3b8" class="label muted tiny" x="516" y="238">bbox + class score</text>
+
+  <rect class="node" x="704" y="178" width="152" height="88" rx="14"/>
+  <text fill="#f8fafc" class="label medium" x="734" y="214">EventState</text>
+  <text fill="#94a3b8" class="label muted tiny" x="730" y="238">persist, track, cool down</text>
+
+  <rect class="node" x="760" y="348" width="190" height="82" rx="14"/>
+  <text fill="#f8fafc" class="label medium" x="800" y="384">VLM verifier</text>
+  <text fill="#94a3b8" class="label muted tiny" x="792" y="408">Cosmos baseline or Qwen</text>
+
+  <rect class="node" x="1000" y="348" width="118" height="82" rx="14"/>
+  <text fill="#f8fafc" class="label medium" x="1030" y="384">Sinks</text>
+  <text fill="#94a3b8" class="label muted tiny" x="1022" y="408">JSONL + images</text>
+
+  <path class="flow fastStroke" d="M220 222H280"/>
+  <path class="flow fastStroke" d="M432 222H492"/>
+  <path class="flow fastStroke" d="M644 222H704"/>
+  <path class="flow slowStroke" d="M780 266C780 304 810 324 855 348"/>
+  <path class="flow sinkStroke" d="M950 389H1000"/>
+
+  <circle class="pulseFast" r="9"/>
+  <circle class="pulseSlow" r="9"/>
+  <circle class="pulseSink" r="9"/>
+
+  <rect class="chip" x="68" y="292" width="184" height="42" rx="21"/>
+  <circle cx="90" cy="313" r="6" fill="#84cc16"/>
+  <text fill="#f8fafc" class="label tiny" x="104" y="318">detect every frame</text>
+
+  <rect class="chip" x="274" y="292" width="214" height="42" rx="21"/>
+  <circle cx="296" cy="313" r="6" fill="#22d3ee"/>
+  <text fill="#f8fafc" class="label tiny" x="310" y="318">promote stable events</text>
+
+  <rect class="chip" x="510" y="292" width="228" height="42" rx="21"/>
+  <circle cx="532" cy="313" r="6" fill="#f59e0b"/>
+  <text fill="#f8fafc" class="label tiny" x="546" y="318">cut false alarms with VLM</text>
+
+  <rect class="panel" x="42" y="462" width="1106" height="54" rx="16" opacity="0.92"/>
+  <text fill="#f8fafc" class="label small" x="68" y="496">Output artifacts feed the local dashboard:</text>
+  <text fill="#94a3b8" class="label muted small" x="320" y="496">runs/live/alerts.jsonl, thumbnails, optional annotated video, metrics, and signed audit logs</text>
+</svg>

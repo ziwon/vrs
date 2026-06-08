@@ -1,0 +1,135 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="title desc">
+  <title id="title">VRS local Docker Compose runtime</title>
+  <desc id="desc">Animated diagram showing falldown MP4 published to MediaMTX RTSP, consumed by the inference worker, written to runs live artifacts, and served by FastAPI and nginx to the VRS Console.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.55" stop-color="#172033"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#84cc16"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#fb7185"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#020617" flood-opacity="0.42"/>
+    </filter>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#84cc16"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrowAmber" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L8,3 z" fill="#f59e0b"/>
+    </marker>
+    <style>
+      text{font-family:sans-serif;fill:#f8fafc;font-style:normal}
+      .label{fill:#f8fafc;font-style:normal}
+      .muted{fill:#94a3b8;font-style:normal}
+      .tiny{font-size:13px}
+      .small{font-size:15px}
+      .medium{font-size:20px;font-weight:700}
+      .large{font-size:30px;font-weight:800}
+      .box{fill:#243044;stroke:#475569;stroke-width:1.5;filter:url(#shadow)}
+      .store{fill:#1e293b;stroke:#64748b;stroke-width:1.5;filter:url(#shadow)}
+      .flow{fill:none;stroke-linecap:round;stroke-width:5;stroke-dasharray:12 15}
+      .greenStroke{stroke:url(#green);marker-end:url(#arrowGreen)}
+      .blueStroke{stroke:url(#blue);marker-end:url(#arrowBlue)}
+      .amberStroke{stroke:url(#amber);marker-end:url(#arrowAmber)}
+      .pulse{filter:url(#shadow)}
+      @media (prefers-reduced-motion:no-preference){
+        .flow{animation:dash 1.65s linear infinite}
+        .p1{animation:rtsp 5s linear infinite}
+        .p2{animation:infer 5s linear infinite}
+        .p3{animation:api 5s linear infinite}
+        .p4{animation:ui 5s linear infinite}
+      }
+      @keyframes dash{to{stroke-dashoffset:-54}}
+      @keyframes rtsp{
+        0%{transform:translate(128px,205px);opacity:0}
+        8%{opacity:1}
+        25%{transform:translate(346px,205px);opacity:1}
+        33%,100%{transform:translate(346px,205px);opacity:0}
+      }
+      @keyframes infer{
+        0%,25%{transform:translate(498px,205px);opacity:0}
+        33%{opacity:1}
+        56%{transform:translate(742px,205px);opacity:1}
+        64%,100%{transform:translate(742px,205px);opacity:0}
+      }
+      @keyframes api{
+        0%,56%{transform:translate(835px,205px);opacity:0}
+        64%{opacity:1}
+        78%{transform:translate(958px,268px);opacity:1}
+        86%,100%{transform:translate(958px,268px);opacity:0}
+      }
+      @keyframes ui{
+        0%,70%{transform:translate(958px,268px);opacity:0}
+        78%{opacity:1}
+        94%{transform:translate(958px,348px);opacity:1}
+        100%{transform:translate(958px,348px);opacity:0}
+      }
+    </style>
+  </defs>
+
+  <rect width="1200" height="460" rx="28" fill="url(#bg)"/>
+  <path d="M0 82H1200" stroke="#334155" stroke-width="1"/>
+  <text fill="#f8fafc" class="label large" x="42" y="54">Local full-inference runtime</text>
+  <text fill="#94a3b8" class="label muted small" x="786" y="52">Docker Compose, RTSP, GPU worker, filesystem artifacts</text>
+
+  <rect class="box" x="58" y="154" width="190" height="100" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="90" y="194">falldown MP4</text>
+  <text fill="#94a3b8" class="label muted tiny" x="88" y="220">runs/pr-integration/clips</text>
+
+  <rect class="box" x="326" y="154" width="190" height="100" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="372" y="194">MediaMTX</text>
+  <text fill="#94a3b8" class="label muted tiny" x="364" y="220">rtsp://rtsp:8554/falldown</text>
+
+  <rect class="box" x="594" y="154" width="190" height="100" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="632" y="194">Inference</text>
+  <text fill="#94a3b8" class="label muted tiny" x="626" y="220">YOLOE + VLM profile</text>
+
+  <rect class="store" x="852" y="142" width="178" height="124" rx="18"/>
+  <text fill="#f8fafc" class="label medium" x="898" y="190">runs/live</text>
+  <text fill="#94a3b8" class="label muted tiny" x="888" y="216">alerts.jsonl</text>
+  <text fill="#94a3b8" class="label muted tiny" x="888" y="238">thumbnails/*.jpg</text>
+
+  <rect class="box" x="852" y="300" width="178" height="92" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="898" y="342">FastAPI</text>
+  <text fill="#94a3b8" class="label muted tiny" x="884" y="366">filesystem artifact API</text>
+
+  <rect class="box" x="80" y="300" width="188" height="92" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="118" y="342">VRS Console</text>
+  <text fill="#94a3b8" class="label muted tiny" x="112" y="366">nginx static frontend</text>
+
+  <path class="flow greenStroke" d="M248 204H326"/>
+  <path class="flow amberStroke" d="M516 204H594"/>
+  <path class="flow amberStroke" d="M784 204H852"/>
+  <path class="flow blueStroke" d="M941 266V300"/>
+  <path class="flow blueStroke" d="M852 346H268"/>
+
+  <circle class="pulse p1" r="8" fill="#84cc16"/>
+  <circle class="pulse p2" r="8" fill="#f59e0b"/>
+  <circle class="pulse p3" r="8" fill="#38bdf8"/>
+  <circle class="pulse p4" r="8" fill="#818cf8"/>
+
+  <rect x="58" y="104" width="240" height="36" rx="18" fill="#111827" stroke="#334155"/>
+  <circle cx="82" cy="122" r="6" fill="#84cc16"/>
+  <text fill="#f8fafc" class="label tiny" x="98" y="127">real video stream, looped for demo</text>
+
+  <rect x="594" y="104" width="274" height="36" rx="18" fill="#111827" stroke="#334155"/>
+  <circle cx="618" cy="122" r="6" fill="#f59e0b"/>
+  <text fill="#f8fafc" class="label tiny" x="634" y="127">HF token + local cache supported</text>
+
+  <rect x="80" y="414" width="950" height="1" fill="#334155"/>
+  <text fill="#94a3b8" class="label muted tiny" x="80" y="435">Compose path: docker-compose.yaml + docker-compose.hf-local.yaml, profile inference, output rooted at runs/live</text>
+</svg>

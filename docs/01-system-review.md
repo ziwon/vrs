@@ -1,6 +1,6 @@
 # VRS System Review
 
-Status date: 2026-04-23.
+Status date: 2026-06-09.
 
 This document is the current engineering review for the repository. It replaces
 the older planning notes now kept under `docs/archive/`.
@@ -17,12 +17,15 @@ VRS is a two-stage video reasoning pipeline:
   baseline, not a locked product choice.
 - Output path: JSONL alerts plus event thumbnails by default; annotated MP4 is
   optional for debug/demo runs.
+- Local demo path: Docker Compose publishes the falldown MP4 as RTSP, can run a
+  GPU inference worker, and serves a CPU-light FastAPI/nginx dashboard over the
+  resulting `runs/` artifacts.
 
 The CPU-testable product surface is in good shape. The uv-managed test run passes:
 
 ```text
 uv run python -m pytest -q
-168 passed
+229 passed
 ```
 
 The remaining highest-risk work is not normal unit-test coverage. It is live
@@ -52,6 +55,11 @@ The following components are present and covered by unit tests where practical:
 - Stage-A threshold calibration suggestions.
 - JSONL, event-thumbnail, and optional annotated-video sinks.
 - Optional YuNet face detection and Gaussian face blur for retained MP4s.
+- Local FastAPI artifact API and zero-build VRS Console dashboard.
+- Docker Compose stack for MediaMTX, falldown MP4 RTSP publishing, backend,
+  frontend, and optional GPU inference.
+- Optional Prometheus-compatible runtime metrics endpoint.
+- Optional tamper-evident JSONL audit signing and verification CLI.
 
 ## Correctness Fixes In This Review
 
@@ -95,14 +103,14 @@ These are the important remaining issues as of this review:
   cooldown, rollback, or audit policy yet.
 - Event windows are global. Slow events such as smoke need per-class verifier
   context windows instead of the current global `verifier.context_window_s`.
-- Runtime observability is incomplete. Queue drops are logged, but there is no
-  Prometheus/OpenTelemetry endpoint, latency histogram, model error counter, or
-  per-class verifier flip dashboard.
+- Runtime observability has a Prometheus-compatible metrics path, but production
+  dashboards, alerting rules, and validated latency SLOs are not yet committed.
 - Privacy blur is output-only. Detector and verifier still receive raw frames,
   while retained thumbnails and optional MP4 can be blurred. This is correct for
   reasoning but should be explicitly documented for deployments with stricter
   data-minimization requirements.
-- JSONL alerts are unsigned. There is no tamper-evident audit log.
+- Audit signing is optional. Production key management, retention of terminal
+  hashes, and routine verification policy still need deployment design.
 
 ## Model And Runtime Notes
 

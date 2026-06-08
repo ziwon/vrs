@@ -1,7 +1,7 @@
 # VRS Console Web UI
 
-This is the `feat/web` VSS-themed dashboard integrated with the local FastAPI
-backend. It is still zero-build: nginx or any static file server can serve it.
+This is the VRS Console dashboard integrated with the local FastAPI backend. It
+is still zero-build: nginx or any static file server can serve it.
 
 When the backend is available, `app.js` reads:
 
@@ -17,7 +17,7 @@ If the backend is unavailable, it falls back to embedded sample alerts.
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | Page shell (Tailwind via CDN, VSS-style header + sidebar + main). |
+| `index.html` | Page shell (Tailwind via CDN, VRS Console header + sidebar + main). |
 | `app.js` | Tabs, filters, sample data, synthetic-keyframe SVGs, detail drawer. |
 | `config.js` | Runtime API configuration. |
 | `sample_alerts.jsonl` | Legacy fallback data. |
@@ -42,14 +42,16 @@ From the repository root:
 docker compose up --build
 ```
 
-Open <http://127.0.0.1:5173>. The RTSP sample stream is published at
+Open <http://127.0.0.1:5173>. The falldown RTSP stream is published at
 `rtsp://127.0.0.1:8554/falldown`.
 
 For real inference on a GPU host:
 
 ```bash
-export HF_TOKEN=hf_...  # required for the default gated Cosmos verifier
-docker compose --profile inference up --build
+cp .env.example .env
+# edit .env and set HF_TOKEN / HUGGING_FACE_HUB_TOKEN
+docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml \
+  --profile inference up --build
 ```
 
 The UI defaults to the `live` run when it exists. Fixture runs remain available

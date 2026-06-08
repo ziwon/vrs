@@ -32,10 +32,17 @@ Open <http://127.0.0.1:5173>.
 The stack starts:
 
 - `rtsp` — MediaMTX RTSP server.
+- `clip-init` — one-shot fallback generator for
+  `runs/pr-integration/clips/falldown_test.mp4` when the file is absent.
 - `rtsp-falldown` — FFmpeg publisher for
   `runs/pr-integration/clips/falldown_test.mp4`.
 - `backend` — FastAPI filesystem API over `runs/`.
 - `frontend` — the VRS Console dashboard served by nginx.
+
+The fallback clip created by `clip-init` is only an RTSP plumbing fixture. It is
+useful for validating that MediaMTX, FFmpeg, the backend, and the dashboard can
+move video and artifacts through the local stack; it is not a fall-detection
+accuracy clip or benchmark.
 
 The falldown RTSP stream is available at:
 
@@ -124,7 +131,9 @@ Useful checks:
 curl http://127.0.0.1:5173/api/health
 curl http://127.0.0.1:5173/api/runs
 curl http://127.0.0.1:5173/api/streams
+curl http://127.0.0.1:5173/api/policy
 curl http://127.0.0.1:5173/api/runs/live/alerts
+curl 'http://127.0.0.1:5173/api/runs/live/tail?mode=latest&limit=20'
 ```
 
 ## CPU-Light Manual Workflow
@@ -157,7 +166,18 @@ Useful API checks:
 ```bash
 curl http://127.0.0.1:8000/api/health
 curl http://127.0.0.1:8000/api/runs
+curl http://127.0.0.1:8000/api/policy
 curl 'http://127.0.0.1:8000/api/runs/fixture/alerts?limit=10'
+curl 'http://127.0.0.1:8000/api/runs/fixture_multi/tail?mode=latest&limit=10'
+```
+
+`/api/policy` reads `configs/policies/safety.yaml` by default, or the path set
+with `VRS_POLICY_PATH`. `/api/runs/{run}/tail` returns `next_cursor`; pass that
+cursor back on the next poll to fetch only newly appended alerts:
+
+```bash
+curl 'http://127.0.0.1:8000/api/runs/fixture_multi/tail?mode=latest&limit=10'
+curl 'http://127.0.0.1:8000/api/runs/fixture_multi/tail?cursor=<next_cursor>'
 ```
 
 ## Optional GPU Plumbing Check

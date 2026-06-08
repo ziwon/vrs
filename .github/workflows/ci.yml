@@ -69,6 +69,22 @@ jobs:
             --current baselines/eval/report.json \
             --max-f1-drop 0.02
 
+  docker-smoke:
+    name: Docker backend/frontend smoke builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: lint
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -f Dockerfile.backend .
+
+      - name: Build frontend image
+        run: docker build -f Dockerfile.frontend .
+
   pr-integration:
     name: PR integration smoke test
     runs-on: ubuntu-latest

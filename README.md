@@ -113,6 +113,32 @@ The detector runs on every sampled frame, while the verifier only runs after
 event-state promotes a stable candidate. This keeps the local GPU budget focused
 on real alert decisions instead of spending VLM time on quiet frames.
 
+## Policy flow
+
+Watch policies live under [`configs/policies`](configs/policies/README.md).
+They define the user-editable event registry: detector prompts, verifier
+definitions, severity, confidence floors, persistence, and optional verifier
+context windows.
+
+```mermaid
+flowchart LR
+    A[Policy YAML] --> B[WatchPolicy]
+    B --> C[YOLOE vocabulary]
+    B --> D[Event thresholds]
+    B --> E[VLM definitions]
+    C --> F[Fast-path detections]
+    D --> G[CandidateAlert]
+    F --> G
+    E --> H[VLM verifier]
+    G --> H
+    H --> I[VerifiedAlert]
+```
+
+At runtime, policy entries such as `fire`, `smoke`, and `falldown` are expanded
+into YOLOE open-vocabulary classes, mapped back to stable event names, promoted
+only after temporal persistence, and finally verified by the VLM before being
+written to JSONL, thumbnails, and the local console.
+
 ## Documentation
 
 - [System review](docs/01-system-review.md) — current implementation status,
@@ -120,6 +146,9 @@ on real alert decisions instead of spending VLM time on quiet frames.
 - [Roadmap](docs/02-roadmap.md) — near-term prioritized work.
 - [Local web UI workflow](docs/local-web-ui.md) — Docker Compose, RTSP,
   `.env`, Hugging Face cache, API checks, and UI troubleshooting.
+- [Policy model](configs/policies/README.md) — watch-policy schema, runtime
+  flow, UI-driven editing, validation, reload strategy, and scenario-policy
+  direction.
 - [Operations notes](docs/operations.md) — audit signing, served verifier,
   metrics, GPU smoke tests, policies, and evaluation reports.
 - [VSS + SAM3 blueprint](docs/03-vss-sam3-blueprint.md) — long-term

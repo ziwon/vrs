@@ -1,5 +1,8 @@
 set shell := ["bash", "-uc"]
 
+compose := "docker compose -f docker-compose.yaml"
+compose-local := "docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml"
+
 default:
     @just --list
 
@@ -49,3 +52,30 @@ package: build
     @ls -1 dist
 
 check: lock-check fmt-check lint test build
+
+compose-up *args:
+    {{compose}} up -d --build {{args}}
+
+compose-down *args:
+    {{compose}} down {{args}}
+
+compose-logs *args:
+    {{compose}} logs {{args}}
+
+compose-ps:
+    {{compose}} ps -a
+
+local-up *args:
+    {{compose-local}} --profile inference up -d --build {{args}}
+
+local-down *args:
+    {{compose-local}} --profile inference down {{args}}
+
+local-restart-inference:
+    {{compose-local}} --profile inference up -d --force-recreate inference
+
+local-logs *args:
+    {{compose-local}} --profile inference logs {{args}}
+
+local-ps:
+    {{compose-local}} --profile inference ps -a

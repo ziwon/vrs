@@ -1,0 +1,9 @@
+# docker-compose.hf-local.yaml
+services:
+  inference:
+    environment:
+      HF_HOME: /models/huggingface
+      HF_HUB_CACHE: /models/huggingface/hub
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}
+    volumes:
+      - /data/LLM/models/hugging-face:/models/huggingface

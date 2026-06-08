@@ -6687,6 +6687,7 @@ source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
     { name = "av" },
+    { name = "fastapi" },
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-3-vrs-cu121'" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-3-vrs-cu128' or extra != 'extra-3-vrs-cu121'" },
     { name = "opencv-python", version = "4.11.0.86", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-3-vrs-cu121'" },
@@ -6698,6 +6699,7 @@ dependencies = [
     { name = "tqdm" },
     { name = "transformers" },
     { name = "ultralytics" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
@@ -6712,6 +6714,8 @@ cu128 = [
 ]
 quant = [
     { name = "bitsandbytes" },
+    { name = "compressed-tensors", version = "0.9.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-3-vrs-cu121'" },
+    { name = "compressed-tensors", version = "0.15.0.1", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-3-vrs-cu128' or extra != 'extra-3-vrs-cu121'" },
 ]
 vllm = [
     { name = "vllm", version = "0.7.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-3-vrs-cu121'" },
@@ -6732,6 +6736,8 @@ requires-dist = [
     { name = "accelerate", specifier = ">=0.34" },
     { name = "av", specifier = ">=12.0" },
     { name = "bitsandbytes", marker = "extra == 'quant'", specifier = ">=0.43" },
+    { name = "compressed-tensors", marker = "extra == 'quant'", specifier = ">=0.9.1" },
+    { name = "fastapi", specifier = ">=0.110" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "opencv-python", specifier = ">=4.9" },
     { name = "pillow", specifier = ">=10.2" },
@@ -6743,6 +6749,7 @@ requires-dist = [
     { name = "tqdm", specifier = ">=4.66" },
     { name = "transformers", specifier = ">=4.46" },
     { name = "ultralytics", specifier = ">=8.3.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.29" },
     { name = "vllm", marker = "extra == 'vllm'", specifier = ">=0.6.5" },
     { name = "xgrammar", marker = "extra == 'constrained'", specifier = ">=0.1" },
 ]

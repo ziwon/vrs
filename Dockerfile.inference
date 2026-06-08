@@ -1,0 +1,37 @@
+FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    UV_LINK_MODE=copy
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    ffmpeg \
+    git \
+    libglib2.0-0 \
+    libgl1 \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
+
+COPY pyproject.toml uv.lock ./
+COPY configs ./configs
+COPY scripts ./scripts
+COPY vrs ./vrs
+
+RUN uv sync --python python3 --extra cu128 --extra quant
+RUN uv pip install --python /app/.venv/bin/python \
+    "git+https://github.com/ultralytics/CLIP.git@81ff68ed7ffcac3b40484c914f104f816757308d"
+
+RUN mkdir -p /app/runs/live
+
+CMD ["/app/.venv/bin/python", "scripts/run_rtsp.py", "--rtsp", "rtsp://rtsp:8554/falldown", "--config", "configs/tiny.yaml", "--policy", "configs/policies/falldown_orin_smoke.yaml", "--out", "/app/runs/live"]

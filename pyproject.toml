@@ -7,6 +7,7 @@ name = "vrs"
 version = "0.3.0"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.110",
     "numpy>=1.26",
     "opencv-python>=4.9",
     "pillow>=10.2",
@@ -18,10 +19,14 @@ dependencies = [
     "safetensors>=0.4",
     "qwen-vl-utils>=0.0.10",
     "av>=12.0",
+    "uvicorn[standard]>=0.29",
 ]
 
 [project.optional-dependencies]
-quant = ["bitsandbytes>=0.43"]
+quant = [
+    "bitsandbytes>=0.43",
+    "compressed-tensors>=0.9.1",
+]
 constrained = ["xgrammar>=0.1"]
 vllm = ["vllm>=0.6.5"]
 cu128 = ["torch>=2.6"]

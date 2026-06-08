@@ -1,0 +1,97 @@
+services:
+  rtsp:
+    image: bluenviron/mediamtx:1.12.3
+    ports:
+      - "8554:8554"
+      - "8888:8888"
+      - "8889:8889"
+
+  rtsp-falldown:
+    image: jrottenberg/ffmpeg:6.1-alpine
+    depends_on:
+      - rtsp
+    restart: unless-stopped
+    volumes:
+      - ./runs/pr-integration/clips:/clips:ro
+    command:
+      - -re
+      - -stream_loop
+      - "-1"
+      - -fflags
+      - +genpts
+      - -i
+      - /clips/falldown_test.mp4
+      - -map
+      - 0:v:0
+      - -an
+      - -vf
+      - fps=30,format=yuv420p
+      - -c:v
+      - libx264
+      - -preset
+      - veryfast
+      - -tune
+      - zerolatency
+      - -pix_fmt
+      - yuv420p
+      - -f
+      - rtsp
+      - -rtsp_transport
+      - tcp
+      - rtsp://rtsp:8554/falldown
+
+  inference:
+    profiles:
+      - inference
+    build:
+      context: .
+      dockerfile: Dockerfile.inference
+    depends_on:
+      - rtsp-falldown
+    environment:
+      VRS_RTSP_URL: rtsp://rtsp:8554/falldown
+      VRS_RUN_OUT: /app/runs/live
+      HF_HOME: /models/huggingface
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+    volumes:
+      - vrs-runs:/app/runs
+      - vrs-hf-cache:/models/huggingface
+    gpus: all
+    command:
+      - /app/.venv/bin/python
+      - scripts/run_rtsp.py
+      - --rtsp
+      - rtsp://rtsp:8554/falldown
+      - --config
+      - configs/tiny.yaml
+      - --policy
+      - configs/policies/falldown_orin_smoke.yaml
+      - --out
+      - /app/runs/live
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      VRS_RUNS_ROOT: /app/runs
+      VRS_SAMPLE_RTSP_URL: rtsp://127.0.0.1:8554/falldown
+    volumes:
+      - vrs-runs:/app/runs
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    depends_on:
+      - backend
+      - rtsp-falldown
+    ports:
+      - "5173:80"
+
+volumes:
+  vrs-runs:
+  vrs-hf-cache:

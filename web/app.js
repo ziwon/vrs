@@ -653,7 +653,8 @@ function maybePushAlert() {
 async function refreshFromApi(reset) {
   if (!state.selectedRun) return;
   const params = new URLSearchParams({ limit: "500" });
-  if (!reset && state.tailCursor) params.set("cursor", state.tailCursor);
+  if (reset) params.set("mode", "latest");
+  else if (state.tailCursor) params.set("cursor", state.tailCursor);
   const body = await apiJSON(`/api/runs/${encodeURIComponent(state.selectedRun)}/tail?${params}`);
   const incoming = body.alerts.map(normalizeAlert);
   state.jsonlErrors = body.errors || [];

@@ -123,6 +123,7 @@ def create_app(runs_root: str | Path | None = None) -> FastAPI:
         since_line: int | None = Query(default=None, ge=0),
         stream_id: str | None = None,
         limit: int = Query(default=100, ge=0, le=5000),
+        mode: str = Query(default="poll", pattern="^(poll|latest)$"),
     ) -> dict[str, object]:
         try:
             info = store.describe_run(run_name)
@@ -132,6 +133,7 @@ def create_app(runs_root: str | Path | None = None) -> FastAPI:
                 since_line=since_line,
                 stream_id=stream_id,
                 limit=limit,
+                mode=mode,
             )
         except UnsafePathError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -142,6 +144,7 @@ def create_app(runs_root: str | Path | None = None) -> FastAPI:
             "total": result.total,
             "limit": limit,
             "cursor": cursor,
+            "mode": mode,
             "next_cursor": result.next_cursor,
         }
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from base64 import urlsafe_b64encode
 from pathlib import Path
 
 import pytest
@@ -162,6 +163,92 @@ def test_tail_cursor_is_per_stream(tmp_path: Path) -> None:
         fh.write(json.dumps({"class_name": "weapon", "severity": "critical", "idx": 2}) + "\n")
 
     second = client.get("/api/runs/fixture_multi/tail", params={"cursor": cursor}).json()
+    assert [
+        (alert["stream_id"], alert["_line"], alert["class_name"]) for alert in second["alerts"]
+    ] == [("cam-02", 2, "weapon")]
+
+
+@pytest.mark.parametrize(
+    "cursor",
+    [
+        "not valid!",
+        urlsafe_b64encode(b"\xff").decode("ascii").rstrip("="),
+        urlsafe_b64encode(b"[]").decode("ascii").rstrip("="),
+        urlsafe_b64encode(json.dumps({"../cam": 1}).encode("utf-8")).decode("ascii").rstrip("="),
+        urlsafe_b64encode(json.dumps({"cam-01": "1"}).encode("utf-8")).decode("ascii").rstrip("="),
+        urlsafe_b64encode(json.dumps({"cam-01": -1}).encode("utf-8")).decode("ascii").rstrip("="),
+        urlsafe_b64encode(json.dumps({"cam-01": True}).encode("utf-8")).decode("ascii").rstrip("="),
+    ],
+)
+def test_tail_rejects_malformed_cursor_values(tmp_path: Path, cursor: str) -> None:
+    write_fixture_run(tmp_path)
+    client = TestClient(create_app(tmp_path))
+
+    response = client.get("/api/runs/fixture_multi/tail", params={"cursor": cursor})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid tail cursor"
+
+
+def test_tail_latest_mode_prefers_newest_alert_over_old_stream_backlog(tmp_path: Path) -> None:
+    run = tmp_path / "fixture_multi"
+    cam01 = run / "cam-01"
+    cam02 = run / "cam-02"
+    cam01.mkdir(parents=True)
+    cam02.mkdir(parents=True)
+    with (cam01 / "alerts.jsonl").open("w", encoding="utf-8") as fh:
+        for idx in range(100):
+            fh.write(
+                json.dumps(
+                    {
+                        "stream_id": "cam-01",
+                        "class_name": "fire",
+                        "severity": "critical",
+                        "ts": f"2026-01-01T00:00:{idx % 60:02d}Z",
+                        "peak_pts_s": idx,
+                    }
+                )
+                + "\n"
+            )
+    (cam02 / "alerts.jsonl").write_text(
+        json.dumps(
+            {
+                "stream_id": "cam-02",
+                "class_name": "smoke",
+                "severity": "high",
+                "ts": "2026-01-02T00:00:00Z",
+                "peak_pts_s": 1,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(tmp_path))
+
+    first = client.get("/api/runs/fixture_multi/tail", params={"mode": "latest", "limit": 1}).json()
+
+    assert [(alert["stream_id"], alert["class_name"]) for alert in first["alerts"]] == [
+        ("cam-02", "smoke")
+    ]
+
+    with (cam02 / "alerts.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "stream_id": "cam-02",
+                    "class_name": "weapon",
+                    "severity": "critical",
+                    "ts": "2026-01-02T00:00:01Z",
+                    "peak_pts_s": 2,
+                }
+            )
+            + "\n"
+        )
+
+    second = client.get(
+        "/api/runs/fixture_multi/tail", params={"cursor": first["next_cursor"]}
+    ).json()
+
     assert [
         (alert["stream_id"], alert["_line"], alert["class_name"]) for alert in second["alerts"]
     ] == [("cam-02", 2, "weapon")]

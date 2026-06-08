@@ -7,7 +7,9 @@ load GPU/model dependencies.
 from __future__ import annotations
 
 import json
+import re
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from binascii import Error as BinasciiError
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,6 +17,7 @@ from typing import Any
 from urllib.parse import quote
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
+TAIL_CURSOR_RE = re.compile(r"^[A-Za-z0-9_-]*={0,2}$")
 
 
 @dataclass(frozen=True)
@@ -167,10 +170,12 @@ class RunArtifactStore:
         since_line: int | None = None,
         stream_id: str | None = None,
         limit: int = 100,
+        mode: str = "poll",
     ) -> AlertReadResult:
         positions = decode_tail_cursor(cursor)
         alerts: list[dict[str, Any]] = []
         errors: list[JsonlError] = []
+        file_max_lines: dict[str, int] = {}
         for alert_file in self.alert_files(run_name):
             if stream_id is not None and alert_file.stream_id != stream_id:
                 continue
@@ -178,6 +183,7 @@ class RunArtifactStore:
             floor = positions.get(key, since_line or 0)
             records, file_errors = self.read_jsonl_records(alert_file.path)
             errors.extend(file_errors)
+            file_max_lines[key] = max((line_no for line_no, _ in records), default=floor)
             for line_no, record in records:
                 if line_no <= floor:
                     continue
@@ -197,17 +203,24 @@ class RunArtifactStore:
                     )
                 alerts.append(enriched)
 
-        alerts.sort(
-            key=lambda item: (str(item.get("stream_id") or ""), int(item.get("_line") or 0))
-        )
+        if mode == "latest":
+            alerts.sort(key=_alert_sort_key, reverse=True)
+        else:
+            alerts.sort(
+                key=lambda item: (str(item.get("stream_id") or ""), int(item.get("_line") or 0))
+            )
         total = len(alerts)
         window = alerts[:limit] if limit >= 0 else alerts
         next_positions = dict(positions)
-        for alert in window:
-            key = str(alert.get("_cursor_key") or "")
-            line_no = int(alert.get("_line") or 0)
-            if key:
+        if mode == "latest":
+            for key, line_no in file_max_lines.items():
                 next_positions[key] = max(next_positions.get(key, 0), line_no)
+        else:
+            for alert in window:
+                key = str(alert.get("_cursor_key") or "")
+                line_no = int(alert.get("_line") or 0)
+                if key:
+                    next_positions[key] = max(next_positions.get(key, 0), line_no)
         return AlertReadResult(
             alerts=window,
             errors=errors,
@@ -353,10 +366,13 @@ def encode_tail_cursor(positions: dict[str, int]) -> str:
 def decode_tail_cursor(cursor: str | None) -> dict[str, int]:
     if not cursor:
         return {}
+    if not TAIL_CURSOR_RE.fullmatch(cursor):
+        raise UnsafePathError("invalid tail cursor")
     padded = cursor + "=" * (-len(cursor) % 4)
     try:
-        value = json.loads(urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
-    except (ValueError, json.JSONDecodeError) as exc:
+        decoded = urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+        value = json.loads(decoded)
+    except (BinasciiError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
         raise UnsafePathError("invalid tail cursor") from exc
     if not isinstance(value, dict):
         raise UnsafePathError("invalid tail cursor")
@@ -364,10 +380,9 @@ def decode_tail_cursor(cursor: str | None) -> dict[str, int]:
     for key, line_no in value.items():
         if not isinstance(key, str) or not _safe_name(key):
             raise UnsafePathError("invalid tail cursor")
-        try:
-            positions[key] = max(0, int(line_no))
-        except (TypeError, ValueError) as exc:
-            raise UnsafePathError("invalid tail cursor") from exc
+        if not isinstance(line_no, int) or isinstance(line_no, bool) or line_no < 0:
+            raise UnsafePathError("invalid tail cursor")
+        positions[key] = line_no
     return positions
 
 
@@ -398,6 +413,25 @@ def _parse_timestamp(value: object) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _alert_sort_key(alert: dict[str, Any]) -> tuple[float, float, str, int]:
+    timestamp = _parse_timestamp(alert.get("ts"))
+    timestamp_value = timestamp.timestamp() if timestamp is not None else 0.0
+    pts = _as_float(alert.get("peak_pts_s"), default=0.0)
+    return (
+        timestamp_value,
+        pts,
+        str(alert.get("stream_id") or ""),
+        int(alert.get("_line") or 0),
+    )
+
+
+def _as_float(value: object, *, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _safe_name(value: str) -> bool:

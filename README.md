@@ -77,6 +77,24 @@ RTSP/mp4 ─► Reader ─► YOLOE-L ─► per-class score+bbox ─► EventSt
                                               alerts.jsonl + thumbnails/*.jpg
 ```
 
+Dashboard views:
+
+![VRS Console live alerts view showing detector candidates, verifier verdicts, confidence, and falldown thumbnails.](assets/vrs-console-live-alerts.png)
+
+The live alerts view reads `runs/live/alerts.jsonl` through the FastAPI backend
+and shows the detector-to-verifier result for each candidate, including
+confidence, verdict, rationale, and generated thumbnails.
+
+![VRS Console streams view showing the local falldown RTSP source and latest live keyframe.](assets/vrs-console-streams.png)
+
+The streams view confirms that the Docker Compose RTSP publisher is online and
+surfaces the latest keyframe for the local falldown stream.
+
+![VRS Console cascade view showing the decode, YOLOE, event-state, VLM verifier, and sink stages.](assets/vrs-console-cascade.png)
+
+The cascade view summarizes the two-stage reasoning path, the JSON verifier
+contract, and the local multi-stream worker model used by VRS.
+
 ## Documentation
 
 - [System review](docs/01-system-review.md) — current implementation status,
@@ -164,6 +182,34 @@ Outputs:
 - `runs/<name>/alerts.jsonl` — one JSON per verified alert (verdict, confidence, bbox, trajectory, rationale, thumbnail path)
 - `runs/<name>/thumbnails/*.jpg` — one event image per alert, with detector/verifier overlays
 - `runs/<name>/annotated.mp4` — optional debug/demo overlay video when `sink.write_annotated: true`
+
+## Local Web Dashboard
+
+Run the integrated local stack with:
+
+```bash
+docker compose up --build
+```
+
+Then open <http://127.0.0.1:5173>. Compose starts a MediaMTX RTSP server,
+an FFmpeg publisher for `runs/pr-integration/clips/falldown_test.mp4`, the
+CPU-light FastAPI backend, and the `feat/web` VSS-themed dashboard. The stream
+is available at `rtsp://127.0.0.1:8554/falldown`.
+
+On a GPU host, start the inference worker profile to consume that RTSP stream
+and write real VRS artifacts under `runs/live`:
+
+```bash
+docker compose --profile inference up --build
+```
+
+The default tiny verifier model is gated on Hugging Face. Export `HF_TOKEN`
+before starting the inference profile when you want the full detector plus VLM
+path; without it, the local workflow is validated up to the gated model download
+boundary.
+
+See [docs/local-web-ui.md](docs/local-web-ui.md) for manual API/UI commands,
+fixture generation, RTX 5080 notes, and optional GPU smoke workflows.
 
 ## Tamper-Evident Alert Logs
 

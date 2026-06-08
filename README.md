@@ -30,6 +30,53 @@ NVIDIA's 2026 model card lists a 24 GB minimum for the reference inference path.
   it should not be treated as the final verifier. Qwen3.5/Qwen3.6-class VLMs
   are priority candidates for side-by-side evaluation.
 
+## Dashboard
+
+![VRS Console live alerts view showing detector candidates, verifier verdicts, confidence, and falldown thumbnails.](assets/vrs-console-live-alerts.png)
+
+The local console reads `runs/live/alerts.jsonl` and thumbnails through a
+CPU-light FastAPI backend. It shows detector candidates, VLM verdicts,
+confidence, rationale, live RTSP state, and the two-stage cascade.
+
+![VRS Console streams view showing the local falldown RTSP source and latest live keyframe.](assets/vrs-console-streams.png)
+
+![VRS Console cascade view showing the decode, YOLOE, event-state, VLM verifier, and sink stages.](assets/vrs-console-cascade.png)
+
+## Quick Start
+
+Start the local RTSP/API/UI stack:
+
+```bash
+docker compose up --build
+```
+
+Open <http://127.0.0.1:5173>. The Compose stack publishes
+`runs/pr-integration/clips/falldown_test.mp4` as:
+
+```text
+rtsp://127.0.0.1:8554/falldown
+```
+
+Run the full inference profile with a Hugging Face token:
+
+```bash
+cp .env.example .env
+# edit .env and set HF_TOKEN / HUGGING_FACE_HUB_TOKEN
+docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml \
+  --profile inference up --build
+```
+
+Convenience commands:
+
+```bash
+just local-up
+just local-logs -f inference
+just local-down
+```
+
+See [docs/local-web-ui.md](docs/local-web-ui.md) for the full local workflow,
+RTSP checks, API checks, token setup, and troubleshooting.
+
 ## Why this design
 
 Classical CLIP-style classifiers (the "encode each frame and cosine-match a
@@ -77,29 +124,15 @@ RTSP/mp4 ─► Reader ─► YOLOE-L ─► per-class score+bbox ─► EventSt
                                               alerts.jsonl + thumbnails/*.jpg
 ```
 
-Dashboard views:
-
-![VRS Console live alerts view showing detector candidates, verifier verdicts, confidence, and falldown thumbnails.](assets/vrs-console-live-alerts.png)
-
-The live alerts view reads `runs/live/alerts.jsonl` through the FastAPI backend
-and shows the detector-to-verifier result for each candidate, including
-confidence, verdict, rationale, and generated thumbnails.
-
-![VRS Console streams view showing the local falldown RTSP source and latest live keyframe.](assets/vrs-console-streams.png)
-
-The streams view confirms that the Docker Compose RTSP publisher is online and
-surfaces the latest keyframe for the local falldown stream.
-
-![VRS Console cascade view showing the decode, YOLOE, event-state, VLM verifier, and sink stages.](assets/vrs-console-cascade.png)
-
-The cascade view summarizes the two-stage reasoning path, the JSON verifier
-contract, and the local multi-stream worker model used by VRS.
-
 ## Documentation
 
 - [System review](docs/01-system-review.md) — current implementation status,
   known gaps, and engineering review.
 - [Roadmap](docs/02-roadmap.md) — near-term prioritized work.
+- [Local web UI workflow](docs/local-web-ui.md) — Docker Compose, RTSP,
+  `.env`, Hugging Face cache, API checks, and UI troubleshooting.
+- [Operations notes](docs/operations.md) — audit signing, served verifier,
+  metrics, GPU smoke tests, policies, and evaluation reports.
 - [VSS + SAM3 blueprint](docs/03-vss-sam3-blueprint.md) — long-term
   vendor-neutral platform direction, including optional SAM3 workers,
   DeepStream runtime adapter planning, platform contracts, semantic search, and
@@ -107,7 +140,7 @@ contract, and the local multi-stream worker model used by VRS.
 - [Runtime validation matrix](docs/runtime-matrix.md) — validated,
   unvalidated, and planned GPU/runtime profiles.
 
-## Install
+## GPU Setup
 
 ```bash
 uv python install 3.11
@@ -121,31 +154,16 @@ uv sync --python 3.11 --extra cu128     # Blackwell
 # uv sync --python 3.11 --extra cu121   # Ada/Ampere
 ```
 
-Always pick one CUDA extra on GPU hosts; a bare `uv sync` can satisfy
-transitive `torch` requirements without selecting the deployment-specific
-PyTorch wheel.
-
-### RTX 5080 / Blackwell note
-
-RTX 5080 (GB205, Blackwell, SM 12.0) needs **CUDA 12.8+ and torch 2.6+** for
-native kernel support. If you get `no kernel image is available for execution
-on the device` when YOLOE or Cosmos starts, your torch is too old — sync with
-the `cu128` extra above.
-
-Cosmos-Reason2-2B and YOLOE should be validated on the exact Blackwell host and
-runtime you intend to ship. The BF16 model weights are small, but video tokens,
-KV cache, and framework overhead can dominate memory; use the W4A16 profile or
-a served backend if BF16 does not fit.
-
-### W4A16 profile (≤8 GB cards / Jetson)
+For the W4A16 verifier profile used by `configs/tiny.yaml`, include the quant
+extra:
 
 ```bash
-uv sync --extra cu128 --extra quant
+uv sync --python 3.11 --extra cu128 --extra quant
 ```
 
-## Run
+## Pipeline Commands
 
-**Single mp4:**
+Single MP4:
 ```bash
 uv run scripts/run_mp4.py \
   --video /path/to/cctv.mp4 \
@@ -154,7 +172,7 @@ uv run scripts/run_mp4.py \
   --out runs/demo
 ```
 
-**Single RTSP:**
+Single RTSP:
 ```bash
 uv run scripts/run_rtsp.py \
   --rtsp rtsp://user:pass@cam.local:554/stream1 \
@@ -163,7 +181,7 @@ uv run scripts/run_rtsp.py \
   --out runs/live
 ```
 
-**Multi-stream (N cameras on one GPU):**
+Multi-stream:
 ```bash
 uv run scripts/run_multistream.py \
   --config  configs/default.yaml \
@@ -172,279 +190,25 @@ uv run scripts/run_multistream.py \
   --out     runs/live
 ```
 
-List your cameras in `configs/multistream.yaml`. One shared YOLOE and one
-shared verifier backend serve every stream; per-stream outputs land under
-`runs/live/<stream_id>/{alerts.jsonl, thumbnails/*.jpg}`. Annotated MP4 output
-is still available as an opt-in debug/demo artifact.
-
 Outputs:
 
 - `runs/<name>/alerts.jsonl` — one JSON per verified alert (verdict, confidence, bbox, trajectory, rationale, thumbnail path)
 - `runs/<name>/thumbnails/*.jpg` — one event image per alert, with detector/verifier overlays
 - `runs/<name>/annotated.mp4` — optional debug/demo overlay video when `sink.write_annotated: true`
 
-## Local Web Dashboard
+## Operations
 
-Run the integrated local stack with:
-
-```bash
-docker compose up --build
-```
-
-Then open <http://127.0.0.1:5173>. Compose starts a MediaMTX RTSP server,
-an FFmpeg publisher for `runs/pr-integration/clips/falldown_test.mp4`, the
-CPU-light FastAPI backend, and the `feat/web` VSS-themed dashboard. The stream
-is available at `rtsp://127.0.0.1:8554/falldown`.
-
-On a GPU host, start the inference worker profile to consume that RTSP stream
-and write real VRS artifacts under `runs/live`:
-
-```bash
-docker compose --profile inference up --build
-```
-
-The default tiny verifier model is gated on Hugging Face. Export `HF_TOKEN`
-before starting the inference profile when you want the full detector plus VLM
-path; without it, the local workflow is validated up to the gated model download
-boundary.
-
-See [docs/local-web-ui.md](docs/local-web-ui.md) for manual API/UI commands,
-fixture generation, RTX 5080 notes, and optional GPU smoke workflows.
-
-## Tamper-Evident Alert Logs
-
-`alerts.jsonl` can optionally include a hash chain so later review can detect
-modified, deleted, or reordered records. This is not encryption; alert contents
-remain plaintext JSON.
-
-```yaml
-audit:
-  enabled: true
-  mode: hmac_sha256
-  key_id: local-dev-key
-  key_env: VRS_AUDIT_HMAC_KEY
-```
-
-Set the HMAC key in the runtime environment and keep it out of the config file:
-
-```bash
-export VRS_AUDIT_HMAC_KEY='replace-with-a-secret-key'
-```
-
-When audit signing is enabled, each alert record gets `schema_version`,
-`audit_mode`, `prev_hash`, `record_hash`, and `key_id`. With
-`audit.enabled: false` (the default), the JSONL record shape is unchanged.
-
-Verify a signed log:
-
-```bash
-python -m vrs.audit --log runs/demo/alerts.jsonl \
-  --mode hmac_sha256 \
-  --key-env VRS_AUDIT_HMAC_KEY
-```
-
-Verification detects edits to signed records, middle deletion, and reordering
-because every record commits to the previous record hash. To prove that the last
-record was not truncated, store the final `record_hash` or file digest in your
-external retention system at collection time.
-
-### Served OpenAI-compatible verifier
-
-To compare the local Cosmos baseline against a served Qwen/vLLM/SGLang-style
-VLM, point the verifier at an OpenAI-compatible chat-completions endpoint:
-
-```yaml
-verifier:
-  enabled: true
-  backend: openai_compatible
-  model_id: qwen-vl-served
-  base_url: http://localhost:8000/v1
-  api_key_env: VRS_VLM_API_KEY
-  max_new_tokens: 512
-  temperature: 0.0
-```
-
-The backend posts to `${base_url}/chat/completions` with the same system prompt,
-user prompt, and keyframe list used by the local verifier. Each BGR keyframe is
-JPEG-encoded and sent as a `data:image/jpeg;base64,...` `image_url` content item
-after the text prompt. When the verifier supplies its JSON schema, the backend
-passes it as `response_format: {type: "json_schema", ...}`; if a server ignores
-that field, VRS still applies the same verifier JSON parsing and failure policy
-to the returned text.
-
-## Prometheus Metrics
-
-Metrics are disabled by default. Enable the lightweight scrape endpoint in your
-runtime config:
-
-```yaml
-observability:
-  metrics:
-    enabled: true
-    host: "0.0.0.0"
-    port: 9108
-```
-
-Prometheus can then scrape `http://<host>:9108/metrics`. The endpoint exports
-queue depth and drop counters for multi-stream runs, detector/verifier latency
-histograms, candidate and verified-alert counters, verifier error counters, and
-sink write error counters.
-
-Example scrape config:
-
-```yaml
-scrape_configs:
-  - job_name: vrs
-    static_configs:
-      - targets: ["vrs-appliance.local:9108"]
-```
-
-## Smoke-test on your GPU (e.g. RTX 5080)
-
-1. **Generate synthetic plumbing-test clips** (no network, no datasets):
-
-   ```bash
-   uv run scripts/make_test_clips.py --out runs/test_clips
-   ```
-
-   This writes 4 FHD mp4s — `fire_test.mp4`, `smoke_test.mp4`,
-   `falldown_test.mp4`, `weapon_test.mp4`. They use programmatic OpenCV
-   drawing (noise patches, Gaussian blobs, stick figures, silhouettes).
-
-   **They test the pipeline, not the models.** YOLOE's real-world
-   training means it will usually *not* raise detections on these clips —
-   that's expected. The bench script still gives you real latency, FPS,
-   and VRAM numbers.
-
-2. **Benchmark on the local GPU**:
-
-   ```bash
-   uv run scripts/bench.py --clips runs/test_clips --out runs/bench
-   ```
-
-   You'll see per-clip single-stream throughput, then a multi-stream run
-   (4 clips × 4 replicas = 16 concurrent streams by default) with peak
-   VRAM and queue drop counts. A JSON report is saved to
-   `runs/bench/bench_report.json`.
-
-3. **For accuracy testing**, use real datasets:
-   - Fire/smoke: [FireNet](https://github.com/arpit-jadon/FireNet-LightWeight-Network-for-Fire-Detection), [D-Fire](https://github.com/gaiasd/DFireDataset)
-   - Falldown: [Le2i Fall Detection](http://le2i.cnrs.fr/Fall-detection-Dataset), [UP-Fall Detection](https://sites.google.com/up.edu.mx/har-up/)
-   - Multi-class CCTV anomaly: [UCF-Crime](https://www.crcv.ucf.edu/projects/real-world/)
-
-   Drop the clips into a directory, add them to `configs/multistream.yaml`
-   as `file://` sources, and re-run `uv run scripts/bench.py`.
-
-   For D-Fire detector-only evaluation, see [docs/dfire-dataset.md](docs/dfire-dataset.md).
-
-## Watch Policy — the only place you maintain
-
-```yaml
-# configs/policies/safety.yaml
-watch:
-  - name: fire
-    detector: ["fire", "open flame", "burning object"]   # YOLOE text prompts
-    verifier: "Open flames or active fire indoors"        # VLM verifier prompt
-    severity: critical
-    min_score: 0.30
-    min_persist_frames: 2
-  - name: smoke
-    detector: ["smoke", "smoke cloud", "billowing smoke"]
-    verifier: "Thick smoke filling a space"
-    severity: high
-    min_score: 0.25
-    min_persist_frames: 2
-  - name: falldown
-    detector: ["person lying on the ground", "fallen person", "collapsed person"]
-    verifier: "A person has collapsed and is lying motionless"
-    severity: high
-    min_score: 0.35
-    min_persist_frames: 3
-  - name: weapon            # custom — added in 5 seconds
-    detector: ["handgun", "knife", "rifle"]
-    verifier: "A person holding or brandishing a weapon"
-    severity: critical
-    min_score: 0.40
-    min_persist_frames: 1
-```
-
-Adding a custom event is a single block. No bank to score, no embeddings to
-recompute, no thresholds to grid-search.
-
-## Policy Optimization Roadmap
-
-Today, VRS uses a hand-authored watch policy to decide which detector-side
-events should become verification candidates. Longer term, the verifier policy
-should become more structured and data-driven instead of growing into an
-unbounded collection of customer-specific prompt files.
-
-The planned direction is:
-
-```text
-VerifiedAlert + thumbnails/clips + operator feedback
-  -> CaseStore
-  -> false-positive / missed-event mining
-  -> stronger LLM proposes structured PolicyDiff candidates
-  -> scenario evaluation compares baseline vs candidate
-  -> promote only if regression gates pass
-  -> versioned rollout / rollback
-```
-
-This is **not** runtime self-modification. VRS should not change prompts live
-just because one alert was wrong. The intended loop is offline and eval-gated:
-collect evidence, generate a candidate policy update, evaluate it against known
-cases, then promote it only if false positives improve without unacceptable
-recall or uncertainty regressions.
-
-This roadmap also reframes verifier prompts as rendered artifacts from
-structured, versioned scenario policies. A future policy pack may define fields
-such as `normal_conditions`, `abnormal_conditions`, `false_positive_hints`,
-`required_evidence`, and `uncertain_when`; prompt templates can then render those
-fields into the VLM verifier instructions. The goal is to reduce manual prompt
-drift while still allowing customer/site-specific semantics to be captured and
-evaluated.
-
-## VRAM profiles
-
-See [Runtime validation matrix](docs/runtime-matrix.md) for the current
-validated, unvalidated, and planned GPU/runtime combinations. Treat the table
-below as configuration intent until a profile has a linked benchmark note.
+- Watch-policy changes live in `configs/policies/safety.yaml`; adding a custom
+  event is one detector prompt list plus one verifier sentence.
+- Metrics, audit signing, served VLM verifier setup, GPU smoke tests, and eval
+  report commands are covered in [docs/operations.md](docs/operations.md).
+- Runtime and GPU profile status is tracked in
+  [docs/runtime-matrix.md](docs/runtime-matrix.md).
 
 | Profile | Detector | Verifier | Notes |
 |---------|----------|----------|-------|
 | `default.yaml` | YOLOE-L FP16 | Cosmos-Reason2-2B BF16 | Accuracy-oriented local profile; validate memory on target GPU. NVIDIA's reference model card lists 24 GB minimum. |
 | `tiny.yaml` | YOLOE-S FP16 | Cosmos-Reason2-2B W4A16 | Intended for 8-16 GB cards / Jetson-class deployments after quantized-runtime validation. |
-
-## Multi-stream architecture
-
-The multistream path is designed around one shared YOLOE instance and one
-shared VLM verifier instance. Sustainable stream count depends on alert
-rate, verifier backend, clip length, and GPU memory; measure it with
-`uv run scripts/bench.py` on the target host instead of treating a stream count as
-portable. See `vrs/multistream/` for the topology:
-
-```
-RTSP[i] ─► DecoderThread[i] ──┐
-                              ▼ bounded FrameQueue (drop-oldest)
-                    DetectorWorker  (batched YOLOE, per-stream EventStateQueue)
-                              │
-                              ▼ bounded CandidateQueue
-                    VerifierWorker  (VLM verifier, drop-oldest on overflow)
-                              │
-                              ▼
-                    SinkWorker[i]  ─► runs/<out>/<stream_id>/{alerts.jsonl, thumbnails/*.jpg}
-```
-
-Decoder backends implemented today (`multistream.decoder_backend`):
-- `opencv` (default) — FFmpeg CPU decode. Works everywhere.
-- `nvdec` — `cv2.cudacodec.VideoReader` for hardware-accelerated NVDEC decode.
-  Requires OpenCV built with CUDA; gracefully falls back to `opencv` otherwise.
-
-DeepStream is not implemented as a selectable reader backend in this release. It
-is tracked as a future NVIDIA runtime adapter for high-density RTSP ingest,
-NVDEC/NVMM pipelines, TensorRT detector execution, tracker metadata, and broker
-publishing. See [VSS + SAM3 blueprint](docs/03-vss-sam3-blueprint.md) for the
-planning constraints.
 
 ## Layout
 
@@ -459,44 +223,4 @@ vrs/
 ├── multistream/   N-stream cascade: decoders, workers, queues, pipeline
 ├── pipeline.py    Single-stream cascade orchestration
 └── schemas.py     Frame / Detection / CandidateAlert / VerifiedAlert
-```
-
-## Evaluation Reports
-
-`scripts/eval.py` writes `<out>/report.json` using the stable schema version
-`vrs.eval.report.v1`.
-
-Top-level sections:
-- `schema_version` — explicit report-contract identifier for compatibility checks.
-- `run` — dataset name, run ID, timestamp, mode, and config/policy paths.
-- `models` — detector and verifier backend/model identifiers from the active config.
-- `metrics` — overall and per-class precision, recall, F1, TP, FP, and FN.
-- `latency` — reserved stable slots for detector/verifier latency percentiles.
-- `runtime` — lightweight environment metadata such as Python version.
-- `quality_signals` — verifier flip rate, false-negative flag rate, and reserved diagnostic slots.
-- `per_video` — optional per-clip breakdown using the same metrics/quality shape.
-
-Today the CLI emits `mode: "full_cascade"` for the current detector+verifier
-path. A future detector-only scoring mode can reuse the same report schema with
-`mode: "detector_only"` instead of changing the JSON contract again.
-
-`run.created_at` and `runtime.*` are diagnostic — they vary across runs and
-machines and are not part of the regression contract. The CI gate
-(`uv run python -m vrs.eval.ci`) only compares `metrics` and `quality_signals`, so
-committed baselines are immune to clock and Python-version drift.
-
-The committed mini baseline lives at `baselines/eval/report.json`. Regenerate it
-only after an intentional fixture or metric-contract update:
-
-```bash
-uv run python scripts/write_eval_baseline.py --out baselines/eval/report.json
-```
-
-Compare a candidate report against the baseline with:
-
-```bash
-uv run python -m vrs.eval.ci \
-  --baseline baselines/eval/report.json \
-  --current runs/eval/report.json \
-  --max-f1-drop 0.02
 ```

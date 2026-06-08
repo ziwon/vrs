@@ -22,14 +22,14 @@
     <filter id="shadow" x="-20%" y="-30%" width="140%" height="160%">
       <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#020617" flood-opacity="0.42"/>
     </filter>
-    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L8,3 z" fill="#84cc16"/>
+    <marker id="arrowGreen" markerWidth="6.5" markerHeight="6.5" refX="4.6" refY="2" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,4 L5.2,2 z" fill="#84cc16"/>
     </marker>
-    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L8,3 z" fill="#38bdf8"/>
+    <marker id="arrowBlue" markerWidth="6.5" markerHeight="6.5" refX="4.6" refY="2" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,4 L5.2,2 z" fill="#38bdf8"/>
     </marker>
-    <marker id="arrowAmber" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L8,3 z" fill="#f59e0b"/>
+    <marker id="arrowAmber" markerWidth="6.5" markerHeight="6.5" refX="4.6" refY="2" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,4 L5.2,2 z" fill="#f59e0b"/>
     </marker>
     <style>
       text{font-family:sans-serif;fill:#f8fafc;font-style:normal}
@@ -41,10 +41,10 @@
       .large{font-size:30px;font-weight:800}
       .box{fill:#243044;stroke:#475569;stroke-width:1.5;filter:url(#shadow)}
       .store{fill:#1e293b;stroke:#64748b;stroke-width:1.5;filter:url(#shadow)}
-      .flow{fill:none;stroke-linecap:round;stroke-width:5;stroke-dasharray:12 15}
-      .greenStroke{stroke:url(#green);marker-end:url(#arrowGreen)}
-      .blueStroke{stroke:url(#blue);marker-end:url(#arrowBlue)}
-      .amberStroke{stroke:url(#amber);marker-end:url(#arrowAmber)}
+      .flow{fill:none;stroke-linecap:round;stroke-width:4;stroke-dasharray:8 8;opacity:.88}
+      .greenStroke{stroke:#84cc16;marker-end:url(#arrowGreen)}
+      .blueStroke{stroke:#38bdf8;marker-end:url(#arrowBlue)}
+      .amberStroke{stroke:#f59e0b;marker-end:url(#arrowAmber)}
       .pulse{filter:url(#shadow)}
       @media (prefers-reduced-motion:no-preference){
         .flow{animation:dash 1.65s linear infinite}
@@ -111,11 +111,11 @@
   <text fill="#f8fafc" class="label medium" x="118" y="342">VRS Console</text>
   <text fill="#94a3b8" class="label muted tiny" x="112" y="366">nginx static frontend</text>
 
-  <path class="flow greenStroke" d="M248 204H326"/>
-  <path class="flow amberStroke" d="M516 204H594"/>
-  <path class="flow amberStroke" d="M784 204H852"/>
-  <path class="flow blueStroke" d="M941 266V300"/>
-  <path class="flow blueStroke" d="M852 346H268"/>
+  <path class="flow greenStroke" d="M248 204H326" fill="none" stroke="#84cc16" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowGreen)"/>
+  <path class="flow amberStroke" d="M516 204H594" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowAmber)"/>
+  <path class="flow amberStroke" d="M784 204H852" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowAmber)"/>
+  <path class="flow blueStroke" d="M941 266V300" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowBlue)"/>
+  <path class="flow blueStroke" d="M852 346H268" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowBlue)"/>
 
   <circle class="pulse p1" r="8" fill="#84cc16"/>
   <circle class="pulse p2" r="8" fill="#f59e0b"/>

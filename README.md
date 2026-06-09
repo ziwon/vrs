@@ -87,6 +87,19 @@ maintenance**: every new event type, every new camera, every site-specific
 quirk needs new prompts and re-scoring. They also produce only frame-level
 scores, not localizations.
 
+### Why not embedding-only business logic
+
+VRS also avoids making precomputed embeddings the primary home for business logic. Embedding lookup can be very fast, but operational semantics often end up hidden in manually maintained vectors, thresholds, and category-specific matching rules. As sites, camera angles, lighting conditions, and false-positive patterns change, engineers must continuously update those assets.
+
+VRS keeps business intent explicit and policy-driven. Event definitions live in human-readable watch policies, while models remain execution components: the detector proposes candidates, event-state checks temporal stability, optional gates estimate risk, and the VLM verifier makes the final decision using the policy definition and video context.
+
+```text
+Business intent       -> watch policies
+Fast perception       -> open-vocabulary detector
+Risk / uncertainty    -> event-state and optional gates
+Final decision        -> VLM verifier
+```
+
 VRS uses two practical 2026-era baselines, with the verifier intentionally
 kept swappable:
 
@@ -121,6 +134,7 @@ definitions, severity, confidence floors, persistence, and optional verifier
 context windows.
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"background": "#0f172a", "mainBkg": "#243044", "secondBkg": "#1f2937", "primaryColor": "#243044", "primaryBorderColor": "#475569", "primaryTextColor": "#f8fafc", "lineColor": "#38bdf8", "textColor": "#f8fafc", "fontFamily": "sans-serif"}}}%%
 flowchart LR
     A[Policy YAML] --> B[WatchPolicy]
     B --> C[YOLOE vocabulary]
@@ -132,6 +146,30 @@ flowchart LR
     E --> H[VLM verifier]
     G --> H
     H --> I[VerifiedAlert]
+
+    classDef source fill:#111827,stroke:#334155,color:#f8fafc,stroke-width:1px
+    classDef policy fill:#243044,stroke:#475569,color:#f8fafc,stroke-width:1.5px
+    classDef fast fill:#1f3a36,stroke:#84cc16,color:#f8fafc,stroke-width:1.5px
+    classDef gate fill:#3b3420,stroke:#f59e0b,color:#f8fafc,stroke-width:1.5px
+    classDef verifier fill:#2f2945,stroke:#a78bfa,color:#f8fafc,stroke-width:1.5px
+    classDef output fill:#193244,stroke:#38bdf8,color:#f8fafc,stroke-width:1.5px
+
+    class A source
+    class B policy
+    class C,F fast
+    class D,G gate
+    class E,H verifier
+    class I output
+
+    linkStyle 0 stroke:#84cc16,stroke-width:3px
+    linkStyle 1 stroke:#84cc16,stroke-width:3px
+    linkStyle 2 stroke:#f59e0b,stroke-width:3px
+    linkStyle 3 stroke:#a78bfa,stroke-width:3px
+    linkStyle 4 stroke:#84cc16,stroke-width:3px
+    linkStyle 5 stroke:#f59e0b,stroke-width:3px
+    linkStyle 6 stroke:#f59e0b,stroke-width:3px
+    linkStyle 7 stroke:#a78bfa,stroke-width:3px
+    linkStyle 8 stroke:#38bdf8,stroke-width:3px
 ```
 
 At runtime, policy entries such as `fire`, `smoke`, and `falldown` are expanded

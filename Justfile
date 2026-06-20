@@ -11,6 +11,13 @@ eval_policy := "configs/policies/dfire_eval.yaml"
 dfire_iou := "0.5"
 dfire_thresholds := "0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.50"
 dfire_models := "yoloe-11s-seg.pt,yoloe-11l-seg.pt"
+mivia_root := "/data/vrs/kaggle-fire-detection"
+mivia_fire_video := "/data/vrs/kaggle-fire-detection/mivia_fire/mivia_fire/fire1.avi"
+mivia_negative_video := "/data/vrs/kaggle-fire-detection/mivia_fire/mivia_fire/fire15.avi"
+mivia_config := "runs/eval-dfire-300-prompts/best_config.yaml"
+mivia_policy := "runs/eval-dfire-300-prompts/best_policy.yaml"
+mivia_fire_out := "runs/mivia-fire/fire1"
+mivia_negative_out := "runs/mivia-fire/fire15-negative"
 
 default:
     @just --list
@@ -133,6 +140,51 @@ eval-dfire-prompt-sweep-bbox: _require-dfire-dataset
         --thresholds {{dfire_thresholds}} \
         --bbox-iou-threshold {{dfire_iou}} \
         --out {{dfire_sweep_out}}-prompts-bbox
+
+_require-mivia-fire:
+    @test -d "{{mivia_root}}" || { \
+        echo "missing Kaggle fire dataset root: {{mivia_root}}" >&2; \
+        echo "download with: kaggle datasets download -d arfintanim/fire-detection -p {{mivia_root}} --unzip" >&2; \
+        echo "override with: just mivia_root=/path/to/kaggle-fire-detection mivia-fire" >&2; \
+        exit 1; \
+    }
+    @test -f "{{mivia_fire_video}}" || { \
+        echo "missing MIVIA positive fire video: {{mivia_fire_video}}" >&2; \
+        echo "override with: just mivia_fire_video=/path/to/fire.avi mivia-fire" >&2; \
+        exit 1; \
+    }
+    @test -f "{{mivia_negative_video}}" || { \
+        echo "missing MIVIA negative/challenging video: {{mivia_negative_video}}" >&2; \
+        echo "override with: just mivia_negative_video=/path/to/nonfire.avi mivia-fire-negative" >&2; \
+        exit 1; \
+    }
+    @test -f "{{mivia_config}}" || { \
+        echo "missing MIVIA eval config: {{mivia_config}}" >&2; \
+        echo "override with: just mivia_config=/path/to/config.yaml mivia-fire" >&2; \
+        exit 1; \
+    }
+    @test -f "{{mivia_policy}}" || { \
+        echo "missing MIVIA eval policy: {{mivia_policy}}" >&2; \
+        echo "override with: just mivia_policy=/path/to/policy.yaml mivia-fire" >&2; \
+        exit 1; \
+    }
+
+mivia-find:
+    /usr/bin/find "{{mivia_root}}" \( -iname '*mivia*' -o -iname '*.avi' -o -iname '*.mp4' \) -print | sort
+
+mivia-fire: _require-mivia-fire
+    uv run --frozen python scripts/run_mp4.py \
+        --video {{mivia_fire_video}} \
+        --config {{mivia_config}} \
+        --policy {{mivia_policy}} \
+        --out {{mivia_fire_out}}
+
+mivia-fire-negative: _require-mivia-fire
+    uv run --frozen python scripts/run_mp4.py \
+        --video {{mivia_negative_video}} \
+        --config {{mivia_config}} \
+        --policy {{mivia_policy}} \
+        --out {{mivia_negative_out}}
 
 compose-up *args:
     {{compose}} up -d --build {{args}}

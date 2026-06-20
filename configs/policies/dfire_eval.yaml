@@ -1,0 +1,19 @@
+# D-Fire image-eval policy.
+#
+# D-Fire items are single images, so persistence must be 1 frame. This policy is
+# intended for detector-only eval, not live video alerting.
+
+watch:
+  - name: fire
+    detector: ["fire", "open flame", "burning object"]
+    verifier: "Open flames or active fire are visible"
+    severity: critical
+    min_score: 0.30
+    min_persist_frames: 1
+
+  - name: smoke
+    detector: ["smoke", "smoke cloud", "billowing smoke"]
+    verifier: "Smoke is visible"
+    severity: high
+    min_score: 0.25
+    min_persist_frames: 1

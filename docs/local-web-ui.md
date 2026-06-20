@@ -147,7 +147,7 @@ uv run scripts/make_fixture_runs.py --out runs
 Start the backend:
 
 ```bash
-uv run uvicorn vrs.web.api:app --host 127.0.0.1 --port 8000 --reload
+uv run uvicorn vrs.web.api:app --host 127.0.0.1 --port 5445 --reload
 ```
 
 Serve the static frontend in another terminal:
@@ -159,16 +159,16 @@ python -m http.server 5173
 
 Open <http://127.0.0.1:5173>. For same-origin API proxying use Docker Compose;
 for manual static serving, set `window.VRS_CONFIG.apiBaseUrl` in `web/config.js`
-to `http://127.0.0.1:8000`.
+to `http://127.0.0.1:5445`.
 
 Useful API checks:
 
 ```bash
-curl http://127.0.0.1:8000/api/health
-curl http://127.0.0.1:8000/api/runs
-curl http://127.0.0.1:8000/api/policy
-curl 'http://127.0.0.1:8000/api/runs/fixture/alerts?limit=10'
-curl 'http://127.0.0.1:8000/api/runs/fixture_multi/tail?mode=latest&limit=10'
+curl http://127.0.0.1:5445/api/health
+curl http://127.0.0.1:5445/api/runs
+curl http://127.0.0.1:5445/api/policy
+curl 'http://127.0.0.1:5445/api/runs/fixture/alerts?limit=10'
+curl 'http://127.0.0.1:5445/api/runs/fixture_multi/tail?mode=latest&limit=10'
 ```
 
 `/api/policy` reads `configs/policies/safety.yaml` by default, or the path set
@@ -176,8 +176,8 @@ with `VRS_POLICY_PATH`. `/api/runs/{run}/tail` returns `next_cursor`; pass that
 cursor back on the next poll to fetch only newly appended alerts:
 
 ```bash
-curl 'http://127.0.0.1:8000/api/runs/fixture_multi/tail?mode=latest&limit=10'
-curl 'http://127.0.0.1:8000/api/runs/fixture_multi/tail?cursor=<next_cursor>'
+curl 'http://127.0.0.1:5445/api/runs/fixture_multi/tail?mode=latest&limit=10'
+curl 'http://127.0.0.1:5445/api/runs/fixture_multi/tail?cursor=<next_cursor>'
 ```
 
 ## Optional GPU Plumbing Check

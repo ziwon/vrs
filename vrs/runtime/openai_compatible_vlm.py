@@ -57,7 +57,7 @@ class OpenAICompatibleVLMBackend:
         if not cfg.base_url:
             raise ValueError(
                 "openai_compatible verifier backend requires verifier.base_url "
-                "(for example http://localhost:8000/v1)"
+                "(for example http://localhost:5445/v1)"
             )
         self.cfg = cfg
         self.base_url = str(cfg.base_url).rstrip("/") + "/"

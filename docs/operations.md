@@ -41,7 +41,7 @@ verifier:
   enabled: true
   backend: openai_compatible
   model_id: qwen-vl-served
-  base_url: http://localhost:8000/v1
+  base_url: http://localhost:5445/v1
   api_key_env: VRS_VLM_API_KEY
   max_new_tokens: 512
   temperature: 0.0

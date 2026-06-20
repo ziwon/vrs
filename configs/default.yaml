@@ -49,7 +49,7 @@ verifier:
                              # and a GPU-local smoke run before prod — see vrs/runtime/vllm_cosmos.py.
                              # openai_compatible: served VLM at base_url/chat/completions.
   model_id: "nvidia/Cosmos-Reason2-2B"  # baseline; compare against Qwen candidates via eval
-  base_url: null             # e.g. http://localhost:8000/v1 for openai_compatible
+  base_url: null             # e.g. http://localhost:5445/v1 for openai_compatible
   api_key_env: null          # optional env var name containing bearer token
   timeout_s: 60.0            # HTTP request timeout for served backends
   dtype: "bf16"              # "bf16" | "fp16" | "w4a16" (requires bitsandbytes)

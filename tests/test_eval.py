@@ -18,6 +18,7 @@ from vrs.eval import (
     HarnessResult,
     bbox_iou_xywh_norm,
     config_for_eval_mode,
+    evaluate_detector_only_images,
     score_alerts_against_truth,
 )
 from vrs.eval.datasets import DFireDataset, LabeledDirDataset, build_dataset
@@ -315,6 +316,49 @@ def test_dataset_registry_builds_dfire(tmp_path: Path):
     assert isinstance(dataset, DFireDataset)
 
 
+def test_evaluate_detector_only_images_reuses_detector_and_scores_boxes(tmp_path: Path):
+    root = _make_dfire_root(tmp_path)
+    image = np.zeros((100, 100, 3), dtype=np.uint8)
+    assert cv2.imwrite(str(root / "images" / "a.jpg"), image)
+    assert cv2.imwrite(str(root / "images" / "b.jpg"), image)
+    (root / "labels" / "a.txt").write_text("1 0.50 0.50 0.20 0.20\n", encoding="utf-8")
+    (root / "labels" / "b.txt").write_text("", encoding="utf-8")
+
+    class _Detector:
+        def __init__(self):
+            self.calls = 0
+
+        def __call__(self, frame):
+            self.calls += 1
+            if self.calls == 1:
+                return [
+                    Detection(
+                        class_name="fire",
+                        score=0.9,
+                        xyxy=(40.0, 40.0, 60.0, 60.0),
+                    )
+                ]
+            return []
+
+        def batch(self, frames):
+            return [self(frame) for frame in frames]
+
+    detector = _Detector()
+    result = evaluate_detector_only_images(
+        dataset=DFireDataset(root),
+        detector=detector,
+        out_dir=tmp_path / "out",
+        bbox_iou_threshold=0.5,
+    )
+
+    assert detector.calls == 2
+    assert (tmp_path / "out" / "a" / "alerts.jsonl").exists()
+    assert (tmp_path / "out" / "b" / "alerts.jsonl").exists()
+    assert result.aggregate.per_class["fire"].tp == 1
+    assert result.aggregate.per_class["fire"].fn == 0
+    assert result.aggregate.per_class.get("smoke", ClassMetrics()).tp == 0
+
+
 def test_stream_reader_yields_single_frame_for_image(tmp_path: Path):
     from vrs.ingest import StreamReader
 
@@ -504,6 +548,105 @@ def test_eval_cli_accepts_detector_only_mode():
     assert args.mode == "detector_only"
     assert args.dataset_format == "dfire"
     assert args.bbox_iou_threshold == 0.5
+
+
+def test_dfire_threshold_sweep_scores_cached_alerts():
+    from scripts.sweep_dfire_thresholds import (
+        CachedItem,
+        config_with_conf_floor,
+        parse_thresholds,
+        score_cached_items,
+    )
+
+    thresholds = parse_thresholds("0.30, 0.10, 0.10")
+    assert thresholds == [0.10, 0.30]
+
+    cached = [
+        CachedItem(
+            image_path=Path("a.jpg"),
+            events=[GroundTruthEvent("fire", 0.0, 0.0, (0.4, 0.4, 0.2, 0.2))],
+            alerts=[
+                _alert("fire", 0.0, bbox=(0.4, 0.4, 0.2, 0.2)) | {"confidence": 0.25},
+                _alert("smoke", 0.0, bbox=(0.1, 0.1, 0.1, 0.1)) | {"confidence": 0.80},
+            ],
+        )
+    ]
+
+    loose = score_cached_items(
+        cached,
+        {"fire": 0.20, "smoke": 0.20},
+        bbox_iou_threshold=0.5,
+    )
+    strict = score_cached_items(
+        cached,
+        {"fire": 0.30, "smoke": 0.20},
+        bbox_iou_threshold=0.5,
+    )
+
+    assert loose.per_class["fire"].tp == 1
+    assert strict.per_class["fire"].fn == 1
+    assert strict.per_class["smoke"].fp == 1
+
+    tuned = config_with_conf_floor(
+        {"detector": {"conf_floor": 0.20, "model": "fake.pt"}},
+        {"fire": 0.05, "smoke": 0.10},
+    )
+    assert tuned["detector"]["conf_floor"] == 0.05
+
+
+def test_dfire_prompt_sweep_builds_policy_and_config():
+    from scripts.sweep_dfire_prompts import (
+        config_with_model_and_thresholds,
+        load_prompt_sets,
+        parse_models,
+        policy_yaml_with_prompts_and_thresholds,
+    )
+
+    assert parse_models("a.pt, b.pt") == ["a.pt", "b.pt"]
+    [baseline, *_] = load_prompt_sets(None)
+    assert baseline["name"] == "baseline"
+
+    policy = {
+        "watch": [
+            {
+                "name": "fire",
+                "detector": ["fire"],
+                "verifier": "fire visible",
+                "severity": "critical",
+                "min_score": 0.30,
+                "min_persist_frames": 1,
+            },
+            {
+                "name": "smoke",
+                "detector": ["smoke"],
+                "verifier": "smoke visible",
+                "severity": "high",
+                "min_score": 0.25,
+                "min_persist_frames": 1,
+            },
+        ]
+    }
+    prompts = {
+        "name": "custom",
+        "prompts": {"fire": ["flame"], "smoke": ["dark smoke", "white smoke"]},
+    }
+
+    tuned_policy = policy_yaml_with_prompts_and_thresholds(
+        policy,
+        prompts,
+        {"fire": 0.05, "smoke": 0.10},
+    )
+    assert tuned_policy["watch"][0]["detector"] == ["flame"]
+    assert tuned_policy["watch"][0]["min_score"] == 0.05
+    assert tuned_policy["watch"][1]["detector"] == ["dark smoke", "white smoke"]
+
+    tuned_config = config_with_model_and_thresholds(
+        {"detector": {"model": "old.pt", "conf_floor": 0.20}},
+        model="new.pt",
+        thresholds={"fire": 0.05, "smoke": 0.10},
+    )
+    assert tuned_config["detector"]["model"] == "new.pt"
+    assert tuned_config["detector"]["conf_floor"] == 0.05
 
 
 def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_path: Path):

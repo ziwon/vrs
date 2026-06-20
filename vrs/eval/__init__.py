@@ -19,7 +19,13 @@ Upcoming:
 
 from __future__ import annotations
 
-from .harness import EvalMode, HarnessResult, config_for_eval_mode, evaluate
+from .harness import (
+    EvalMode,
+    HarnessResult,
+    config_for_eval_mode,
+    evaluate,
+    evaluate_detector_only_images,
+)
 from .metrics import aggregate_scores, bbox_iou_xywh_norm, score_alerts_against_truth
 from .report import (
     SCHEMA_VERSION,
@@ -63,5 +69,6 @@ __all__ = [
     "bbox_iou_xywh_norm",
     "config_for_eval_mode",
     "evaluate",
+    "evaluate_detector_only_images",
     "score_alerts_against_truth",
 ]

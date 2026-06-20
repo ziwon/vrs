@@ -5,9 +5,12 @@ compose-local := "docker compose -f docker-compose.yaml -f docker-compose.hf-loc
 dfire_dataset := "/data/vrs/dfire-mini"
 dfire_out := "runs/eval-dfire"
 dfire_bbox_out := "runs/eval-dfire-bbox"
-eval_config := "configs/default.yaml"
-eval_policy := "configs/policies/safety.yaml"
+dfire_sweep_out := "runs/eval-dfire-sweep"
+eval_config := "configs/tiny.yaml"
+eval_policy := "configs/policies/dfire_eval.yaml"
 dfire_iou := "0.5"
+dfire_thresholds := "0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.50"
+dfire_models := "yoloe-11s-seg.pt,yoloe-11l-seg.pt"
 
 default:
     @just --list
@@ -94,6 +97,42 @@ eval-dfire-bbox: _require-dfire-dataset
         --mode detector_only \
         --bbox-iou-threshold {{dfire_iou}} \
         --out {{dfire_bbox_out}}
+
+eval-dfire-sweep: _require-dfire-dataset
+    uv run --frozen python scripts/sweep_dfire_thresholds.py \
+        --dataset {{dfire_dataset}} \
+        --config {{eval_config}} \
+        --policy {{eval_policy}} \
+        --thresholds {{dfire_thresholds}} \
+        --out {{dfire_sweep_out}}
+
+eval-dfire-sweep-bbox: _require-dfire-dataset
+    uv run --frozen python scripts/sweep_dfire_thresholds.py \
+        --dataset {{dfire_dataset}} \
+        --config {{eval_config}} \
+        --policy {{eval_policy}} \
+        --thresholds {{dfire_thresholds}} \
+        --bbox-iou-threshold {{dfire_iou}} \
+        --out {{dfire_sweep_out}}-bbox
+
+eval-dfire-prompt-sweep: _require-dfire-dataset
+    uv run --frozen python scripts/sweep_dfire_prompts.py \
+        --dataset {{dfire_dataset}} \
+        --config {{eval_config}} \
+        --policy {{eval_policy}} \
+        --models {{dfire_models}} \
+        --thresholds {{dfire_thresholds}} \
+        --out {{dfire_sweep_out}}-prompts
+
+eval-dfire-prompt-sweep-bbox: _require-dfire-dataset
+    uv run --frozen python scripts/sweep_dfire_prompts.py \
+        --dataset {{dfire_dataset}} \
+        --config {{eval_config}} \
+        --policy {{eval_policy}} \
+        --models {{dfire_models}} \
+        --thresholds {{dfire_thresholds}} \
+        --bbox-iou-threshold {{dfire_iou}} \
+        --out {{dfire_sweep_out}}-prompts-bbox
 
 compose-up *args:
     {{compose}} up -d --build {{args}}

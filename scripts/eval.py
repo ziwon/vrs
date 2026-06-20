@@ -22,7 +22,12 @@ import logging
 from pathlib import Path
 
 from vrs import setup_logging
-from vrs.eval import EvalReport, config_for_eval_mode, evaluate
+from vrs.eval import (
+    EvalReport,
+    config_for_eval_mode,
+    evaluate,
+    evaluate_detector_only_images,
+)
 from vrs.eval.datasets import DATASET_ADAPTERS, build_dataset
 
 logger = logging.getLogger(__name__)
@@ -69,6 +74,7 @@ def main(argv: list[str] | None = None) -> None:
     # Imported lazily so `uv run scripts/eval.py --help` works without cv2/torch.
     from vrs.pipeline import VRSPipeline, load_config
     from vrs.policy import load_watch_policy
+    from vrs.triage import YOLOEConfig, build_detector
 
     dataset = build_dataset(args.dataset_format, args.dataset)
     verifier_enabled = False if args.mode == "detector_only" else None
@@ -78,16 +84,37 @@ def main(argv: list[str] | None = None) -> None:
     )
     policy = load_watch_policy(args.policy)
 
-    def _factory(video_out: Path):
-        return VRSPipeline(config, policy, video_out)
+    if args.dataset_format == "dfire" and args.mode == "detector_only":
+        det_cfg = config["detector"]
+        detector = build_detector(
+            YOLOEConfig(
+                model=det_cfg["model"],
+                device=det_cfg.get("device", "cuda"),
+                imgsz=int(det_cfg.get("imgsz", 640)),
+                conf_floor=float(det_cfg.get("conf_floor", 0.20)),
+                iou=float(det_cfg.get("iou", 0.50)),
+                half=bool(det_cfg.get("half", True)),
+            ),
+            policy,
+            backend=det_cfg.get("backend", "ultralytics"),
+        )
+        result = evaluate_detector_only_images(
+            dataset=dataset,
+            detector=detector,
+            out_dir=args.out,
+            bbox_iou_threshold=args.bbox_iou_threshold,
+        )
+    else:
+        def _factory(video_out: Path):
+            return VRSPipeline(config, policy, video_out)
 
-    result = evaluate(
-        dataset=dataset,
-        pipeline_factory=_factory,
-        out_dir=args.out,
-        tolerance_s=args.tolerance_s,
-        bbox_iou_threshold=args.bbox_iou_threshold,
-    )
+        result = evaluate(
+            dataset=dataset,
+            pipeline_factory=_factory,
+            out_dir=args.out,
+            tolerance_s=args.tolerance_s,
+            bbox_iou_threshold=args.bbox_iou_threshold,
+        )
 
     report_path = Path(args.report) if args.report else Path(args.out) / "report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)

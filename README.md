@@ -38,13 +38,11 @@ The local console reads `runs/live/alerts.jsonl` and thumbnails through a
 CPU-light FastAPI backend. It shows detector candidates, VLM verdicts,
 confidence, rationale, live RTSP state, and the two-stage cascade.
 
-![VRS Console MIVIA fire verifier run showing confirmed fire and smoke alerts, detector boxes, VLM confidence, missed-event flags, and verifier rationale.](docs/assets/vrs-console-mivia-fire-verifier.png)
-
-The same console can inspect offline validation runs under `runs/`. The MIVIA
-fire smoke test above shows a full two-stage result: YOLOE proposes fire/smoke
-boxes from video frames, event-state promotes stable candidates, and the VLM
-verifier records the final verdict, confidence, rationale, and missed-event
-signals in the alert drawer.
+The same console can inspect offline validation runs under `runs/`, including
+MIVIA fire/smoke checks. Those runs exercise the full two-stage result: YOLOE
+proposes fire/smoke boxes from video frames, event-state promotes stable
+candidates, and the VLM verifier records the final verdict, confidence,
+rationale, and missed-event signals in the alert drawer.
 
 ![VRS Console streams view showing the local falldown RTSP source and latest live keyframe.](docs/assets/vrs-console-streams.png)
 
@@ -82,6 +80,22 @@ Convenience commands:
 just local-up
 just local-logs -f inference
 just local-down
+```
+
+For a local multi-stream RTSP demo, run each long-lived process in its own
+terminal:
+
+```bash
+just local-rtsp-publish-all   # falldown, fire, smoke, weapon, optional MIVIA fire
+just local-multistream-run    # consumes configs/local-rtsp-streams.yaml
+just web-api
+just web-ui
+```
+
+Stop the local stack with:
+
+```bash
+just stop-local
 ```
 
 See [docs/local-web-ui.md](docs/local-web-ui.md) for the full local workflow,

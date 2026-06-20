@@ -11,6 +11,8 @@ eval_policy := "configs/policies/dfire_eval.yaml"
 dfire_iou := "0.5"
 dfire_thresholds := "0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.50"
 dfire_models := "yoloe-11s-seg.pt,yoloe-11l-seg.pt"
+dfire_refresh_models := "yoloe-11l-seg.pt,yoloe-26l-seg.pt"
+dfire_model_refresh_out := "runs/eval-dfire-model-refresh"
 mivia_root := "/data/vrs/kaggle-fire-detection"
 mivia_fire_video := "/data/vrs/kaggle-fire-detection/mivia_fire/mivia_fire/fire1.avi"
 mivia_negative_video := "/data/vrs/kaggle-fire-detection/mivia_fire/mivia_fire/fire15.avi"
@@ -152,6 +154,27 @@ eval-dfire-prompt-sweep-bbox: _require-dfire-dataset
         --thresholds {{dfire_thresholds}} \
         --bbox-iou-threshold {{dfire_iou}} \
         --out {{dfire_sweep_out}}-prompts-bbox
+
+eval-dfire-model-refresh: _require-dfire-dataset
+    uv run --frozen python scripts/eval_detector_models.py \
+        --dataset {{dfire_dataset}} \
+        --dataset-format dfire \
+        --config {{eval_config}} \
+        --policy {{eval_policy}} \
+        --models {{dfire_refresh_models}} \
+        --baseline-model yoloe-11l-seg.pt \
+        --out {{dfire_model_refresh_out}}
+
+eval-dfire-model-refresh-bbox: _require-dfire-dataset
+    uv run --frozen python scripts/eval_detector_models.py \
+        --dataset {{dfire_dataset}} \
+        --dataset-format dfire \
+        --config {{eval_config}} \
+        --policy {{eval_policy}} \
+        --models {{dfire_refresh_models}} \
+        --baseline-model yoloe-11l-seg.pt \
+        --bbox-iou-threshold {{dfire_iou}} \
+        --out {{dfire_model_refresh_out}}-bbox
 
 _require-mivia-fire:
     @test -d "{{mivia_root}}" || { \

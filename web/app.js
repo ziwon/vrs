@@ -204,9 +204,10 @@ function mergeByAlertId(current, incoming) {
   });
 }
 
-function thumbMarkup(a, w = 168, h = 94) {
+function thumbMarkup(a, w = 168, h = 94, fit = "cover") {
   if (a.thumbnail_url) {
-    return `<img src="${esc(apiUrl(a.thumbnail_url))}" width="${w}" height="${h}" alt="${esc(a.class_name)} thumbnail" class="rounded-md block object-cover bg-gray-900" style="width:${w}px;height:${h}px">`;
+    const fitClass = fit === "contain" ? "object-contain" : "object-cover";
+    return `<img src="${esc(apiUrl(a.thumbnail_url))}" width="${w}" height="${h}" alt="${esc(a.class_name)} thumbnail" class="rounded-md block ${fitClass} bg-gray-900" style="width:${w}px;height:${h}px">`;
   }
   return thumbSVG(a, w, h);
 }
@@ -225,6 +226,29 @@ function runSelect() {
     <span class="text-gray-500 dark:text-gray-400">Run</span>
     <select data-run-select class="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-nv-green">${options}</select>
   </label>`;
+}
+
+function visibleStreams() {
+  if (state.backend !== "ok") return state.streams;
+  const run = state.runs.find((r) => r.name === state.selectedRun);
+  const ids = new Set(run?.streams || []);
+  state.alerts.forEach((a) => {
+    if (a.stream_id) ids.add(a.stream_id);
+  });
+  if (!ids.size) return [];
+  const byId = new Map(state.streams.map((s) => [s.id, s]));
+  return Array.from(ids).sort().map((id) => {
+    const existing = byId.get(id);
+    if (existing) return existing;
+    return {
+      id,
+      name: id,
+      location: state.selectedRun || "run",
+      status: "online",
+      fps: 0,
+      rtsp_url: null,
+    };
+  });
 }
 
 /* Synthetic CCTV thumbnail: dark frame + detector bbox + optional trajectory. */
@@ -365,11 +389,12 @@ function selectFilter(key, label, options) {
 
 function renderAlerts() {
   const all = state.alerts, list = filteredAlerts();
+  const streams = visibleStreams();
   const confirmed = all.filter((a) => a.true_alert).length;
   const suppressed = all.length - confirmed;
   const flip = all.length ? Math.round((suppressed / all.length) * 100) : 0;
   const avg = confirmed ? all.filter((a) => a.true_alert).reduce((s, a) => s + a.confidence, 0) / confirmed : 0;
-  const online = state.streams.filter((s) => s.status === "online").length;
+  const online = streams.filter((s) => s.status === "online").length;
 
   const rows = list.map((a, i) => `
     <tr class="border-b border-gray-100 dark:border-gray-700/60 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer" data-alert="${all.indexOf(a)}">
@@ -396,7 +421,7 @@ function renderAlerts() {
         ${statCard("Suppressed", suppressed, "false alarms cut", "#9ca3af")}
         ${statCard("Flip rate", flip + "%", "detector→verifier", "#f59e0b")}
         ${statCard("Avg conf", avg.toFixed(2), "on confirmed", null)}
-        ${statCard("Streams", online + "/" + state.streams.length, "online", null)}
+        ${statCard("Streams", online + "/" + streams.length, "online", null)}
       </div>
 
       <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
@@ -405,7 +430,7 @@ function renderAlerts() {
           ${selectFilter("severity", "Severity", [{ v: "all", t: "All" }, { v: "critical", t: "Critical" }, { v: "high", t: "High" }, { v: "medium", t: "Medium" }, { v: "low", t: "Low" }])}
           ${selectFilter("class", "Class", [{ v: "all", t: "All" }, ...POLICY.map((p) => ({ v: p.name, t: p.name }))])}
           ${selectFilter("verdict", "Verdict", [{ v: "all", t: "All" }, { v: "confirmed", t: "Confirmed" }, { v: "suppressed", t: "Suppressed" }])}
-          ${selectFilter("stream", "Stream", [{ v: "all", t: "All" }, ...state.streams.map((s) => ({ v: s.id, t: s.id }))])}
+          ${selectFilter("stream", "Stream", [{ v: "all", t: "All" }, ...streams.map((s) => ({ v: s.id, t: s.id }))])}
           <span class="ml-auto text-sm text-gray-400 dark:text-gray-500">${list.length} of ${all.length}</span>
         </div>
         <div class="overflow-x-auto nv-scroll">
@@ -435,6 +460,7 @@ function renderAlerts() {
       state.autoSelectedFallback = false;
       state.alerts = [];
       state.tailCursor = "";
+      state.filters.stream = "all";
       refreshFromApi(true).catch(() => renderAlerts());
     }));
   $("view").querySelectorAll("[data-alert]").forEach((r) =>
@@ -504,7 +530,8 @@ function renderCascade() {
 
 /* ── Streams ── */
 function renderStreams() {
-  const cards = state.streams.map((s) => {
+  const streams = visibleStreams();
+  const cards = streams.map((s) => {
     const recent = state.alerts.filter((a) => a.stream_id === s.id);
     const last = recent[0];
     const online = s.status === "online";
@@ -512,7 +539,7 @@ function renderStreams() {
     const streamUrl = s.rtsp_url || state.rtsp?.url || "";
     return `<div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
       <div class="relative">
-        ${last ? thumbMarkup(last, 640, 240).replace('style="width:640px;height:240px"', 'style="width:100%;height:240px"') : `<div class="w-full aspect-video bg-gray-900 flex items-center justify-center text-gray-600">${icon("video", 32)}</div>`}
+        ${last ? thumbMarkup(last, 640, 240, "contain").replace('style="width:640px;height:240px"', 'style="width:100%;height:240px"') : `<div class="w-full aspect-video bg-gray-900 flex items-center justify-center text-gray-600">${icon("video", 32)}</div>`}
         <div class="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded bg-black/55 text-xs text-white">
           <span class="live-dot w-2 h-2 rounded-full ${dotCls}"></span>${esc(String(s.status || "").toUpperCase())} · ${Number(s.fps || 0)} fps
         </div>
@@ -532,8 +559,8 @@ function renderStreams() {
   }).join("");
   $("view").innerHTML = `<div class="p-6">
     <h2 class="text-lg font-bold mb-1">Streams</h2>
-    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Per-camera latest keyframe. Docker Compose also publishes a synthetic RTSP sample stream for local plumbing checks.</p>
-    <div class="grid base:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">${cards}</div>
+    <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Per-stream latest keyframe for the selected run.</p>
+    <div class="grid base:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">${cards || `<div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 text-sm text-gray-400">No stream artifacts for the selected run.</div>`}</div>
   </div>`;
 }
 
@@ -583,7 +610,7 @@ function openDrawer(a) {
         </div>
         <button id="drawer-close" class="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">${icon("x", 20)}</button>
       </div>
-      <div class="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 mb-4">${thumbMarkup(a, 440, 248).replace('style="width:440px;height:248px"', 'style="width:100%;height:248px"')}</div>
+      <div class="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-900 mb-4">${thumbMarkup(a, 440, 248, "contain").replace('style="width:440px;height:248px"', 'style="width:100%;height:248px"')}</div>
       <div class="grid grid-cols-2 gap-3 mb-4 text-sm">
         <div class="rounded bg-gray-50 dark:bg-gray-900 px-3 py-2"><div class="text-xs text-gray-400">Confidence</div><div class="font-semibold">${(a.confidence * 100).toFixed(0)}%</div></div>
         <div class="rounded bg-gray-50 dark:bg-gray-900 px-3 py-2"><div class="text-xs text-gray-400">Detector score</div><div class="font-semibold">${Number(d.score ?? 0).toFixed(2)}</div></div>

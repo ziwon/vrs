@@ -50,13 +50,31 @@ def test_streams_endpoint_reports_rtsp_sample(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("VRS_SAMPLE_RTSP_URL", "rtsp://example.local:8554/falldown")
+    streams_path = tmp_path / "streams.yaml"
+    streams_path.write_text(
+        """
+streams:
+  - id: falldown
+    name: Falldown local
+    location: fixture
+    rtsp: rtsp://example.local:8554/falldown
+    fps: 30
+  - id: fire
+    name: Fire local
+    location: fixture
+    rtsp: rtsp://example.local:8554/fire
+    fps: 30
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("VRS_STREAMS_PATH", str(streams_path))
     write_fixture_run(tmp_path)
     client = TestClient(create_app(tmp_path))
 
     body = client.get("/api/streams").json()
     assert body["rtsp_sample"]["url"] == "rtsp://example.local:8554/falldown"
     assert body["rtsp_sample"]["path"] == "falldown"
-    assert any(stream["id"] == "falldown" for stream in body["streams"])
+    assert any(stream["id"] == "fire" for stream in body["streams"])
     assert {"cam-01", "cam-02"}.issubset({stream["id"] for stream in body["streams"]})
 
 

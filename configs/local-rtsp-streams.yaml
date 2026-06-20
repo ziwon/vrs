@@ -1,0 +1,57 @@
+# Local RTSP stream manifest for development and UI validation.
+#
+# Publish these streams with:
+#   just local-rtsp-publish-all
+#
+# Consume them with:
+#   just local-multistream-run
+
+multistream:
+  decoder_backend: opencv
+  frame_queue_size: 64
+  frame_drop_policy: drop_oldest
+  detector_batch_size: 4
+  detector_batch_timeout_ms: 30
+  verifier_queue_size: 16
+  verifier_drop_policy: drop_oldest
+  sink_queue_size: 32
+  drop_log_interval_s: 5.0
+  shutdown_mode: fast
+  shutdown_drain_timeout_s: 10.0
+
+streams:
+  - id: falldown
+    name: Falldown synthetic
+    location: local-fixture
+    source: runs/pr-integration/clips/falldown_test.mp4
+    rtsp: rtsp://127.0.0.1:8554/falldown
+    fps: 30
+
+  - id: fire
+    name: Fire synthetic
+    location: local-fixture
+    source: runs/pr-integration/clips/fire_test.mp4
+    rtsp: rtsp://127.0.0.1:8554/fire
+    fps: 30
+
+  - id: smoke
+    name: Smoke synthetic
+    location: local-fixture
+    source: runs/pr-integration/clips/smoke_test.mp4
+    rtsp: rtsp://127.0.0.1:8554/smoke
+    fps: 30
+
+  - id: weapon
+    name: Weapon synthetic
+    location: local-fixture
+    source: runs/pr-integration/clips/weapon_test.mp4
+    rtsp: rtsp://127.0.0.1:8554/weapon
+    fps: 30
+
+  - id: mivia_fire
+    name: MIVIA fire
+    location: kaggle-fire-detection
+    source: /data/vrs/kaggle-fire-detection/mivia_fire/mivia_fire/fire1.avi
+    rtsp: rtsp://127.0.0.1:8554/mivia-fire
+    fps: 30
+    optional: true

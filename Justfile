@@ -18,6 +18,18 @@ mivia_config := "runs/eval-dfire-300-prompts/best_config.yaml"
 mivia_policy := "runs/eval-dfire-300-prompts/best_policy.yaml"
 mivia_fire_out := "runs/mivia-fire/fire1"
 mivia_negative_out := "runs/mivia-fire/fire15-negative"
+mivia_rtsp_url := "rtsp://127.0.0.1:8554/mivia-fire"
+mivia_rtsp_out := "runs/mivia-fire-rtsp"
+mivia_rtsp_runtime_s := "60"
+stream_manifest := "configs/local-rtsp-streams.yaml"
+stream_config := "configs/tiny.yaml"
+stream_policy := "configs/policies/safety.yaml"
+stream_out := "runs/local-rtsp-multistream"
+web_runs_root := "runs"
+web_policy := "configs/policies/safety.yaml"
+web_host := "127.0.0.1"
+web_api_port := "5445"
+web_ui_port := "5173"
 
 default:
     @just --list
@@ -185,6 +197,101 @@ mivia-fire-negative: _require-mivia-fire
         --config {{mivia_config}} \
         --policy {{mivia_policy}} \
         --out {{mivia_negative_out}}
+
+mivia-fire-rtsp: _require-mivia-fire
+    @command -v ffmpeg >/dev/null || { echo "ffmpeg is required for mivia-fire-rtsp" >&2; exit 1; }
+    @command -v timeout >/dev/null || { echo "timeout is required for mivia-fire-rtsp" >&2; exit 1; }
+    {{compose}} up -d rtsp
+    @set -euo pipefail; \
+        mkdir -p "{{mivia_rtsp_out}}"; \
+        log="{{mivia_rtsp_out}}/ffmpeg-publisher.log"; \
+        echo "publishing {{mivia_fire_video}} to {{mivia_rtsp_url}}"; \
+        ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -fflags +genpts \
+            -i "{{mivia_fire_video}}" \
+            -map 0:v:0 -an \
+            -vf "fps=30,format=yuv420p" \
+            -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p \
+            -g 30 -keyint_min 30 -sc_threshold 0 \
+            -f rtsp -rtsp_transport tcp "{{mivia_rtsp_url}}" > "$log" 2>&1 & \
+        publisher_pid=$!; \
+        cleanup() { kill "$publisher_pid" >/dev/null 2>&1 || true; wait "$publisher_pid" >/dev/null 2>&1 || true; }; \
+        trap cleanup EXIT; \
+        sleep 3; \
+        if ! kill -0 "$publisher_pid" >/dev/null 2>&1; then \
+            echo "ffmpeg publisher exited before VRS could connect; see $log" >&2; \
+            exit 1; \
+        fi; \
+        echo "running VRS on {{mivia_rtsp_url}} for {{mivia_rtsp_runtime_s}}s"; \
+        set +e; \
+        set -a; [ ! -f .env ] || source .env; set +a; \
+        timeout "{{mivia_rtsp_runtime_s}}" uv run --frozen python scripts/run_rtsp.py \
+            --rtsp "{{mivia_rtsp_url}}" \
+            --config "{{mivia_config}}" \
+            --policy "{{mivia_policy}}" \
+            --out "{{mivia_rtsp_out}}"; \
+        status=$?; \
+        set -e; \
+        if [ "$status" -eq 124 ]; then \
+            echo "bounded RTSP run reached {{mivia_rtsp_runtime_s}}s; treating timeout as success"; \
+            exit 0; \
+        fi; \
+        exit "$status"
+
+mivia-rtsp-publish: _require-mivia-fire
+    @command -v ffmpeg >/dev/null || { echo "ffmpeg is required for mivia-rtsp-publish" >&2; exit 1; }
+    {{compose}} up -d rtsp
+    ffmpeg -hide_banner -loglevel warning -re -stream_loop -1 -fflags +genpts \
+        -i "{{mivia_fire_video}}" \
+        -map 0:v:0 -an \
+        -vf "fps=30,format=yuv420p" \
+        -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p \
+        -g 30 -keyint_min 30 -sc_threshold 0 \
+        -f rtsp -rtsp_transport tcp "{{mivia_rtsp_url}}"
+
+mivia-rtsp-run: _require-mivia-fire
+    @set -a; [ ! -f .env ] || source .env; set +a; \
+        uv run --frozen python scripts/run_rtsp.py \
+            --rtsp "{{mivia_rtsp_url}}" \
+            --config "{{mivia_config}}" \
+            --policy "{{mivia_policy}}" \
+            --out "{{mivia_rtsp_out}}"
+
+local-stream-clips:
+    uv run --frozen python scripts/make_test_clips.py \
+        --out runs/pr-integration/clips \
+        --which all \
+        --size 640x360 \
+        --fps 30 \
+        --seconds 10
+
+local-rtsp-publish-all: local-stream-clips
+    @command -v ffmpeg >/dev/null || { echo "ffmpeg is required for local-rtsp-publish-all" >&2; exit 1; }
+    {{compose}} up -d rtsp
+    uv run --frozen python scripts/publish_rtsp_streams.py --streams "{{stream_manifest}}"
+
+local-multistream-run:
+    @set -a; [ ! -f .env ] || source .env; set +a; \
+        uv run --frozen python scripts/run_multistream.py \
+            --config "{{stream_config}}" \
+            --policy "{{stream_policy}}" \
+            --streams "{{stream_manifest}}" \
+            --out "{{stream_out}}"
+
+stop-local:
+    @pkill -f '[p]ublish_rtsp_streams.py' || true
+    @pkill -f '[r]un_multistream.py' || true
+    @pkill -f '[r]un_rtsp.py' || true
+    @pkill -f '[u]vicorn vrs.web.api:app' || true
+    @pkill -f '[p]ython -m http.server .*5173' || true
+    @pkill -f '[f]fmpeg .*rtsp://127.0.0.1:8554' || true
+    {{compose}} down
+
+web-api:
+    VRS_RUNS_ROOT="{{web_runs_root}}" VRS_POLICY_PATH="{{web_policy}}" VRS_STREAMS_PATH="{{stream_manifest}}" \
+        uv run --frozen uvicorn vrs.web.api:app --host "{{web_host}}" --port "{{web_api_port}}"
+
+web-ui:
+    python -m http.server "{{web_ui_port}}" --bind "{{web_host}}" --directory web
 
 compose-up *args:
     {{compose}} up -d --build {{args}}

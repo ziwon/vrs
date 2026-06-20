@@ -362,6 +362,8 @@ class EvalReport:
     run: ReportRun
     models: ReportModels
     metrics: ReportMetrics
+    detector_quality: ReportMetrics | None
+    full_cascade_quality: ReportMetrics | None
     latency: ReportLatency
     runtime: ReportRuntime
     quality_signals: ReportQualitySignals
@@ -382,6 +384,7 @@ class EvalReport:
         cfg = dict(config or {})
         models = ReportModels.from_config(cfg)
         verifier_enabled = bool((cfg.get("verifier") or {}).get("enabled", True))
+        metrics = ReportMetrics.from_run_score(result.aggregate)
         per_video = tuple(
             PerVideoReport.from_run_score(path, score)
             for path, score in sorted(result.per_video, key=lambda item: str(item[0]))
@@ -398,7 +401,9 @@ class EvalReport:
                 run_id=run_id,
             ),
             models=models,
-            metrics=ReportMetrics.from_run_score(result.aggregate),
+            metrics=metrics,
+            detector_quality=metrics if not verifier_enabled else None,
+            full_cascade_quality=metrics if verifier_enabled else None,
             latency=ReportLatency(),
             runtime=ReportRuntime.current(),
             quality_signals=ReportQualitySignals.from_run_score(result.aggregate),
@@ -407,11 +412,26 @@ class EvalReport:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> EvalReport:
+        metrics = ReportMetrics.from_dict(data.get("metrics", {}))
+        run = ReportRun.from_dict(data.get("run", {}))
+        detector_quality = data.get("detector_quality")
+        full_cascade_quality = data.get("full_cascade_quality")
+        if detector_quality is None and full_cascade_quality is None:
+            if run.mode == "detector_only":
+                detector_quality = data.get("metrics", {})
+            else:
+                full_cascade_quality = data.get("metrics", {})
         return cls(
             schema_version=str(data.get("schema_version", SCHEMA_VERSION)),
-            run=ReportRun.from_dict(data.get("run", {})),
+            run=run,
             models=ReportModels.from_dict(data.get("models", {})),
-            metrics=ReportMetrics.from_dict(data.get("metrics", {})),
+            metrics=metrics,
+            detector_quality=ReportMetrics.from_dict(detector_quality)
+            if isinstance(detector_quality, Mapping)
+            else None,
+            full_cascade_quality=ReportMetrics.from_dict(full_cascade_quality)
+            if isinstance(full_cascade_quality, Mapping)
+            else None,
             latency=ReportLatency.from_dict(data.get("latency", {})),
             runtime=ReportRuntime.from_dict(data.get("runtime", {})),
             quality_signals=ReportQualitySignals.from_dict(data.get("quality_signals", {})),
@@ -428,6 +448,12 @@ class EvalReport:
             "run": self.run.to_dict(),
             "models": self.models.to_dict(),
             "metrics": self.metrics.to_dict(),
+            "detector_quality": self.detector_quality.to_dict()
+            if self.detector_quality is not None
+            else None,
+            "full_cascade_quality": self.full_cascade_quality.to_dict()
+            if self.full_cascade_quality is not None
+            else None,
             "latency": self.latency.to_dict(),
             "runtime": self.runtime.to_dict(),
             "quality_signals": self.quality_signals.to_dict(),

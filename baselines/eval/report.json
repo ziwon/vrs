@@ -46,6 +46,35 @@
       }
     }
   },
+  "detector_quality": null,
+  "full_cascade_quality": {
+    "overall": {
+      "precision": 0.7143,
+      "recall": 0.8333,
+      "f1": 0.7692,
+      "tp": 5,
+      "fp": 2,
+      "fn": 1
+    },
+    "per_class": {
+      "fire": {
+        "precision": 0.75,
+        "recall": 0.75,
+        "f1": 0.75,
+        "tp": 3,
+        "fp": 1,
+        "fn": 1
+      },
+      "smoke": {
+        "precision": 0.6667,
+        "recall": 1.0,
+        "f1": 0.8,
+        "tp": 2,
+        "fp": 1,
+        "fn": 0
+      }
+    }
+  },
   "latency": {
     "detector_p50_ms": null,
     "detector_p95_ms": null,

@@ -111,3 +111,15 @@ runs/eval-dfire-sweep-prompts/best_config.yaml
 
 The generated policy/config pair should be validated with `eval-dfire` before
 any live RTSP policy promotion.
+
+## Report Sections
+
+`scripts/eval.py` writes a versioned `report.json`. The legacy `metrics`
+section remains for CI compatibility. Newer reports also split quality by
+pipeline stage:
+
+- `detector_quality` — populated for `--mode detector_only` runs.
+- `full_cascade_quality` — populated for verifier-enabled full-cascade runs.
+
+For D-Fire detector-only bbox runs, use `detector_quality` as the primary
+precision/recall/F1 section and expect `full_cascade_quality` to be `null`.

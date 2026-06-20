@@ -487,11 +487,15 @@ def test_eval_report_round_trip_is_stable():
     assert [entry.video for entry in report.per_video] == ["a.mp4", "b.mp4"]
     assert report.metrics.overall.tp == 1
     assert report.metrics.per_class["fire"].f1 == pytest.approx(1.0)
+    assert report.detector_quality is None
+    assert report.full_cascade_quality == report.metrics
     assert report.quality_signals.verifier_flip_rate == pytest.approx(0.5)
     assert report.quality_signals.false_negative_flag_rate == pytest.approx(0.5)
 
     payload = report.to_dict()
     assert list(payload["metrics"]["per_class"].keys()) == ["fire", "smoke"]
+    assert payload["detector_quality"] is None
+    assert payload["full_cascade_quality"] == payload["metrics"]
     assert EvalReport.from_dict(payload) == report
     assert json.loads(report.to_json()) == payload
 
@@ -522,6 +526,8 @@ def test_config_for_eval_mode_marks_detector_only_without_mutating_source():
     assert report.run.mode == "detector_only"
     assert report.models.detector is not None
     assert report.models.verifier is None
+    assert report.detector_quality == report.metrics
+    assert report.full_cascade_quality is None
 
 
 def test_eval_cli_accepts_detector_only_mode():
@@ -862,6 +868,20 @@ def test_gate_reads_schema_v1_reports():
     assert result.passed is True
     assert result.baseline_flip_rate == pytest.approx(0.10)
     assert result.current_flip_rate == pytest.approx(0.12)
+
+
+def test_eval_report_infers_quality_sections_for_legacy_payloads():
+    full_payload = _schema_v1_report({"fire": 0.80}, overall_f1=0.80)
+    full_report = EvalReport.from_dict(full_payload)
+    assert full_report.detector_quality is None
+    assert full_report.full_cascade_quality == full_report.metrics
+
+    detector_payload = _schema_v1_report({"fire": 0.80}, overall_f1=0.80)
+    detector_payload["run"]["mode"] = "detector_only"
+    detector_payload["models"]["verifier"] = None
+    detector_report = EvalReport.from_dict(detector_payload)
+    assert detector_report.detector_quality == detector_report.metrics
+    assert detector_report.full_cascade_quality is None
 
 
 def test_committed_eval_baseline_matches_regeneration_script():

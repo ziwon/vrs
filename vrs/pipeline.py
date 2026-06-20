@@ -73,6 +73,8 @@ class VRSPipeline:
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.metrics = build_metrics(config)
+        self.detector_latencies_ms: list[float] = []
+        self.verifier_latencies_ms: list[float] = []
 
         det_cfg = config["detector"]
         ing_cfg = config["ingest"]
@@ -180,7 +182,9 @@ class VRSPipeline:
                     try:
                         detections = self.detector(frame)
                     finally:
-                        self.metrics.observe_detector_latency(time.perf_counter() - detector_t0)
+                        detector_elapsed = time.perf_counter() - detector_t0
+                        self.metrics.observe_detector_latency(detector_elapsed)
+                        self.detector_latencies_ms.append(detector_elapsed * 1000.0)
                     detections = self.tracker.update(detections, frame.index)
                     candidates = self.event_state.step(frame, detections)
 
@@ -194,9 +198,9 @@ class VRSPipeline:
                                 self.metrics.inc_verifier_errors(self._verifier_backend)
                                 raise
                             finally:
-                                self.metrics.observe_verifier_latency(
-                                    time.perf_counter() - verifier_t0
-                                )
+                                verifier_elapsed = time.perf_counter() - verifier_t0
+                                self.metrics.observe_verifier_latency(verifier_elapsed)
+                                self.verifier_latencies_ms.append(verifier_elapsed * 1000.0)
                         else:
                             verified = VerifiedAlert(
                                 candidate=cand,

@@ -28,6 +28,21 @@ def _round_metric(value: float | None) -> float | None:
     return round(float(value), 4)
 
 
+def _percentile(values: Sequence[float], q: float) -> float | None:
+    if not values:
+        return None
+    if not 0.0 <= q <= 1.0:
+        raise ValueError("percentile q must be between 0 and 1")
+    ordered = sorted(float(v) for v in values)
+    if len(ordered) == 1:
+        return ordered[0]
+    pos = (len(ordered) - 1) * q
+    lo = int(pos)
+    hi = min(lo + 1, len(ordered) - 1)
+    frac = pos - lo
+    return ordered[lo] * (1.0 - frac) + ordered[hi] * frac
+
+
 def _slug(value: str | None, *, fallback: str) -> str:
     raw = (value or "").strip().lower()
     raw = raw.split("/")[-1]
@@ -122,6 +137,15 @@ class ReportLatency:
     verifier_p95_ms: float | None = None
 
     @classmethod
+    def from_run_score(cls, score: RunScore) -> ReportLatency:
+        return cls(
+            detector_p50_ms=_round_metric(_percentile(score.detector_latencies_ms, 0.50)),
+            detector_p95_ms=_round_metric(_percentile(score.detector_latencies_ms, 0.95)),
+            verifier_p50_ms=_round_metric(_percentile(score.verifier_latencies_ms, 0.50)),
+            verifier_p95_ms=_round_metric(_percentile(score.verifier_latencies_ms, 0.95)),
+        )
+
+    @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> ReportLatency:
         return cls(
             detector_p50_ms=_round_metric(data.get("detector_p50_ms")),
@@ -149,7 +173,19 @@ class ReportRuntime:
 
     @classmethod
     def current(cls) -> ReportRuntime:
-        return cls(python=platform.python_version())
+        runtime = {"python": platform.python_version()}
+        try:
+            import torch
+
+            runtime["torch"] = str(torch.__version__)
+            runtime["cuda"] = str(torch.version.cuda) if torch.version.cuda else None
+            if torch.cuda.is_available():
+                idx = torch.cuda.current_device()
+                runtime["gpu_name"] = torch.cuda.get_device_name(idx)
+                runtime["peak_vram_mb"] = torch.cuda.max_memory_allocated(idx) / (1024 * 1024)
+        except Exception:
+            pass
+        return cls(**runtime)
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> ReportRuntime:
@@ -183,6 +219,7 @@ class ReportQualitySignals:
         return cls(
             verifier_flip_rate=_round_metric(score.flip_rate),
             false_negative_flag_rate=_round_metric(score.fn_flag_rate),
+            malformed_json_rate=_round_metric(score.malformed_json_rate),
         )
 
     @classmethod
@@ -404,7 +441,7 @@ class EvalReport:
             metrics=metrics,
             detector_quality=metrics if not verifier_enabled else None,
             full_cascade_quality=metrics if verifier_enabled else None,
-            latency=ReportLatency(),
+            latency=ReportLatency.from_run_score(result.aggregate),
             runtime=ReportRuntime.current(),
             quality_signals=ReportQualitySignals.from_run_score(result.aggregate),
             per_video=per_video,

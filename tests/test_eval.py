@@ -35,6 +35,7 @@ def _alert(
     true_alert: bool = True,
     fn_cls: str | None = None,
     bbox: tuple[float, float, float, float] | None = None,
+    verifier_json_valid: bool | None = None,
 ) -> dict:
     out = {
         "class_name": class_name,
@@ -44,6 +45,8 @@ def _alert(
     }
     if bbox is not None:
         out["bbox_xywh_norm"] = bbox
+    if verifier_json_valid is not None:
+        out["verifier_json_valid"] = verifier_json_valid
     return out
 
 
@@ -125,15 +128,17 @@ def test_score_ignores_verifier_flipped_alerts_for_prf():
 def test_score_flip_rate_and_fn_flag_rate():
     alerts = [
         _alert("fire", 1.0, true_alert=True),
-        _alert("fire", 2.0, true_alert=False),
+        _alert("fire", 2.0, true_alert=False, verifier_json_valid=False),
         _alert("smoke", 3.0, true_alert=True, fn_cls="fire"),
     ]
     score = score_alerts_against_truth(alerts, [], tolerance_s=0.0)
     assert score.n_alerts_total == 3
     assert score.n_alerts_true == 2
     assert score.n_fn_flagged == 1
+    assert score.n_verifier_json_malformed == 1
     assert score.flip_rate == pytest.approx(1 / 3)
     assert score.fn_flag_rate == pytest.approx(1 / 3)
+    assert score.malformed_json_rate == pytest.approx(1 / 3)
 
 
 def test_score_empty_inputs_do_not_blow_up():
@@ -482,6 +487,8 @@ def test_eval_report_round_trip_is_stable():
             (Path("a.mp4"), score),
         ],
     )
+    result.aggregate.detector_latencies_ms.extend([10.0, 20.0, 30.0])
+    result.aggregate.verifier_latencies_ms.extend([100.0, 200.0, 300.0])
     report = EvalReport.from_harness_result(
         result,
         dataset="fixtures/mini-dataset",
@@ -508,6 +515,11 @@ def test_eval_report_round_trip_is_stable():
     assert report.full_cascade_quality == report.metrics
     assert report.quality_signals.verifier_flip_rate == pytest.approx(0.5)
     assert report.quality_signals.false_negative_flag_rate == pytest.approx(0.5)
+    assert report.quality_signals.malformed_json_rate == pytest.approx(0.0)
+    assert report.latency.detector_p50_ms == pytest.approx(20.0)
+    assert report.latency.detector_p95_ms == pytest.approx(29.0)
+    assert report.latency.verifier_p50_ms == pytest.approx(200.0)
+    assert report.latency.verifier_p95_ms == pytest.approx(290.0)
 
     payload = report.to_dict()
     assert list(payload["metrics"]["per_class"].keys()) == ["fire", "smoke"]
@@ -754,6 +766,54 @@ def test_detector_model_refresh_detects_half_dtype_mismatch():
         RuntimeError("expected mat1 and mat2 to have the same dtype, but got: c10::Half != float")
     )
     assert not _is_half_dtype_mismatch(RuntimeError("CUDA out of memory"))
+
+
+def test_verifier_bakeoff_summarizes_existing_reports(tmp_path: Path):
+    from scripts.eval_verifier_backends import parse_candidate, run_bakeoff
+
+    candidate = parse_candidate("cosmos=configs/default.yaml")
+    score = score_alerts_against_truth(
+        [_alert("fire", 2.0, true_alert=True, verifier_json_valid=False)],
+        [_event("fire", 1.0, 3.0)],
+        tolerance_s=0.0,
+    )
+    score.detector_latencies_ms.extend([1.0, 3.0])
+    score.verifier_latencies_ms.extend([100.0, 300.0])
+    report = EvalReport.from_harness_result(
+        HarnessResult(aggregate=score, per_video=[(Path("clip.mp4"), score)]),
+        dataset="fixtures/verifier",
+        config_path="configs/default.yaml",
+        policy_path="configs/policies/safety.yaml",
+        config={
+            "detector": {"backend": "ultralytics", "model": "yoloe-11l-seg.pt"},
+            "verifier": {
+                "enabled": True,
+                "backend": "transformers",
+                "model_id": "nvidia/Cosmos-Reason2-2B",
+            },
+        },
+        created_at=datetime(2026, 4, 26, 0, 0, tzinfo=UTC),
+    )
+    report_dir = tmp_path / "bakeoff" / candidate.name
+    report_dir.mkdir(parents=True)
+    report.write(report_dir / "report.json")
+
+    comparison = run_bakeoff(
+        candidates=[candidate],
+        dataset=Path("fixtures/verifier"),
+        dataset_format="labeled_dir",
+        policy=Path("configs/policies/safety.yaml"),
+        out_dir=tmp_path / "bakeoff",
+        tolerance_s=0.5,
+        skip_run=True,
+    )
+
+    row = comparison["candidates"][0]
+    assert row["name"] == "cosmos"
+    assert row["metrics"]["overall"]["f1"] == pytest.approx(1.0)
+    assert row["quality_signals"]["malformed_json_rate"] == pytest.approx(1.0)
+    assert row["latency"]["verifier_p95_ms"] == pytest.approx(290.0)
+    assert (tmp_path / "bakeoff" / "verifier_bakeoff.json").exists()
 
 
 def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_path: Path):

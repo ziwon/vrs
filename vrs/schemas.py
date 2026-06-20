@@ -93,6 +93,7 @@ class VerifiedAlert:
     bbox_xywh_norm: tuple[float, float, float, float] | None = None  # verifier bbox
     trajectory_xy_norm: list[tuple[float, float]] = field(default_factory=list)
     verifier_raw: str = ""
+    verifier_json_valid: bool | None = None
     thumbnail_path: str | None = None
 
     def to_json(self) -> dict[str, Any]:
@@ -106,6 +107,7 @@ class VerifiedAlert:
             bbox_xywh_norm=([float(x) for x in bbox] if bbox is not None else None),
             trajectory_xy_norm=[[float(x), float(y)] for (x, y) in self.trajectory_xy_norm],
             verifier_raw=self.verifier_raw,
+            verifier_json_valid=self.verifier_json_valid,
             thumbnail_path=self.thumbnail_path,
         )
         return out

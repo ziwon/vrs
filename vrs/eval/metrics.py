@@ -64,6 +64,8 @@ def score_alerts_against_truth(
             score.n_alerts_true += 1
         if a.get("false_negative_class"):
             score.n_fn_flagged += 1
+        if a.get("verifier_json_valid") is False:
+            score.n_verifier_json_malformed += 1
 
     score.n_events = sum(1 for e in events if e.class_name in class_set)
 
@@ -150,7 +152,10 @@ def aggregate_scores(scores: Iterable[RunScore]) -> RunScore:
         agg.n_alerts_total += s.n_alerts_total
         agg.n_alerts_true += s.n_alerts_true
         agg.n_fn_flagged += s.n_fn_flagged
+        agg.n_verifier_json_malformed += s.n_verifier_json_malformed
         agg.n_events += s.n_events
+        agg.detector_latencies_ms.extend(s.detector_latencies_ms)
+        agg.verifier_latencies_ms.extend(s.verifier_latencies_ms)
         for cls, cm in s.per_class.items():
             bucket = agg.per_class.setdefault(cls, ClassMetrics())
             bucket.tp += cm.tp

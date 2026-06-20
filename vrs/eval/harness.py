@@ -117,6 +117,12 @@ def evaluate(
             bbox_iou_threshold=bbox_iou_threshold,
             classes=classes_set,
         )
+        score.detector_latencies_ms.extend(
+            float(v) for v in getattr(pipeline, "detector_latencies_ms", [])
+        )
+        score.verifier_latencies_ms.extend(
+            float(v) for v in getattr(pipeline, "verifier_latencies_ms", [])
+        )
         per_video.append((item.video_path, score))
         logger.info(
             "scored %s — alerts=%d events=%d per_class=%s flip_rate=%.3f",
@@ -178,6 +184,7 @@ def evaluate_detector_only_images(
             bbox_iou_threshold=bbox_iou_threshold,
             classes=classes_set,
         )
+        score.detector_latencies_ms.append(detector_latency_ms)
         per_video.append((item.video_path, score))
         logger.info(
             "scored %s — detections=%d alerts=%d events=%d detector_ms=%.1f per_class=%s flip_rate=%.3f",

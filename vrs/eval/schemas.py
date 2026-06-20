@@ -74,7 +74,10 @@ class RunScore:
     n_alerts_total: int = 0  # all alerts, regardless of verifier verdict
     n_alerts_true: int = 0  # alerts where verifier said true_alert=True
     n_fn_flagged: int = 0  # alerts where verifier reported a false negative
+    n_verifier_json_malformed: int = 0  # verifier outputs that failed JSON parsing
     n_events: int = 0  # ground-truth events counted
+    detector_latencies_ms: list[float] = field(default_factory=list)
+    verifier_latencies_ms: list[float] = field(default_factory=list)
 
     @property
     def flip_rate(self) -> float:
@@ -94,6 +97,12 @@ class RunScore:
             return 0.0
         return self.n_fn_flagged / self.n_alerts_total
 
+    @property
+    def malformed_json_rate(self) -> float:
+        if not self.n_alerts_total:
+            return 0.0
+        return self.n_verifier_json_malformed / self.n_alerts_total
+
     def overall(self) -> ClassMetrics:
         agg = ClassMetrics()
         for cm in self.per_class.values():
@@ -109,7 +118,9 @@ class RunScore:
             "n_alerts_total": self.n_alerts_total,
             "n_alerts_true": self.n_alerts_true,
             "n_fn_flagged": self.n_fn_flagged,
+            "n_verifier_json_malformed": self.n_verifier_json_malformed,
             "n_events": self.n_events,
             "flip_rate": round(self.flip_rate, 4),
             "fn_flag_rate": round(self.fn_flag_rate, 4),
+            "malformed_json_rate": round(self.malformed_json_rate, 4),
         }

@@ -227,6 +227,7 @@ class AlertVerifier:
             return self._failure_verdict(alert, f"verifier error: {e}")
 
         parsed = _safe_parse_json(raw)
+        verifier_json_valid = parsed is not None
         failure_default = self.failure_policy == FailurePolicy.PASS_THROUGH
         if parsed is None:
             logger.warning(
@@ -264,4 +265,5 @@ class AlertVerifier:
             bbox_xywh_norm=_coerce_bbox(parsed.get("bbox_xywh_norm")),
             trajectory_xy_norm=_coerce_trajectory(parsed.get("trajectory_xy_norm")),
             verifier_raw=raw,
+            verifier_json_valid=verifier_json_valid,
         )

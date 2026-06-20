@@ -27,6 +27,11 @@ stream_manifest := "configs/local-rtsp-streams.yaml"
 stream_config := "configs/tiny.yaml"
 stream_policy := "configs/policies/safety.yaml"
 stream_out := "runs/local-rtsp-multistream"
+verifier_dataset := "/data/vrs/verifier-eval"
+verifier_dataset_format := "labeled_dir"
+verifier_policy := "configs/policies/safety.yaml"
+verifier_out := "runs/verifier-bakeoff"
+verifier_candidates := "cosmos=configs/default.yaml,qwen-served=configs/qwen-openai-compatible.yaml"
 web_runs_root := "runs"
 web_policy := "configs/policies/safety.yaml"
 web_host := "127.0.0.1"
@@ -175,6 +180,27 @@ eval-dfire-model-refresh-bbox: _require-dfire-dataset
         --baseline-model yoloe-11l-seg.pt \
         --bbox-iou-threshold {{dfire_iou}} \
         --out {{dfire_model_refresh_out}}-bbox
+
+eval-verifier-bakeoff:
+    @test -d "{{verifier_dataset}}" || { \
+        echo "missing verifier eval dataset: {{verifier_dataset}}" >&2; \
+        echo "expected labeled_dir layout: media file plus sidecar JSON labels" >&2; \
+        echo "override with: just verifier_dataset=/path/to/labeled-clips eval-verifier-bakeoff" >&2; \
+        exit 1; \
+    }
+    @set -euo pipefail; \
+        args=(); \
+        IFS=',' read -ra candidates <<< "{{verifier_candidates}}"; \
+        for candidate in "$${candidates[@]}"; do \
+            args+=(--candidate "$$candidate"); \
+        done; \
+        set -a; [ ! -f .env ] || source .env; set +a; \
+        uv run --frozen python scripts/eval_verifier_backends.py \
+            --dataset "{{verifier_dataset}}" \
+            --dataset-format "{{verifier_dataset_format}}" \
+            --policy "{{verifier_policy}}" \
+            --out "{{verifier_out}}" \
+            "$${args[@]}"
 
 _require-mivia-fire:
     @test -d "{{mivia_root}}" || { \

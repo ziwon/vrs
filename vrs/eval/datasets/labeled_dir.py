@@ -1,4 +1,4 @@
-"""Adapter: directory of ``*.mp4`` files with sidecar ``*.json`` labels.
+"""Adapter: directory of video files with sidecar ``*.json`` labels.
 
 Layout expected::
 
@@ -18,7 +18,9 @@ Each sidecar JSON::
     }
 
 Videos without a sidecar are still yielded (with an empty events list) so
-they can score a detector's false-positive rate on "quiet" footage.
+they can score a detector's false-positive rate on "quiet" footage. Common
+container suffixes are supported by default: ``.mp4``, ``.avi``, ``.mov``,
+``.mkv``, ``.m4v``.
 
 This is the generic case we can rely on locally in tests and in the lab.
 Public-dataset adapters (D-Fire, Le2i) convert their native formats into
@@ -34,16 +36,23 @@ from pathlib import Path
 from ..schemas import EvalItem, GroundTruthEvent
 from .base import Dataset
 
+VIDEO_SUFFIXES = (".avi", ".m4v", ".mkv", ".mov", ".mp4")
+
 
 class LabeledDirDataset(Dataset):
-    def __init__(self, root: str | Path, *, video_glob: str = "*.mp4"):
+    def __init__(self, root: str | Path, *, video_glob: str | None = None):
         self.root = Path(root)
         if not self.root.is_dir():
             raise FileNotFoundError(f"{self.root} is not a directory")
         self.video_glob = video_glob
 
     def __iter__(self) -> Iterator[EvalItem]:
-        for video in sorted(self.root.glob(self.video_glob)):
+        videos = (
+            self.root.glob(self.video_glob)
+            if self.video_glob is not None
+            else (p for p in self.root.iterdir() if p.suffix.lower() in VIDEO_SUFFIXES)
+        )
+        for video in sorted(videos):
             yield EvalItem(video_path=video, events=_load_sidecar(video))
 
 

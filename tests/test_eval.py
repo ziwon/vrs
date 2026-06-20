@@ -251,6 +251,19 @@ def test_labeled_dir_yields_items_with_events(tmp_path: Path):
     assert items[1].events == []
 
 
+def test_labeled_dir_accepts_common_video_suffixes(tmp_path: Path):
+    (tmp_path / "clip.avi").write_bytes(b"\x00" * 32)
+    (tmp_path / "ignore.txt").write_text("nope")
+    (tmp_path / "clip.json").write_text(
+        json.dumps({"events": [{"class": "fire", "start_s": 0.0, "end_s": 1.0}]})
+    )
+
+    items = list(LabeledDirDataset(tmp_path))
+
+    assert [item.video_path.name for item in items] == ["clip.avi"]
+    assert items[0].events == [GroundTruthEvent("fire", 0.0, 1.0)]
+
+
 def test_labeled_dir_rejects_nonexistent_root(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         LabeledDirDataset(tmp_path / "does-not-exist")
@@ -814,6 +827,40 @@ def test_verifier_bakeoff_summarizes_existing_reports(tmp_path: Path):
     assert row["quality_signals"]["malformed_json_rate"] == pytest.approx(1.0)
     assert row["latency"]["verifier_p95_ms"] == pytest.approx(290.0)
     assert (tmp_path / "bakeoff" / "verifier_bakeoff.json").exists()
+
+
+def test_prepare_verifier_eval_dataset_writes_sidecars(monkeypatch, tmp_path: Path):
+    from scripts.prepare_verifier_eval_dataset import prepare_dataset
+
+    positive_root = tmp_path / "positive"
+    negative_root = tmp_path / "negative"
+    positive_root.mkdir()
+    negative_root.mkdir()
+    (positive_root / "fire one.avi").write_bytes(b"video")
+    (negative_root / "quiet.mp4").write_bytes(b"video")
+    monkeypatch.setattr(
+        "scripts.prepare_verifier_eval_dataset.video_duration_s", lambda path: 12.345
+    )
+
+    manifest = prepare_dataset(
+        out_dir=tmp_path / "out",
+        positive_roots=[positive_root],
+        positive_class="fire",
+        positive_limit=1,
+        negative_roots=[negative_root],
+        negative_limit=1,
+        copy_mode="symlink",
+        overwrite=True,
+    )
+
+    assert manifest["count"] == 2
+    positive_sidecar = Path(manifest["entries"][0]["sidecar"])
+    negative_sidecar = Path(manifest["entries"][1]["sidecar"])
+    assert json.loads(positive_sidecar.read_text()) == {
+        "events": [{"class": "fire", "start_s": 0.0, "end_s": 12.345}]
+    }
+    assert json.loads(negative_sidecar.read_text()) == {"events": []}
+    assert Path(manifest["entries"][0]["video"]).is_symlink()
 
 
 def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_path: Path):

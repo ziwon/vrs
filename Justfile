@@ -32,6 +32,11 @@ verifier_dataset_format := "labeled_dir"
 verifier_policy := "configs/policies/safety.yaml"
 verifier_out := "runs/verifier-bakeoff"
 verifier_candidates := "cosmos=configs/default.yaml,qwen-served=configs/qwen-openai-compatible.yaml"
+verifier_positive_root := "/data/vrs/kaggle-fire-detection/mivia_fire/mivia_fire"
+verifier_positive_class := "fire"
+verifier_positive_limit := "3"
+verifier_negative_root := "/data/vrs/fire_dataset/extracted_sample/non_fire"
+verifier_negative_limit := "3"
 web_runs_root := "runs"
 web_policy := "configs/policies/safety.yaml"
 web_host := "127.0.0.1"
@@ -191,8 +196,8 @@ eval-verifier-bakeoff:
     @set -euo pipefail; \
         args=(); \
         IFS=',' read -ra candidates <<< "{{verifier_candidates}}"; \
-        for candidate in "$${candidates[@]}"; do \
-            args+=(--candidate "$$candidate"); \
+        for candidate in "${candidates[@]}"; do \
+            args+=(--candidate "$candidate"); \
         done; \
         set -a; [ ! -f .env ] || source .env; set +a; \
         uv run --frozen python scripts/eval_verifier_backends.py \
@@ -200,7 +205,28 @@ eval-verifier-bakeoff:
             --dataset-format "{{verifier_dataset_format}}" \
             --policy "{{verifier_policy}}" \
             --out "{{verifier_out}}" \
-            "$${args[@]}"
+            "${args[@]}"
+
+prepare-verifier-eval:
+    @test -d "{{verifier_positive_root}}" || { \
+        echo "missing positive video root: {{verifier_positive_root}}" >&2; \
+        echo "override with: just verifier_positive_root=/path/to/positive-videos prepare-verifier-eval" >&2; \
+        exit 1; \
+    }
+    @negative_args=(); \
+        if [ -d "{{verifier_negative_root}}" ]; then \
+            negative_args=(--negative-root "{{verifier_negative_root}}" --negative-limit "{{verifier_negative_limit}}"); \
+        else \
+            echo "negative video root not found, preparing positives only: {{verifier_negative_root}}" >&2; \
+        fi; \
+        uv run --frozen python scripts/prepare_verifier_eval_dataset.py \
+            --out "{{verifier_dataset}}" \
+            --positive-root "{{verifier_positive_root}}" \
+            --positive-class "{{verifier_positive_class}}" \
+            --positive-limit "{{verifier_positive_limit}}" \
+            "${negative_args[@]}" \
+            --copy-mode symlink \
+            --overwrite
 
 _require-mivia-fire:
     @test -d "{{mivia_root}}" || { \

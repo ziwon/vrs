@@ -672,6 +672,90 @@ def test_dfire_prompt_sweep_builds_policy_and_config():
     assert tuned_config["detector"]["conf_floor"] == 0.05
 
 
+def test_detector_model_refresh_helpers_choose_decision():
+    from scripts.eval_detector_models import (
+        add_baseline_deltas,
+        choose_best,
+        make_decision,
+        parse_models,
+        summarize_latency,
+    )
+
+    assert parse_models("yoloe-11l-seg.pt, yoloe-26l-seg.pt") == [
+        "yoloe-11l-seg.pt",
+        "yoloe-26l-seg.pt",
+    ]
+    assert summarize_latency([10.0, 20.0, 30.0]) == {
+        "count": 3,
+        "mean_ms": 20.0,
+        "p50_ms": 20.0,
+        "p95_ms": 29.0,
+    }
+
+    rows = add_baseline_deltas(
+        [
+            {
+                "model": "yoloe-11l-seg.pt",
+                "metrics": {
+                    "macro_f1": 0.50,
+                    "overall": {"f1": 0.50, "recall": 0.60, "precision": 0.45},
+                },
+                "latency": {"p95_ms": 20.0},
+            },
+            {
+                "model": "yoloe-26l-seg.pt",
+                "metrics": {
+                    "macro_f1": 0.54,
+                    "overall": {"f1": 0.55, "recall": 0.62, "precision": 0.50},
+                },
+                "latency": {"p95_ms": 21.0},
+            },
+        ],
+        "yoloe-11l-seg.pt",
+    )
+
+    assert rows[1]["delta_vs_baseline"]["macro_f1"] == pytest.approx(0.04)
+    assert choose_best(rows, "macro_f1")["model"] == "yoloe-26l-seg.pt"
+    decision = make_decision(
+        rows,
+        baseline_model="yoloe-11l-seg.pt",
+        optimize="macro_f1",
+        min_metric_gain=0.01,
+        max_p95_latency_ratio=1.10,
+    )
+    assert decision["action"] == "adopt_candidate"
+    assert decision["p95_latency_ratio"] == pytest.approx(1.05)
+
+
+def test_detector_model_refresh_config_sets_model_and_floor():
+    from scripts.eval_detector_models import config_with_model
+    from vrs.policy.watch_policy import WatchItem, WatchPolicy
+
+    policy = WatchPolicy(
+        [
+            WatchItem("fire", ["fire"], "fire visible", "critical", 0.30, 1),
+            WatchItem("smoke", ["smoke"], "smoke visible", "high", 0.25, 1),
+        ]
+    )
+    cfg = config_with_model(
+        {"detector": {"model": "old.pt", "conf_floor": 0.40}},
+        model="new.pt",
+        policy=policy,
+    )
+
+    assert cfg["detector"]["model"] == "new.pt"
+    assert cfg["detector"]["conf_floor"] == 0.25
+
+
+def test_detector_model_refresh_detects_half_dtype_mismatch():
+    from scripts.eval_detector_models import _is_half_dtype_mismatch
+
+    assert _is_half_dtype_mismatch(
+        RuntimeError("expected mat1 and mat2 to have the same dtype, but got: c10::Half != float")
+    )
+    assert not _is_half_dtype_mismatch(RuntimeError("CUDA out of memory"))
+
+
 def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_path: Path):
     from vrs.pipeline import VRSPipeline
     from vrs.policy.watch_policy import WatchItem, WatchPolicy

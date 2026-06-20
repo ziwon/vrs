@@ -51,6 +51,19 @@ The backend sends the same system prompt, user prompt, keyframes, and JSON
 schema used by the local verifier. If a server ignores `response_format`, VRS
 still applies the same verifier JSON parsing and failure policy.
 
+Smoke-test a served verifier before running the labeled bake-off:
+
+```bash
+just smoke-verifier
+```
+
+Then prepare a small local labeled-dir set and run the comparison:
+
+```bash
+just prepare-verifier-eval
+just eval-verifier-bakeoff
+```
+
 ## Prometheus Metrics
 
 Metrics are disabled by default. Enable the lightweight scrape endpoint in your

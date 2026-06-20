@@ -863,6 +863,74 @@ def test_prepare_verifier_eval_dataset_writes_sidecars(monkeypatch, tmp_path: Pa
     assert Path(manifest["entries"][0]["video"]).is_symlink()
 
 
+def test_smoke_verifier_backend_writes_result(monkeypatch, tmp_path: Path):
+    from scripts import smoke_verifier_backend
+
+    config_path = tmp_path / "config.yaml"
+    policy_path = tmp_path / "policy.yaml"
+    out_path = tmp_path / "smoke.json"
+    config_path.write_text(
+        "\n".join(
+            [
+                "ingest:",
+                "  target_fps: 4",
+                "detector:",
+                "  model: fake.pt",
+                "event_state:",
+                "  window: 2",
+                "verifier:",
+                "  enabled: true",
+                "  backend: openai_compatible",
+                "  model_id: qwen-vl-served",
+                "  base_url: http://127.0.0.1:1/v1",
+                "sink: {}",
+            ]
+        )
+    )
+    policy_path.write_text(
+        "\n".join(
+            [
+                "watch:",
+                "  - name: fire",
+                "    detector: ['fire']",
+                "    verifier: 'open flames'",
+                "    severity: critical",
+                "    min_score: 0.3",
+                "    min_persist_frames: 1",
+            ]
+        )
+    )
+
+    class _FakeVerifier:
+        def verify(self, candidate):
+            return VerifiedAlert(
+                candidate=candidate,
+                true_alert=True,
+                confidence=0.8,
+                false_negative_class=None,
+                rationale="ok",
+                verifier_raw='{"true_alert":true}',
+                verifier_json_valid=True,
+            )
+
+    monkeypatch.setattr(
+        smoke_verifier_backend, "build_verifier", lambda config, policy: _FakeVerifier()
+    )
+
+    payload = smoke_verifier_backend.run_smoke(
+        config_path=config_path,
+        policy_path=policy_path,
+        class_name="fire",
+        image_path=None,
+        out_path=out_path,
+    )
+
+    assert payload["true_alert"] is True
+    assert payload["verifier_json_valid"] is True
+    assert payload["smoke"]["backend"] == "openai_compatible"
+    assert json.loads(out_path.read_text()) == payload
+
+
 def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_path: Path):
     from vrs.pipeline import VRSPipeline
     from vrs.policy.watch_policy import WatchItem, WatchPolicy

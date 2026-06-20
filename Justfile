@@ -37,6 +37,10 @@ verifier_positive_class := "fire"
 verifier_positive_limit := "3"
 verifier_negative_root := "/data/vrs/fire_dataset/extracted_sample/non_fire"
 verifier_negative_limit := "3"
+verifier_smoke_config := "configs/qwen-openai-compatible.yaml"
+verifier_smoke_policy := "configs/policies/safety.yaml"
+verifier_smoke_class := "fire"
+verifier_smoke_out := "runs/verifier-smoke/result.json"
 web_runs_root := "runs"
 web_policy := "configs/policies/safety.yaml"
 web_host := "127.0.0.1"
@@ -227,6 +231,14 @@ prepare-verifier-eval:
             "${negative_args[@]}" \
             --copy-mode symlink \
             --overwrite
+
+smoke-verifier:
+    @set -a; [ ! -f .env ] || source .env; set +a; \
+        uv run --frozen python scripts/smoke_verifier_backend.py \
+            --config "{{verifier_smoke_config}}" \
+            --policy "{{verifier_smoke_policy}}" \
+            --class-name "{{verifier_smoke_class}}" \
+            --out "{{verifier_smoke_out}}"
 
 _require-mivia-fire:
     @test -d "{{mivia_root}}" || { \

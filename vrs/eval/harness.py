@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 PipelineFactory = Callable[[Path], Any]  # (out_dir) -> something with .run(source)
 EvalMode = Literal["full_cascade", "detector_only"]
+IMAGE_SUFFIXES = {".bmp", ".jpeg", ".jpg", ".png", ".webp"}
 
 
 @dataclass
@@ -57,6 +58,16 @@ def config_for_eval_mode(config: dict[str, Any], mode: EvalMode) -> dict[str, An
         verifier = cfg.setdefault("verifier", {})
         verifier["enabled"] = False
     return cfg
+
+
+def dataset_items_are_images(dataset: Dataset) -> bool:
+    """Return true when every item points at a still-image source.
+
+    This lets CLI adapters other than D-Fire use the direct detector-only image
+    path without hard-coding adapter names. Empty datasets are treated as image
+    compatible because there is no media item that requires video decoding.
+    """
+    return all(item.video_path.suffix.lower() in IMAGE_SUFFIXES for item in dataset)
 
 
 def evaluate(

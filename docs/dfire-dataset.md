@@ -11,8 +11,10 @@ The adapter converts those YOLO boxes to VRS alert-box coordinates:
 `x_min, y_min, width, height`, still normalized to `0..1`.
 
 Use a small local subset for VRS evaluation. Do not commit the full dataset.
-The default `just eval-dfire` recipe uses the fast detector-only image path
-and the smaller YOLOE-S config.
+The default `just eval-dfire` recipe uses the generic fast detector-only image
+path and the smaller YOLOE-S config. Any future dataset adapter that yields
+still-image items can use the same path; D-Fire is just the first committed
+adapter.
 
 ## Layout
 

@@ -23,6 +23,7 @@ from .harness import (
     EvalMode,
     HarnessResult,
     config_for_eval_mode,
+    dataset_items_are_images,
     evaluate,
     evaluate_detector_only_images,
 )
@@ -68,6 +69,7 @@ __all__ = [
     "aggregate_scores",
     "bbox_iou_xywh_norm",
     "config_for_eval_mode",
+    "dataset_items_are_images",
     "evaluate",
     "evaluate_detector_only_images",
     "score_alerts_against_truth",

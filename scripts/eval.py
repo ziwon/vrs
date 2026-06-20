@@ -25,6 +25,7 @@ from vrs import setup_logging
 from vrs.eval import (
     EvalReport,
     config_for_eval_mode,
+    dataset_items_are_images,
     evaluate,
     evaluate_detector_only_images,
 )
@@ -84,7 +85,7 @@ def main(argv: list[str] | None = None) -> None:
     )
     policy = load_watch_policy(args.policy)
 
-    if args.dataset_format == "dfire" and args.mode == "detector_only":
+    if args.mode == "detector_only" and dataset_items_are_images(dataset):
         det_cfg = config["detector"]
         detector = build_detector(
             YOLOEConfig(
@@ -105,6 +106,7 @@ def main(argv: list[str] | None = None) -> None:
             bbox_iou_threshold=args.bbox_iou_threshold,
         )
     else:
+
         def _factory(video_out: Path):
             return VRSPipeline(config, policy, video_out)
 

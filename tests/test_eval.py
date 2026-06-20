@@ -13,11 +13,13 @@ import pytest
 from vrs.eval import (
     SCHEMA_VERSION,
     ClassMetrics,
+    EvalItem,
     EvalReport,
     GroundTruthEvent,
     HarnessResult,
     bbox_iou_xywh_norm,
     config_for_eval_mode,
+    dataset_items_are_images,
     evaluate_detector_only_images,
     score_alerts_against_truth,
 )
@@ -372,6 +374,21 @@ def test_stream_reader_yields_single_frame_for_image(tmp_path: Path):
     assert frames[0].index == 0
     assert frames[0].pts_s == 0.0
     assert frames[0].image.shape == (8, 12, 3)
+
+
+def test_dataset_items_are_images_detects_media_kind():
+    class _Dataset:
+        def __init__(self, names):
+            self.names = names
+
+        def __iter__(self):
+            for name in self.names:
+                yield EvalItem(Path(name), [])
+
+    assert dataset_items_are_images(_Dataset(["a.jpg", "b.png"])) is True
+    assert dataset_items_are_images(_Dataset(["a.jpg", "b.mp4"])) is False
+    assert dataset_items_are_images(_Dataset(["clip.mp4"])) is False
+    assert dataset_items_are_images(_Dataset([])) is True
 
 
 # ─── harness integration (stubbed pipeline) ────────────────────────────

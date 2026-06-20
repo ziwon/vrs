@@ -99,7 +99,7 @@ services:
     volumes:
       - vrs-runs:/app/runs
     ports:
-      - "8000:8000"
+      - "5445:5445"
 
   frontend:
     build:

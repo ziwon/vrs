@@ -2,6 +2,12 @@ set shell := ["bash", "-uc"]
 
 compose := "docker compose -f docker-compose.yaml"
 compose-local := "docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml"
+dfire_dataset := "datasets/dfire-mini"
+dfire_out := "runs/eval-dfire"
+dfire_bbox_out := "runs/eval-dfire-bbox"
+eval_config := "configs/default.yaml"
+eval_policy := "configs/policies/safety.yaml"
+dfire_iou := "0.5"
 
 default:
     @just --list
@@ -52,6 +58,25 @@ package: build
     @ls -1 dist
 
 check: lock-check fmt-check lint test build
+
+eval-dfire:
+    uv run --frozen python scripts/eval.py \
+        --dataset {{dfire_dataset}} \
+        --dataset-format dfire \
+        --config {{eval_config}} \
+        --policy {{eval_policy}} \
+        --mode detector_only \
+        --out {{dfire_out}}
+
+eval-dfire-bbox:
+    uv run --frozen python scripts/eval.py \
+        --dataset {{dfire_dataset}} \
+        --dataset-format dfire \
+        --config {{eval_config}} \
+        --policy {{eval_policy}} \
+        --mode detector_only \
+        --bbox-iou-threshold {{dfire_iou}} \
+        --out {{dfire_bbox_out}}
 
 compose-up *args:
     {{compose}} up -d --build {{args}}

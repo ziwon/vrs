@@ -42,6 +42,7 @@ datasets/
 *.engine
 *.safetensors
 mobileclip_blt.ts
+mobileclip2_b.ts
 
 # Secrets
 .env

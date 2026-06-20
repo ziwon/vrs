@@ -114,6 +114,37 @@ runs/eval-dfire-sweep-prompts/best_config.yaml
 The generated policy/config pair should be validated with `eval-dfire` before
 any live RTSP policy promotion.
 
+## Compare Detector Models
+
+Use the model-refresh command before replacing the default detector. Unlike the
+prompt/threshold sweeps, this holds the policy prompts and score floors fixed,
+swaps only the detector model, and records precision/recall/F1 plus detector
+latency deltas against the baseline model:
+
+```bash
+just dfire_dataset=/data/vrs/dfire-300-stratified \
+  eval-dfire-model-refresh-bbox
+```
+
+The default comparison is `yoloe-11l-seg.pt` versus `yoloe-26l-seg.pt`. Override
+with `dfire_refresh_models` when evaluating another YOLOE-26 size or local
+engine:
+
+```bash
+just dfire_refresh_models=yoloe-11l-seg.pt,yoloe-26s-seg.pt \
+  eval-dfire-model-refresh
+```
+
+Outputs:
+
+```text
+runs/eval-dfire-model-refresh/model_refresh.json
+```
+
+Treat the `decision.action` field as a review aid, not an automatic migration.
+Promote a new detector only after the report shows a clear metric gain within
+the configured latency budget.
+
 ## Report Sections
 
 `scripts/eval.py` writes a versioned `report.json`. The legacy `metrics`

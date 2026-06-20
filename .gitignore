@@ -31,6 +31,7 @@ htmlcov/
 
 # Pipeline outputs (runtime artifacts)
 runs/
+datasets/
 *.mp4
 *.jsonl
 !configs/**/*.mp4          # allow policy examples if ever checked in

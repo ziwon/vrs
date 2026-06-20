@@ -59,7 +59,19 @@ package: build
 
 check: lock-check fmt-check lint test build
 
-eval-dfire:
+_require-dfire-dataset:
+    @test -d "{{dfire_dataset}}" || { \
+        echo "missing D-Fire dataset: {{dfire_dataset}}" >&2; \
+        echo "expected layout:" >&2; \
+        echo "  {{dfire_dataset}}/images/" >&2; \
+        echo "  {{dfire_dataset}}/labels/" >&2; \
+        echo "override with: just dfire_dataset=/path/to/dfire eval-dfire" >&2; \
+        exit 1; \
+    }
+    @test -d "{{dfire_dataset}}/images" || { echo "missing {{dfire_dataset}}/images" >&2; exit 1; }
+    @test -d "{{dfire_dataset}}/labels" || { echo "missing {{dfire_dataset}}/labels" >&2; exit 1; }
+
+eval-dfire: _require-dfire-dataset
     uv run --frozen python scripts/eval.py \
         --dataset {{dfire_dataset}} \
         --dataset-format dfire \
@@ -68,7 +80,7 @@ eval-dfire:
         --mode detector_only \
         --out {{dfire_out}}
 
-eval-dfire-bbox:
+eval-dfire-bbox: _require-dfire-dataset
     uv run --frozen python scripts/eval.py \
         --dataset {{dfire_dataset}} \
         --dataset-format dfire \

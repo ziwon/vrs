@@ -2,7 +2,7 @@ set shell := ["bash", "-uc"]
 
 compose := "docker compose -f docker-compose.yaml"
 compose-local := "docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml"
-dfire_dataset := "datasets/dfire-mini"
+dfire_dataset := "/data/vrs/dfire-mini"
 dfire_out := "runs/eval-dfire"
 dfire_bbox_out := "runs/eval-dfire-bbox"
 eval_config := "configs/default.yaml"
@@ -70,6 +70,11 @@ _require-dfire-dataset:
     }
     @test -d "{{dfire_dataset}}/images" || { echo "missing {{dfire_dataset}}/images" >&2; exit 1; }
     @test -d "{{dfire_dataset}}/labels" || { echo "missing {{dfire_dataset}}/labels" >&2; exit 1; }
+    @find "{{dfire_dataset}}/images" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.bmp' -o -iname '*.webp' \) | grep -q . || { \
+        echo "no D-Fire images found in {{dfire_dataset}}/images" >&2; \
+        echo "copy or symlink the downloaded D-Fire image files there before running eval" >&2; \
+        exit 1; \
+    }
 
 eval-dfire: _require-dfire-dataset
     uv run --frozen python scripts/eval.py \

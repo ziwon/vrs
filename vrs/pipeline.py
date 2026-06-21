@@ -82,6 +82,14 @@ class VRSPipeline:
         es_cfg = config["event_state"]
         ver_cfg = config["verifier"]
         self._verifier_backend = str(ver_cfg.get("backend", "transformers"))
+        verifier_first = self._verifier_backend == "vllm"
+        self.verifier: AlertVerifier | None = None
+
+        # vLLM manages its own CUDA worker processes. Initializing it before
+        # Ultralytics avoids worker startup stalls after the detector creates a
+        # CUDA context in the parent process.
+        if verifier_first:
+            self.verifier = self._build_verifier(ver_cfg, policy)
 
         # --- fast path ---
         self.detector = build_detector(
@@ -107,48 +115,54 @@ class VRSPipeline:
         )
 
         # --- slow path (lazy: only spin up the VLM if enabled) ---
-        self.verifier: AlertVerifier | None = None
-        if ver_cfg.get("enabled", True):
-            vlm = build_vlm_backend(
-                VLMConfig(
-                    model_id=ver_cfg["model_id"],
-                    dtype=ver_cfg.get("dtype", "bf16"),
-                    device=ver_cfg.get("device", "cuda"),
-                    max_new_tokens=int(ver_cfg.get("max_new_tokens", 1024)),
-                    temperature=float(ver_cfg.get("temperature", 0.2)),
-                    clip_fps=int(ver_cfg.get("clip_fps", 4)),
-                    base_url=ver_cfg.get("base_url"),
-                    api_key_env=ver_cfg.get("api_key_env"),
-                    timeout_s=float(ver_cfg.get("timeout_s", 60.0)),
-                    max_frame_width=(
-                        int(ver_cfg["max_frame_width"])
-                        if ver_cfg.get("max_frame_width") is not None
-                        else None
-                    ),
-                    max_model_len=(
-                        int(ver_cfg["max_model_len"])
-                        if ver_cfg.get("max_model_len") is not None
-                        else None
-                    ),
-                    gpu_memory_utilization=(
-                        float(ver_cfg["gpu_memory_utilization"])
-                        if ver_cfg.get("gpu_memory_utilization") is not None
-                        else None
-                    ),
-                ),
-                backend=ver_cfg.get("backend", "transformers"),
-            )
-            self.verifier = AlertVerifier(
-                vlm=vlm,
-                policy=policy,
-                request_bbox=bool(ver_cfg.get("request_bbox", True)),
-                request_trajectory=bool(ver_cfg.get("request_trajectory", True)),
-                clip_fps=int(ver_cfg.get("clip_fps", 4)),
-                failure_policy=ver_cfg.get("failure_policy"),
-            )
+        if not verifier_first:
+            self.verifier = self._build_verifier(ver_cfg, policy)
 
         # --- calibration (stage A, log-only) ---
         self.calibrator = build_calibrator(config.get("calibration"), policy, self.out_dir)
+
+    @staticmethod
+    def _build_verifier(ver_cfg: dict[str, Any], policy: WatchPolicy) -> AlertVerifier | None:
+        if not ver_cfg.get("enabled", True):
+            return None
+
+        vlm = build_vlm_backend(
+            VLMConfig(
+                model_id=ver_cfg["model_id"],
+                dtype=ver_cfg.get("dtype", "bf16"),
+                device=ver_cfg.get("device", "cuda"),
+                max_new_tokens=int(ver_cfg.get("max_new_tokens", 1024)),
+                temperature=float(ver_cfg.get("temperature", 0.2)),
+                clip_fps=int(ver_cfg.get("clip_fps", 4)),
+                base_url=ver_cfg.get("base_url"),
+                api_key_env=ver_cfg.get("api_key_env"),
+                timeout_s=float(ver_cfg.get("timeout_s", 60.0)),
+                max_frame_width=(
+                    int(ver_cfg["max_frame_width"])
+                    if ver_cfg.get("max_frame_width") is not None
+                    else None
+                ),
+                max_model_len=(
+                    int(ver_cfg["max_model_len"])
+                    if ver_cfg.get("max_model_len") is not None
+                    else None
+                ),
+                gpu_memory_utilization=(
+                    float(ver_cfg["gpu_memory_utilization"])
+                    if ver_cfg.get("gpu_memory_utilization") is not None
+                    else None
+                ),
+            ),
+            backend=ver_cfg.get("backend", "transformers"),
+        )
+        return AlertVerifier(
+            vlm=vlm,
+            policy=policy,
+            request_bbox=bool(ver_cfg.get("request_bbox", True)),
+            request_trajectory=bool(ver_cfg.get("request_trajectory", True)),
+            clip_fps=int(ver_cfg.get("clip_fps", 4)),
+            failure_policy=ver_cfg.get("failure_policy"),
+        )
 
     # ---- main loop --------------------------------------------------
 

@@ -987,6 +987,68 @@ def test_detector_only_pipeline_construction_skips_verifier(monkeypatch, tmp_pat
     assert pipeline.verifier is None
 
 
+def test_vllm_pipeline_constructs_verifier_before_detector(monkeypatch, tmp_path: Path):
+    from vrs.pipeline import VRSPipeline
+    from vrs.policy.watch_policy import WatchItem, WatchPolicy
+
+    calls: list[str] = []
+
+    class _FakeDetector:
+        def __call__(self, frame):
+            return []
+
+        def batch(self, frames):
+            return [[] for _ in frames]
+
+    class _FakeVLM:
+        def __init__(self):
+            self.last_generation_stats = {}
+
+        def chat_video(self, *args, **kwargs):
+            return "{}"
+
+    def fake_build_detector(*args, **kwargs):
+        calls.append("detector")
+        return _FakeDetector()
+
+    def fake_build_vlm_backend(*args, **kwargs):
+        calls.append("verifier")
+        return _FakeVLM()
+
+    monkeypatch.setattr("vrs.pipeline.build_detector", fake_build_detector)
+    monkeypatch.setattr("vrs.pipeline.build_vlm_backend", fake_build_vlm_backend)
+
+    policy = WatchPolicy(
+        [
+            WatchItem(
+                name="fire",
+                detector_prompts=["fire"],
+                verifier_prompt="open flames",
+                severity="critical",
+                min_score=0.30,
+                min_persist_frames=1,
+            )
+        ]
+    )
+    config = {
+        "ingest": {"target_fps": 4},
+        "detector": {"backend": "ultralytics", "model": "fake.pt"},
+        "event_state": {"window": 2},
+        "tracker": {"backend": "none"},
+        "verifier": {
+            "enabled": True,
+            "backend": "vllm",
+            "model_id": "nvidia/Cosmos-Reason2-2B",
+        },
+        "sink": {"write_thumbnails": False, "write_annotated": False},
+        "calibration": {"enabled": False},
+    }
+
+    VRSPipeline(config, policy, tmp_path)
+
+    assert calls == ["verifier", "detector"]
+
+
 def _report(
     per_class: dict[str, float],
     overall_f1: float = 0.0,

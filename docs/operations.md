@@ -74,6 +74,17 @@ uv sync --extra cu128 --extra vllm
 just smoke-vllm
 ```
 
+If the model is gated on Hugging Face, put an authorized token in `.env`:
+
+```bash
+HF_TOKEN=hf_...
+```
+
+The `smoke-vllm` and `eval-verifier-vllm-bakeoff` recipes source `.env` before
+starting Python. The token must belong to an account that has accepted access
+to the gated model page; otherwise Hugging Face will still return an
+authorization error.
+
 The smoke writes `runs/vllm-smoke/result.json` with Python, torch, CUDA, vLLM,
 GPU metadata, verifier JSON validity, and backend generation stats when
 available. Record that output in a benchmark note before switching production

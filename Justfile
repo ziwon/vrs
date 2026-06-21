@@ -246,11 +246,12 @@ smoke-verifier:
             --out "{{verifier_smoke_out}}"
 
 smoke-vllm:
-    uv run --frozen python scripts/validate_vllm_backend.py \
-        --config "{{vllm_smoke_config}}" \
-        --policy "{{vllm_smoke_policy}}" \
-        --class-name "{{vllm_smoke_class}}" \
-        --out "{{vllm_smoke_out}}"
+    @set -a; [ ! -f .env ] || source .env; set +a; \
+        uv run --frozen python scripts/validate_vllm_backend.py \
+            --config "{{vllm_smoke_config}}" \
+            --policy "{{vllm_smoke_policy}}" \
+            --class-name "{{vllm_smoke_class}}" \
+            --out "{{vllm_smoke_out}}"
 
 eval-verifier-vllm-bakeoff:
     @test -d "{{verifier_dataset}}" || { \
@@ -258,13 +259,14 @@ eval-verifier-vllm-bakeoff:
         echo "create it with: just prepare-verifier-eval" >&2; \
         exit 1; \
     }
-    uv run --frozen python scripts/eval_verifier_backends.py \
-        --dataset "{{verifier_dataset}}" \
-        --dataset-format "{{verifier_dataset_format}}" \
-        --policy "{{verifier_policy}}" \
-        --out "{{vllm_bakeoff_out}}" \
-        --candidate transformers=configs/default.yaml \
-        --candidate vllm="{{vllm_smoke_config}}"
+    @set -a; [ ! -f .env ] || source .env; set +a; \
+        uv run --frozen python scripts/eval_verifier_backends.py \
+            --dataset "{{verifier_dataset}}" \
+            --dataset-format "{{verifier_dataset_format}}" \
+            --policy "{{verifier_policy}}" \
+            --out "{{vllm_bakeoff_out}}" \
+            --candidate transformers=configs/default.yaml \
+            --candidate vllm="{{vllm_smoke_config}}"
 
 _require-mivia-fire:
     @test -d "{{mivia_root}}" || { \

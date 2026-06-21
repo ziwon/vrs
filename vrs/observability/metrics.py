@@ -334,6 +334,12 @@ class NullVRSMetrics:
     def observe_verifier_latency(self, seconds: float) -> None:
         return
 
+    def observe_queue_wait(self, queue: str, stream_id: str, seconds: float) -> None:
+        return
+
+    def observe_verifier_tokens_per_second(self, backend: str, tokens_per_second: float) -> None:
+        return
+
     def inc_verifier_errors(self, backend: str, amount: int = 1) -> None:
         return
 
@@ -380,6 +386,17 @@ class VRSMetrics:
             "vrs_verifier_latency_seconds",
             "Verifier latency in seconds.",
         )
+        self.queue_wait = self.registry.histogram(
+            "vrs_queue_wait_seconds",
+            "Time spent waiting in VRS worker queues.",
+            ("queue", "stream_id"),
+        )
+        self.verifier_tokens_per_second = self.registry.histogram(
+            "vrs_verifier_tokens_per_second",
+            "Verifier generation throughput when reported by the backend.",
+            ("backend",),
+            buckets=(1.0, 2.5, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0),
+        )
         self.verifier_errors = self.registry.counter(
             "vrs_verifier_errors_total",
             "Total verifier errors by backend.",
@@ -416,6 +433,13 @@ class VRSMetrics:
 
     def observe_verifier_latency(self, seconds: float) -> None:
         self.verifier_latency.observe(float(seconds))
+
+    def observe_queue_wait(self, queue: str, stream_id: str, seconds: float) -> None:
+        self.queue_wait.observe(float(seconds), queue=queue, stream_id=stream_id)
+
+    def observe_verifier_tokens_per_second(self, backend: str, tokens_per_second: float) -> None:
+        if tokens_per_second > 0:
+            self.verifier_tokens_per_second.observe(float(tokens_per_second), backend=backend)
 
     def inc_verifier_errors(self, backend: str, amount: int = 1) -> None:
         self.verifier_errors.inc(float(amount), backend=backend)

@@ -210,6 +210,35 @@ def test_detector_worker_batches_frames_and_fires_candidates(tmp_path, monkeypat
     assert sink_qs["s2"].qsize() >= 1
 
 
+class _RecordingMetrics:
+    def __init__(self):
+        self.queue_waits: list[tuple[str, str, float]] = []
+        self.token_rates: list[tuple[str, float]] = []
+
+    def observe_queue_wait(self, queue: str, stream_id: str, seconds: float) -> None:
+        self.queue_waits.append((queue, stream_id, seconds))
+
+    def observe_detector_latency(self, seconds: float) -> None:
+        pass
+
+    def observe_verifier_latency(self, seconds: float) -> None:
+        pass
+
+    def observe_verifier_tokens_per_second(self, backend: str, tokens_per_second: float) -> None:
+        self.token_rates.append((backend, tokens_per_second))
+
+    def inc_candidates(self, stream_id: str, class_name: str, amount: int = 1) -> None:
+        pass
+
+    def inc_verified_alerts(
+        self, stream_id: str, class_name: str, verdict: str, amount: int = 1
+    ) -> None:
+        pass
+
+    def inc_verifier_errors(self, backend: str, amount: int = 1) -> None:
+        pass
+
+
 def test_verifier_worker_dispatches_to_correct_stream_sink():
     stop = threading.Event()
     cand_q = BoundedQueue(maxsize=8)
@@ -253,6 +282,46 @@ def test_verifier_worker_dispatches_to_correct_stream_sink():
     assert sink_qs["s1"].qsize() == 1
     assert sink_qs["s2"].qsize() == 1
     assert stub.calls == ["fire", "fire"]
+
+
+def test_verifier_worker_records_queue_wait_and_token_rate():
+    from vrs.multistream.workers import _CandidateMsg
+
+    stop = threading.Event()
+    cand_q = BoundedQueue(maxsize=8)
+    sink_qs = {"s1": BoundedQueue(maxsize=8)}
+    metrics = _RecordingMetrics()
+
+    stub = _StubVerifier()
+    stub.vlm = type("_VLM", (), {"last_generation_stats": {"tokens_per_second": 12.5}})()
+    worker = VerifierWorker(
+        verifier=stub,
+        candidate_q=cand_q,
+        sink_queues=sink_qs,
+        stop_event=stop,
+        metrics=metrics,
+        verifier_backend="stub",
+    )
+    worker.start()
+
+    cand = CandidateAlert(
+        class_name="fire",
+        severity="critical",
+        start_pts_s=0.0,
+        peak_pts_s=0.5,
+        peak_frame_index=2,
+        peak_detections=[Detection(class_name="fire", score=0.9, xyxy=(0, 0, 1, 1))],
+    )
+    cand_q.put(_CandidateMsg("s1", cand, enqueued_at=time.perf_counter() - 0.01))
+    time.sleep(0.2)
+    stop.set()
+    cand_q.close()
+    worker.join(timeout=1.0)
+
+    assert any(
+        queue == "candidate" and stream_id == "s1" for queue, stream_id, _ in metrics.queue_waits
+    )
+    assert metrics.token_rates == [("stub", 12.5)]
 
 
 def test_sink_worker_writes_jsonl_and_handles_missing_frames(tmp_path):

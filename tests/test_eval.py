@@ -502,6 +502,7 @@ def test_eval_report_round_trip_is_stable():
     )
     result.aggregate.detector_latencies_ms.extend([10.0, 20.0, 30.0])
     result.aggregate.verifier_latencies_ms.extend([100.0, 200.0, 300.0])
+    result.aggregate.verifier_tokens_per_second.extend([5.0, 10.0, 20.0])
     report = EvalReport.from_harness_result(
         result,
         dataset="fixtures/mini-dataset",
@@ -531,8 +532,12 @@ def test_eval_report_round_trip_is_stable():
     assert report.quality_signals.malformed_json_rate == pytest.approx(0.0)
     assert report.latency.detector_p50_ms == pytest.approx(20.0)
     assert report.latency.detector_p95_ms == pytest.approx(29.0)
+    assert report.latency.detector_p99_ms == pytest.approx(29.8)
     assert report.latency.verifier_p50_ms == pytest.approx(200.0)
     assert report.latency.verifier_p95_ms == pytest.approx(290.0)
+    assert report.latency.verifier_p99_ms == pytest.approx(298.0)
+    assert report.latency.verifier_tokens_per_second_p50 == pytest.approx(10.0)
+    assert report.latency.verifier_tokens_per_second_p95 == pytest.approx(19.0)
 
     payload = report.to_dict()
     assert list(payload["metrics"]["per_class"].keys()) == ["fire", "smoke"]

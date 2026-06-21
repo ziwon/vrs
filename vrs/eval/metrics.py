@@ -156,6 +156,7 @@ def aggregate_scores(scores: Iterable[RunScore]) -> RunScore:
         agg.n_events += s.n_events
         agg.detector_latencies_ms.extend(s.detector_latencies_ms)
         agg.verifier_latencies_ms.extend(s.verifier_latencies_ms)
+        agg.verifier_tokens_per_second.extend(s.verifier_tokens_per_second)
         for cls, cm in s.per_class.items():
             bucket = agg.per_class.setdefault(cls, ClassMetrics())
             bucket.tp += cm.tp

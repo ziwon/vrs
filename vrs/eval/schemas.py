@@ -78,6 +78,7 @@ class RunScore:
     n_events: int = 0  # ground-truth events counted
     detector_latencies_ms: list[float] = field(default_factory=list)
     verifier_latencies_ms: list[float] = field(default_factory=list)
+    verifier_tokens_per_second: list[float] = field(default_factory=list)
 
     @property
     def flip_rate(self) -> float:

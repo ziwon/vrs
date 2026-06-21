@@ -123,6 +123,9 @@ def evaluate(
         score.verifier_latencies_ms.extend(
             float(v) for v in getattr(pipeline, "verifier_latencies_ms", [])
         )
+        score.verifier_tokens_per_second.extend(
+            float(v) for v in getattr(pipeline, "verifier_tokens_per_second", [])
+        )
         per_video.append((item.video_path, score))
         logger.info(
             "scored %s — alerts=%d events=%d per_class=%s flip_rate=%.3f",

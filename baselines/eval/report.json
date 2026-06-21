@@ -78,8 +78,12 @@
   "latency": {
     "detector_p50_ms": null,
     "detector_p95_ms": null,
+    "detector_p99_ms": null,
     "verifier_p50_ms": null,
-    "verifier_p95_ms": null
+    "verifier_p95_ms": null,
+    "verifier_p99_ms": null,
+    "verifier_tokens_per_second_p50": null,
+    "verifier_tokens_per_second_p95": null
   },
   "runtime": {
     "python": null,

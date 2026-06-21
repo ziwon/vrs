@@ -75,6 +75,7 @@ class VRSPipeline:
         self.metrics = build_metrics(config)
         self.detector_latencies_ms: list[float] = []
         self.verifier_latencies_ms: list[float] = []
+        self.verifier_tokens_per_second: list[float] = []
 
         det_cfg = config["detector"]
         ing_cfg = config["ingest"]
@@ -201,6 +202,20 @@ class VRSPipeline:
                                 verifier_elapsed = time.perf_counter() - verifier_t0
                                 self.metrics.observe_verifier_latency(verifier_elapsed)
                                 self.verifier_latencies_ms.append(verifier_elapsed * 1000.0)
+                                stats = getattr(
+                                    getattr(self.verifier, "vlm", None),
+                                    "last_generation_stats",
+                                    None,
+                                )
+                                if isinstance(stats, dict):
+                                    tokens_per_second = stats.get("tokens_per_second")
+                                    if tokens_per_second is not None:
+                                        value = float(tokens_per_second)
+                                        self.metrics.observe_verifier_tokens_per_second(
+                                            self._verifier_backend,
+                                            value,
+                                        )
+                                        self.verifier_tokens_per_second.append(value)
                         else:
                             verified = VerifiedAlert(
                                 candidate=cand,

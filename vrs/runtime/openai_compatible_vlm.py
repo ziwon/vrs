@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
@@ -63,6 +64,7 @@ class OpenAICompatibleVLMBackend:
         self.base_url = str(cfg.base_url).rstrip("/") + "/"
         self.api_key = os.environ.get(cfg.api_key_env) if cfg.api_key_env else None
         self.timeout_s = float(getattr(cfg, "timeout_s", 60.0))
+        self.last_generation_stats: dict[str, float | int] = {}
 
     def chat_video(
         self,
@@ -115,6 +117,7 @@ class OpenAICompatibleVLMBackend:
             headers=headers,
             method="POST",
         )
+        request_t0 = time.perf_counter()
         try:
             with urlopen(req, timeout=self.timeout_s) as resp:
                 raw = resp.read().decode("utf-8")
@@ -130,4 +133,18 @@ class OpenAICompatibleVLMBackend:
             response = json.loads(raw)
         except json.JSONDecodeError as e:
             raise RuntimeError("OpenAI-compatible VLM returned invalid JSON response") from e
+        elapsed_s = time.perf_counter() - request_t0
+        usage = response.get("usage") if isinstance(response, dict) else None
+        completion_tokens = None
+        if isinstance(usage, dict) and usage.get("completion_tokens") is not None:
+            completion_tokens = int(usage["completion_tokens"])
+        self.last_generation_stats = {
+            "elapsed_s": elapsed_s,
+            **({"completion_tokens": completion_tokens} if completion_tokens is not None else {}),
+            **(
+                {"tokens_per_second": completion_tokens / elapsed_s}
+                if completion_tokens is not None and elapsed_s > 0
+                else {}
+            ),
+        }
         return _completion_text(response)

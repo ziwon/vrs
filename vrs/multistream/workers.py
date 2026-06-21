@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -47,12 +47,14 @@ if TYPE_CHECKING:
 class _FrameMsg:
     stream_id: str
     frame: Frame
+    enqueued_at: float = field(default_factory=time.perf_counter)
 
 
 @dataclass
 class _CandidateMsg:
     stream_id: str
     alert: CandidateAlert
+    enqueued_at: float = field(default_factory=time.perf_counter)
 
 
 @dataclass
@@ -61,6 +63,7 @@ class _SinkMsg:
     frame: Frame | None = None
     detections: list[Detection] | None = None
     verified: VerifiedAlert | None = None
+    enqueued_at: float = field(default_factory=time.perf_counter)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -161,6 +164,9 @@ class DetectorWorker(threading.Thread):
                 break
             if not msgs:
                 continue
+            now = time.perf_counter()
+            for msg in msgs:
+                self.metrics.observe_queue_wait("frame", msg.stream_id, now - msg.enqueued_at)
 
             # --- batched YOLOE inference ---
             frames = [m.frame for m in msgs]
@@ -226,6 +232,11 @@ class VerifierWorker(threading.Thread):
                 continue
             except StopIteration:
                 break
+            self.metrics.observe_queue_wait(
+                "candidate",
+                msg.stream_id,
+                time.perf_counter() - msg.enqueued_at,
+            )
 
             if self.verifier is not None:
                 verifier_t0 = time.perf_counter()
@@ -235,7 +246,18 @@ class VerifierWorker(threading.Thread):
                     self.metrics.inc_verifier_errors(self.verifier_backend)
                     raise
                 finally:
-                    self.metrics.observe_verifier_latency(time.perf_counter() - verifier_t0)
+                    verifier_elapsed = time.perf_counter() - verifier_t0
+                    self.metrics.observe_verifier_latency(verifier_elapsed)
+                    stats = getattr(
+                        getattr(self.verifier, "vlm", None), "last_generation_stats", None
+                    )
+                    if isinstance(stats, dict):
+                        tokens_per_second = stats.get("tokens_per_second")
+                        if tokens_per_second is not None:
+                            self.metrics.observe_verifier_tokens_per_second(
+                                self.verifier_backend,
+                                float(tokens_per_second),
+                            )
             else:
                 verified = VerifiedAlert(
                     candidate=msg.alert,
@@ -364,6 +386,11 @@ class SinkWorker(threading.Thread):
                         continue
                     except StopIteration:
                         break
+                    self.metrics.observe_queue_wait(
+                        "sink",
+                        self.stream_id,
+                        time.perf_counter() - msg.enqueued_at,
+                    )
 
                     # Per-message writes are the failure risk (disk full,
                     # permissions flip, annotator mid-flight). Catch + log

@@ -37,6 +37,9 @@ class _StubDetector:
 
 
 class _StubVerifier:
+    def __init__(self):
+        self.vlm = type("_VLM", (), {"last_generation_stats": {"tokens_per_second": 8.0}})()
+
     def verify(self, alert: CandidateAlert) -> VerifiedAlert:
         return VerifiedAlert(
             candidate=alert,
@@ -68,6 +71,8 @@ def test_vrs_metrics_render_prometheus_text():
     metrics.inc_verified_alerts("cam01", "fire", "true_alert")
     metrics.observe_detector_latency(0.02)
     metrics.observe_verifier_latency(1.5)
+    metrics.observe_queue_wait("candidate", "cam01", 0.25)
+    metrics.observe_verifier_tokens_per_second("transformers", 12.5)
     metrics.inc_verifier_errors("transformers")
     metrics.inc_sink_write_errors("cam01")
 
@@ -82,6 +87,8 @@ def test_vrs_metrics_render_prometheus_text():
     )
     assert "vrs_detector_latency_seconds_count 1" in text
     assert "vrs_verifier_latency_seconds_count 1" in text
+    assert 'vrs_queue_wait_seconds_count{queue="candidate",stream_id="cam01"} 1' in text
+    assert 'vrs_verifier_tokens_per_second_count{backend="transformers"} 1' in text
     assert 'vrs_verifier_errors_total{backend="transformers"} 1' in text
     assert 'vrs_sink_write_errors_total{stream_id="cam01"} 1' in text
 
@@ -198,3 +205,5 @@ def test_verifier_worker_records_verified_alert_and_latency_metrics():
         'vrs_verified_alerts_total{stream_id="cam01",class="fire",verdict="true_alert"} 1' in text
     )
     assert "vrs_verifier_latency_seconds_count" in text
+    assert 'vrs_queue_wait_seconds_count{queue="candidate",stream_id="cam01"} 1' in text
+    assert 'vrs_verifier_tokens_per_second_count{backend="stub"} 1' in text

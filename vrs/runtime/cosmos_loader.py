@@ -19,6 +19,7 @@ compatibility alias for existing configs and imports.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import numpy as np
@@ -89,6 +90,7 @@ class CosmosReason2:
 
         self.processor = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=True)
         self.model = _Model.from_pretrained(cfg.model_id, **kwargs).eval()
+        self.last_generation_stats: dict[str, float | int] = {}
 
     @torch.inference_mode()
     def chat_video(
@@ -178,9 +180,21 @@ class CosmosReason2:
             proc = self._build_logits_processor(response_schema)
             if proc is not None:
                 gen_kwargs["logits_processor"] = [proc]
+        generate_t0 = time.perf_counter()
         gen = self.model.generate(**inputs, **gen_kwargs)
+        elapsed_s = time.perf_counter() - generate_t0
         prompt_len = inputs["input_ids"].shape[1]
         out_ids = gen[:, prompt_len:]
+        completion_tokens = int(out_ids.shape[-1])
+        self.last_generation_stats = {
+            "elapsed_s": elapsed_s,
+            "completion_tokens": completion_tokens,
+            **(
+                {"tokens_per_second": completion_tokens / elapsed_s}
+                if completion_tokens > 0 and elapsed_s > 0
+                else {}
+            ),
+        }
         return self.processor.batch_decode(out_ids, skip_special_tokens=True)[0]
 
     def _build_logits_processor(self, schema: dict):

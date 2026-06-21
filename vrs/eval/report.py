@@ -133,16 +133,28 @@ class ReportMetrics:
 class ReportLatency:
     detector_p50_ms: float | None = None
     detector_p95_ms: float | None = None
+    detector_p99_ms: float | None = None
     verifier_p50_ms: float | None = None
     verifier_p95_ms: float | None = None
+    verifier_p99_ms: float | None = None
+    verifier_tokens_per_second_p50: float | None = None
+    verifier_tokens_per_second_p95: float | None = None
 
     @classmethod
     def from_run_score(cls, score: RunScore) -> ReportLatency:
         return cls(
             detector_p50_ms=_round_metric(_percentile(score.detector_latencies_ms, 0.50)),
             detector_p95_ms=_round_metric(_percentile(score.detector_latencies_ms, 0.95)),
+            detector_p99_ms=_round_metric(_percentile(score.detector_latencies_ms, 0.99)),
             verifier_p50_ms=_round_metric(_percentile(score.verifier_latencies_ms, 0.50)),
             verifier_p95_ms=_round_metric(_percentile(score.verifier_latencies_ms, 0.95)),
+            verifier_p99_ms=_round_metric(_percentile(score.verifier_latencies_ms, 0.99)),
+            verifier_tokens_per_second_p50=_round_metric(
+                _percentile(score.verifier_tokens_per_second, 0.50)
+            ),
+            verifier_tokens_per_second_p95=_round_metric(
+                _percentile(score.verifier_tokens_per_second, 0.95)
+            ),
         )
 
     @classmethod
@@ -150,16 +162,28 @@ class ReportLatency:
         return cls(
             detector_p50_ms=_round_metric(data.get("detector_p50_ms")),
             detector_p95_ms=_round_metric(data.get("detector_p95_ms")),
+            detector_p99_ms=_round_metric(data.get("detector_p99_ms")),
             verifier_p50_ms=_round_metric(data.get("verifier_p50_ms")),
             verifier_p95_ms=_round_metric(data.get("verifier_p95_ms")),
+            verifier_p99_ms=_round_metric(data.get("verifier_p99_ms")),
+            verifier_tokens_per_second_p50=_round_metric(
+                data.get("verifier_tokens_per_second_p50")
+            ),
+            verifier_tokens_per_second_p95=_round_metric(
+                data.get("verifier_tokens_per_second_p95")
+            ),
         )
 
     def to_dict(self) -> dict:
         return {
             "detector_p50_ms": _round_metric(self.detector_p50_ms),
             "detector_p95_ms": _round_metric(self.detector_p95_ms),
+            "detector_p99_ms": _round_metric(self.detector_p99_ms),
             "verifier_p50_ms": _round_metric(self.verifier_p50_ms),
             "verifier_p95_ms": _round_metric(self.verifier_p95_ms),
+            "verifier_p99_ms": _round_metric(self.verifier_p99_ms),
+            "verifier_tokens_per_second_p50": _round_metric(self.verifier_tokens_per_second_p50),
+            "verifier_tokens_per_second_p95": _round_metric(self.verifier_tokens_per_second_p95),
         }
 
 

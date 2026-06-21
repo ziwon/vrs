@@ -21,6 +21,7 @@ against.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import numpy as np
@@ -62,6 +63,7 @@ class VLLMCosmosBackend:
             ) from e
 
         self.cfg = cfg
+        self.last_generation_stats: dict[str, float | int] = {}
         # Map our dtype names to vLLM's. vLLM does its own W4A16 loading
         # via the model's quantization_config, so we pass-through the
         # model_id and let vLLM pick up the pre-quantized weights.
@@ -127,7 +129,22 @@ class VLLMCosmosBackend:
 
         # llm.chat auto-selects the model's chat template and accepts image
         # content items via the model's multi-modal processor.
+        generate_t0 = time.perf_counter()
         outputs = self.llm.chat(messages, sampling_params=sampling)
+        elapsed_s = time.perf_counter() - generate_t0
         if not outputs or not outputs[0].outputs:
+            self.last_generation_stats = {"elapsed_s": elapsed_s}
             return ""
-        return outputs[0].outputs[0].text
+        text = outputs[0].outputs[0].text
+        token_ids = getattr(outputs[0].outputs[0], "token_ids", None)
+        completion_tokens = len(token_ids) if token_ids is not None else None
+        self.last_generation_stats = {
+            "elapsed_s": elapsed_s,
+            **({"completion_tokens": completion_tokens} if completion_tokens is not None else {}),
+            **(
+                {"tokens_per_second": completion_tokens / elapsed_s}
+                if completion_tokens is not None and completion_tokens > 0 and elapsed_s > 0
+                else {}
+            ),
+        }
+        return text

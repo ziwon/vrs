@@ -72,11 +72,11 @@ class VLLMCosmosBackend:
             "model": cfg.model_id,
             "dtype": dtype_map.get(cfg.dtype, "auto"),
             "trust_remote_code": True,
-            # Sensible defaults for a 2B VLM on a single GPU; operators can
-            # tune via env vars if needed.
-            "max_model_len": 8192,
+            "max_model_len": int(cfg.max_model_len or 8192),
             "enforce_eager": False,
         }
+        if cfg.gpu_memory_utilization is not None:
+            llm_kwargs["gpu_memory_utilization"] = float(cfg.gpu_memory_utilization)
         self.llm = LLM(**llm_kwargs)
 
     def chat_video(

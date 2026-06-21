@@ -85,6 +85,19 @@ starting Python. The token must belong to an account that has accepted access
 to the gated model page; otherwise Hugging Face will still return an
 authorization error.
 
+If vLLM fails at startup with a free-memory error, lower these fields in
+`configs/vllm-cosmos.yaml`:
+
+```yaml
+verifier:
+  gpu_memory_utilization: 0.70
+  max_model_len: 4096
+```
+
+`gpu_memory_utilization` controls how much total GPU memory vLLM reserves for
+weights and KV cache. `max_model_len` controls the maximum context length and
+therefore KV-cache pressure.
+
 The smoke writes `runs/vllm-smoke/result.json` with Python, torch, CUDA, vLLM,
 GPU metadata, verifier JSON validity, and backend generation stats when
 available. Record that output in a benchmark note before switching production

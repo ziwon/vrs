@@ -38,6 +38,8 @@ class VLMConfig:
     api_key_env: str | None = None
     timeout_s: float = 60.0
     max_frame_width: int | None = None
+    max_model_len: int | None = None
+    gpu_memory_utilization: float | None = None
 
 
 CosmosConfig = VLMConfig

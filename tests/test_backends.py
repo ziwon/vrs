@@ -140,6 +140,28 @@ def test_vllm_backend_conforms_to_protocol(monkeypatch):
     assert kw["trust_remote_code"] is True
 
 
+def test_vllm_backend_passes_memory_tuning_knobs(monkeypatch):
+    captured: dict = {}
+    fake, fake_sp = _fake_vllm_module(captured)
+    monkeypatch.setitem(sys.modules, "vllm", fake)
+    monkeypatch.setitem(sys.modules, "vllm.sampling_params", fake_sp)
+
+    from vrs.runtime.cosmos_loader import VLMConfig
+    from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
+
+    VLLMCosmosBackend(
+        VLMConfig(
+            model_id="nvidia/Cosmos-Reason2-2B",
+            dtype="bf16",
+            max_model_len=4096,
+            gpu_memory_utilization=0.70,
+        )
+    )
+
+    assert captured["llm_kwargs"]["max_model_len"] == 4096
+    assert captured["llm_kwargs"]["gpu_memory_utilization"] == pytest.approx(0.70)
+
+
 def test_vllm_backend_passes_schema_as_guided_decoding(monkeypatch):
     captured: dict = {}
     fake, fake_sp = _fake_vllm_module(captured)

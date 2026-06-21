@@ -125,6 +125,16 @@ class VRSPipeline:
                         if ver_cfg.get("max_frame_width") is not None
                         else None
                     ),
+                    max_model_len=(
+                        int(ver_cfg["max_model_len"])
+                        if ver_cfg.get("max_model_len") is not None
+                        else None
+                    ),
+                    gpu_memory_utilization=(
+                        float(ver_cfg["gpu_memory_utilization"])
+                        if ver_cfg.get("gpu_memory_utilization") is not None
+                        else None
+                    ),
                 ),
                 backend=ver_cfg.get("backend", "transformers"),
             )

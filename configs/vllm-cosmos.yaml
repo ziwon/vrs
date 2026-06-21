@@ -33,6 +33,11 @@ verifier:
   model_id: "nvidia/Cosmos-Reason2-2B"
   dtype: "bf16"
   device: "cuda"
+  # 16 GB-class validation hosts often have 11-12 GiB free after desktop/driver
+  # overhead. Keep vLLM's startup reservation below that; raise after a clean
+  # smoke if the target host has more headroom.
+  gpu_memory_utilization: 0.70
+  max_model_len: 4096
   context_window_s: 4.0
   clip_fps: 4
   max_new_tokens: 512

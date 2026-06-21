@@ -274,6 +274,14 @@ class VRSPipeline:
                 self.calibrator.close()
             self.metrics.close()
 
+    def close(self) -> None:
+        if self.verifier is None:
+            return
+        vlm = getattr(self.verifier, "vlm", None)
+        close = getattr(vlm, "close", None)
+        if callable(close):
+            close()
+
     @staticmethod
     def _log(v: VerifiedAlert) -> None:
         tag = "TRUE " if v.true_alert else "FALSE"

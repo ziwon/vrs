@@ -28,6 +28,13 @@ def _fake_vllm_module(captured: dict):
     class _FakeLLM:
         def __init__(self, **kwargs):
             captured["llm_kwargs"] = kwargs
+            self.llm_engine = types.SimpleNamespace(
+                engine_core=types.SimpleNamespace(
+                    shutdown=lambda timeout=None: captured.setdefault(
+                        "engine_core_shutdown_timeout", timeout
+                    )
+                )
+            )
 
         def chat(self, messages, sampling_params):
             captured["messages"] = messages
@@ -219,6 +226,33 @@ def test_vllm_backend_empty_frames_raises():
     finally:
         sys.modules.pop("vllm", None)
         sys.modules.pop("vllm.sampling_params", None)
+
+
+def test_vllm_backend_close_shuts_down_engine_core(monkeypatch):
+    captured: dict = {}
+    fake, fake_sp = _fake_vllm_module(captured)
+    monkeypatch.setitem(sys.modules, "vllm", fake)
+    monkeypatch.setitem(sys.modules, "vllm.sampling_params", fake_sp)
+
+    fake_torch = types.ModuleType("torch")
+    fake_torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+
+    from vrs.runtime.cosmos_loader import VLMConfig
+    from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
+
+    backend = VLLMCosmosBackend(
+        VLMConfig(
+            model_id="nvidia/Cosmos-Reason2-2B",
+            dtype="bf16",
+        )
+    )
+
+    backend.close()
+    backend.close()
+
+    assert captured["engine_core_shutdown_timeout"] == 5
+    assert backend.llm is None
 
 
 # ─── OpenAI-compatible served backend ─────────────────────────────────

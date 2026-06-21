@@ -21,6 +21,7 @@ against.
 from __future__ import annotations
 
 import base64
+import gc
 import logging
 import time
 from typing import Any
@@ -76,6 +77,31 @@ class VLLMCosmosBackend:
         if cfg.gpu_memory_utilization is not None:
             llm_kwargs["gpu_memory_utilization"] = float(cfg.gpu_memory_utilization)
         self.llm = LLM(**llm_kwargs)
+        self._closed = False
+
+    def close(self) -> None:
+        """Release vLLM worker processes and cached CUDA memory."""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            engine = getattr(self.llm, "llm_engine", None)
+            engine_core = getattr(engine, "engine_core", None)
+            shutdown = getattr(engine_core, "shutdown", None)
+            if callable(shutdown):
+                shutdown(timeout=5)
+        except Exception as e:
+            logger.warning("vLLM shutdown failed: %s", e)
+        finally:
+            self.llm = None
+            gc.collect()
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except Exception:
+                pass
 
     def chat_video(
         self,
@@ -135,6 +161,8 @@ class VLLMCosmosBackend:
         # llm.chat auto-selects the model's chat template and accepts image
         # content items via the model's multi-modal processor.
         generate_t0 = time.perf_counter()
+        if self.llm is None:
+            raise RuntimeError("vLLM backend is closed")
         outputs = self.llm.chat(messages, sampling_params=sampling)
         elapsed_s = time.perf_counter() - generate_t0
         if not outputs or not outputs[0].outputs:

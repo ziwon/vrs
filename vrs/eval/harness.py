@@ -108,6 +108,10 @@ def evaluate(
             pipeline.run(str(item.video_path))
         except Exception as e:
             logger.error("pipeline run failed on %s: %s", item.video_path, e)
+        finally:
+            close = getattr(pipeline, "close", None)
+            if callable(close):
+                close()
 
         alerts = _load_alerts(video_out / alerts_filename)
         score = score_alerts_against_truth(

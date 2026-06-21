@@ -427,6 +427,31 @@ class _StubPipeline:
                 f.write(json.dumps(a) + "\n")
 
 
+def test_harness_closes_pipeline_after_each_item(tmp_path: Path):
+    from vrs.eval import evaluate
+
+    root = tmp_path / "dataset"
+    root.mkdir()
+    (root / "v1.mp4").write_bytes(b"\0")
+    (root / "v2.mp4").write_bytes(b"\0")
+    closed: list[str] = []
+
+    class _ClosablePipeline(_StubPipeline):
+        def close(self):
+            closed.append(self.out_dir.name)
+
+    def factory(od):
+        return _ClosablePipeline(od, {"v1": [], "v2": []})
+
+    evaluate(
+        dataset=LabeledDirDataset(root),
+        pipeline_factory=factory,
+        out_dir=tmp_path / "out",
+    )
+
+    assert closed == ["v1", "v2"]
+
+
 def test_harness_scores_per_video_and_aggregates(tmp_path: Path):
     from vrs.eval import evaluate
 
@@ -1047,6 +1072,64 @@ def test_vllm_pipeline_constructs_verifier_before_detector(monkeypatch, tmp_path
     VRSPipeline(config, policy, tmp_path)
 
     assert calls == ["verifier", "detector"]
+
+
+def test_pipeline_close_closes_verifier_backend(monkeypatch, tmp_path: Path):
+    from vrs.pipeline import VRSPipeline
+    from vrs.policy.watch_policy import WatchItem, WatchPolicy
+
+    closed: list[bool] = []
+
+    class _FakeDetector:
+        def __call__(self, frame):
+            return []
+
+        def batch(self, frames):
+            return [[] for _ in frames]
+
+    class _FakeVLM:
+        def __init__(self):
+            self.last_generation_stats = {}
+
+        def chat_video(self, *args, **kwargs):
+            return "{}"
+
+        def close(self):
+            closed.append(True)
+
+    monkeypatch.setattr("vrs.pipeline.build_detector", lambda *args, **kwargs: _FakeDetector())
+    monkeypatch.setattr("vrs.pipeline.build_vlm_backend", lambda *args, **kwargs: _FakeVLM())
+
+    policy = WatchPolicy(
+        [
+            WatchItem(
+                name="fire",
+                detector_prompts=["fire"],
+                verifier_prompt="open flames",
+                severity="critical",
+                min_score=0.30,
+                min_persist_frames=1,
+            )
+        ]
+    )
+    config = {
+        "ingest": {"target_fps": 4},
+        "detector": {"backend": "ultralytics", "model": "fake.pt"},
+        "event_state": {"window": 2},
+        "tracker": {"backend": "none"},
+        "verifier": {
+            "enabled": True,
+            "backend": "vllm",
+            "model_id": "nvidia/Cosmos-Reason2-2B",
+        },
+        "sink": {"write_thumbnails": False, "write_annotated": False},
+        "calibration": {"enabled": False},
+    }
+
+    pipeline = VRSPipeline(config, policy, tmp_path)
+    pipeline.close()
+
+    assert closed == [True]
 
 
 def _report(

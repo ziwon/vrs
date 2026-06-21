@@ -64,6 +64,28 @@ just prepare-verifier-eval
 just eval-verifier-bakeoff
 ```
 
+## vLLM Verifier Validation
+
+The `vllm` verifier backend is optional and must be validated on the target
+CUDA host before deployment:
+
+```bash
+uv sync --extra cu128 --extra vllm
+just smoke-vllm
+```
+
+The smoke writes `runs/vllm-smoke/result.json` with Python, torch, CUDA, vLLM,
+GPU metadata, verifier JSON validity, and backend generation stats when
+available. Record that output in a benchmark note before switching production
+configs to `verifier.backend: vllm`.
+
+Compare the transformers baseline and vLLM backend on identical prepared clips:
+
+```bash
+just prepare-verifier-eval
+just eval-verifier-vllm-bakeoff
+```
+
 ## Prometheus Metrics
 
 Metrics are disabled by default. Enable the lightweight scrape endpoint in your

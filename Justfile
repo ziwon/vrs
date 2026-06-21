@@ -41,6 +41,11 @@ verifier_smoke_config := "configs/qwen-openai-compatible.yaml"
 verifier_smoke_policy := "configs/policies/safety.yaml"
 verifier_smoke_class := "fire"
 verifier_smoke_out := "runs/verifier-smoke/result.json"
+vllm_smoke_config := "configs/vllm-cosmos.yaml"
+vllm_smoke_policy := "configs/policies/safety.yaml"
+vllm_smoke_class := "fire"
+vllm_smoke_out := "runs/vllm-smoke/result.json"
+vllm_bakeoff_out := "runs/verifier-vllm-bakeoff"
 web_runs_root := "runs"
 web_policy := "configs/policies/safety.yaml"
 web_host := "127.0.0.1"
@@ -239,6 +244,27 @@ smoke-verifier:
             --policy "{{verifier_smoke_policy}}" \
             --class-name "{{verifier_smoke_class}}" \
             --out "{{verifier_smoke_out}}"
+
+smoke-vllm:
+    uv run --frozen python scripts/validate_vllm_backend.py \
+        --config "{{vllm_smoke_config}}" \
+        --policy "{{vllm_smoke_policy}}" \
+        --class-name "{{vllm_smoke_class}}" \
+        --out "{{vllm_smoke_out}}"
+
+eval-verifier-vllm-bakeoff:
+    @test -d "{{verifier_dataset}}" || { \
+        echo "missing verifier eval dataset: {{verifier_dataset}}" >&2; \
+        echo "create it with: just prepare-verifier-eval" >&2; \
+        exit 1; \
+    }
+    uv run --frozen python scripts/eval_verifier_backends.py \
+        --dataset "{{verifier_dataset}}" \
+        --dataset-format "{{verifier_dataset_format}}" \
+        --policy "{{verifier_policy}}" \
+        --out "{{vllm_bakeoff_out}}" \
+        --candidate transformers=configs/default.yaml \
+        --candidate vllm="{{vllm_smoke_config}}"
 
 _require-mivia-fire:
     @test -d "{{mivia_root}}" || { \

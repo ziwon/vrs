@@ -108,6 +108,9 @@ def run_smoke(
         "backend": str((config.get("verifier") or {}).get("backend", "transformers")),
         "model_id": str((config.get("verifier") or {}).get("model_id", "")),
     }
+    stats = getattr(getattr(verifier, "vlm", None), "last_generation_stats", None)
+    if isinstance(stats, dict):
+        payload["smoke"]["generation_stats"] = stats
     if out_path is not None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")

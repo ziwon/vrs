@@ -20,6 +20,7 @@ against.
 
 from __future__ import annotations
 
+import base64
 import logging
 import time
 from typing import Any
@@ -29,17 +30,14 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def _bgr_to_pil(frames_bgr: list[np.ndarray]):
-    """Shared with cosmos_loader — kept local so this module doesn't depend
-    on the transformers backend being importable."""
+def _frame_to_jpeg_data_url(frame_bgr: np.ndarray) -> str:
     import cv2
-    from PIL import Image
 
-    out = []
-    for bgr in frames_bgr:
-        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        out.append(Image.fromarray(rgb))
-    return out
+    ok, encoded = cv2.imencode(".jpg", frame_bgr)
+    if not ok:
+        raise ValueError("failed to JPEG-encode verifier frame")
+    data = base64.b64encode(encoded.tobytes()).decode("ascii")
+    return f"data:image/jpeg;base64,{data}"
 
 
 class VLLMCosmosBackend:
@@ -98,17 +96,24 @@ class VLLMCosmosBackend:
         except ImportError:  # very old vllm — graceful downgrade
             GuidedDecodingParams = None  # type: ignore[assignment]
 
-        pil_frames = _bgr_to_pil(frames_bgr)
-
-        # Qwen3-VL accepts a list of images in message content; vLLM's chat
-        # API (``llm.chat``) resolves them through the model's processor.
+        # vLLM's OpenAI chat parser accepts multimodal media as ``image_url``
+        # parts. Plain ``image`` parts are rejected by current vLLM releases.
         messages = [
             {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": [
-                    *[{"type": "image", "image": img} for img in pil_frames],
                     {"type": "text", "text": user_prompt},
+                    *[
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": _frame_to_jpeg_data_url(frame),
+                                "detail": "auto",
+                            },
+                        }
+                        for frame in frames_bgr
+                    ],
                 ],
             },
         ]

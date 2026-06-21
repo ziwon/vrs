@@ -110,6 +110,11 @@ just prepare-verifier-eval
 just eval-verifier-vllm-bakeoff
 ```
 
+On 16 GB validation hosts, the bakeoff recipe defaults the transformers
+candidate to `configs/tiny.yaml`; the BF16 `configs/default.yaml` baseline can
+OOM before the vLLM candidate runs. Override `vllm_bakeoff_baseline_config` if
+you are validating on a larger GPU.
+
 ## Prometheus Metrics
 
 Metrics are disabled by default. Enable the lightweight scrape endpoint in your

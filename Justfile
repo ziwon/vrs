@@ -45,6 +45,7 @@ vllm_smoke_config := "configs/vllm-cosmos.yaml"
 vllm_smoke_policy := "configs/policies/safety.yaml"
 vllm_smoke_class := "fire"
 vllm_smoke_out := "runs/vllm-smoke/result.json"
+vllm_bakeoff_baseline_config := "configs/tiny.yaml"
 vllm_bakeoff_out := "runs/verifier-vllm-bakeoff"
 web_runs_root := "runs"
 web_policy := "configs/policies/safety.yaml"
@@ -265,7 +266,7 @@ eval-verifier-vllm-bakeoff:
             --dataset-format "{{verifier_dataset_format}}" \
             --policy "{{verifier_policy}}" \
             --out "{{vllm_bakeoff_out}}" \
-            --candidate transformers=configs/default.yaml \
+            --candidate transformers="{{vllm_bakeoff_baseline_config}}" \
             --candidate vllm="{{vllm_smoke_config}}"
 
 _require-mivia-fire:

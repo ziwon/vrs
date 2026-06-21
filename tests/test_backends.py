@@ -111,11 +111,6 @@ def test_vllm_backend_conforms_to_protocol(monkeypatch):
     fake, fake_sp = _fake_vllm_module(captured)
     monkeypatch.setitem(sys.modules, "vllm", fake)
     monkeypatch.setitem(sys.modules, "vllm.sampling_params", fake_sp)
-    monkeypatch.setitem(sys.modules, "PIL", types.ModuleType("PIL"))
-    # PIL.Image is needed by _bgr_to_pil
-    pil_image = types.ModuleType("PIL.Image")
-    pil_image.fromarray = lambda arr: ("pil_stub", arr.shape)
-    monkeypatch.setitem(sys.modules, "PIL.Image", pil_image)
 
     from vrs.runtime.cosmos_loader import VLMConfig
     from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
@@ -167,19 +162,9 @@ def test_vllm_backend_passes_schema_as_guided_decoding(monkeypatch):
     fake, fake_sp = _fake_vllm_module(captured)
     monkeypatch.setitem(sys.modules, "vllm", fake)
     monkeypatch.setitem(sys.modules, "vllm.sampling_params", fake_sp)
-    # stub cv2 + PIL so _bgr_to_pil runs without the real libraries. The
-    # ``from PIL import Image`` form imports the ``PIL`` package and reads
-    # ``Image`` off it, so we have to attach Image to the fake PIL module.
     fake_cv2 = types.ModuleType("cv2")
-    fake_cv2.COLOR_BGR2RGB = 4
-    fake_cv2.cvtColor = lambda arr, code: arr
+    fake_cv2.imencode = lambda ext, arr: (True, np.frombuffer(b"jpeg-bytes", dtype=np.uint8))
     monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
-    pil_image = types.ModuleType("PIL.Image")
-    pil_image.fromarray = lambda arr: object()
-    fake_pil = types.ModuleType("PIL")
-    fake_pil.Image = pil_image
-    monkeypatch.setitem(sys.modules, "PIL", fake_pil)
-    monkeypatch.setitem(sys.modules, "PIL.Image", pil_image)
 
     from vrs.runtime.cosmos_loader import VLMConfig
     from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
@@ -202,11 +187,13 @@ def test_vllm_backend_passes_schema_as_guided_decoding(monkeypatch):
     assert captured["sp_kwargs"]["max_tokens"] == 64
     assert captured["sp_kwargs"]["temperature"] == pytest.approx(0.1)
     assert captured["sp_kwargs"]["guided_decoding"].json == schema
-    # messages include one image item per frame + the text prompt
+    # messages include the text prompt plus one OpenAI-style image item per frame
     user_content = captured["messages"][1]["content"]
-    image_items = [c for c in user_content if c.get("type") == "image"]
+    image_items = [c for c in user_content if c.get("type") == "image_url"]
     text_items = [c for c in user_content if c.get("type") == "text"]
     assert len(image_items) == 1
+    assert image_items[0]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert image_items[0]["image_url"]["detail"] == "auto"
     assert text_items[0]["text"] == "user"
     assert out.startswith("{")
 

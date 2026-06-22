@@ -86,6 +86,12 @@ Acceptance criteria:
 The vLLM backend is implemented as a structural skeleton. It needs live GPU
 validation before deployment.
 
+Status: RTX 5080 Cosmos live smoke/eval completed on 2026-06-22 with
+`vllm==0.19.1`; see
+`docs/benchmarks/rtx5080-vllm-cosmos-validation-2026-06-22.md`. Remaining work
+is target-host deployment sizing and a comparable Qwen-class candidate when a
+selected model is available through vLLM or a served backend.
+
 Acceptance criteria:
 
 - Smoke test with `nvidia/Cosmos-Reason2-2B` and the selected Qwen candidate

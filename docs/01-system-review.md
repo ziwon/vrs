@@ -44,9 +44,9 @@ The following components are present and covered by unit tests where practical:
   queue drop counters, and shutdown diagnostics.
 - Detector backend protocol with Ultralytics YOLOE and TensorRT-engine loader
   branch.
-- VLM verifier backend protocol with transformers/Cosmos default, vLLM
-  backend skeleton, and reserved TRT-LLM branch. The protocol should be
-  generalized to Qwen-class VLMs next.
+- VLM verifier backend protocol with transformers/Cosmos default, live-smoked
+  vLLM backend, OpenAI-compatible served backend, and reserved TRT-LLM branch.
+  The next model-selection step is still a Qwen-class bake-off.
 - Verifier constrained-output support through optional XGrammar.
 - Verifier failure policy: `pass_through` or `reject`.
 - Per-stream IoU tracking and per-track cooldown grouping.
@@ -87,9 +87,11 @@ These are the important remaining issues as of this review:
 - The default detector is `yoloe-11l-seg.pt`. Ultralytics publishes newer
   YOLOE-26 variants as of 2026; migration should be treated as an evaluated
   model change, not a documentation-only swap.
-- The vLLM backend is structurally present but not validated against a live
-  Cosmos-Reason2-2B deployment. Version pinning should happen only after a GPU
-  smoke test.
+- The vLLM backend has an RTX 5080 live smoke/eval note for
+  `nvidia/Cosmos-Reason2-2B` with `vllm==0.19.1`, valid structured JSON, and
+  malformed JSON rate 0.0. This is backend validation, not production
+  deployment sizing: sustained multistream capacity and a Qwen-class candidate
+  comparison are still open.
 - Internal benchmarking has shown Cosmos-Reason2-2B underperforming for this
   CCTV verifier role. This matches the external model-family concern: Cosmos is
   built from a Qwen3-VL-2B base, while Qwen3.5/Qwen3.6 releases are newer
@@ -147,8 +149,8 @@ Use this before declaring a deployment ready:
    verifier latency p50/p95/p99.
 5. If using `detector.backend: tensorrt`, export the engine on matching target
    hardware and smoke-test class mapping.
-6. If using `verifier.backend: vllm`, pin the validated vLLM version and run a
-   live GPU round trip before production.
+6. If using `verifier.backend: vllm`, use the pinned validated vLLM version and
+   run a live GPU round trip on the target host before production.
 7. Before production model lock-in, compare Cosmos against at least one
    Qwen3.5/Qwen3.6-class verifier candidate on the same labeled clips and
    report F1, flip rate, malformed JSON rate, latency, and memory.

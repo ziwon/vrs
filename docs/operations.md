@@ -74,6 +74,10 @@ uv sync --extra cu128 --extra vllm
 just smoke-vllm
 ```
 
+The RTX 5080 validation path is pinned to `vllm==0.19.1`. That version uses
+vLLM structured outputs for JSON schema enforcement and is incompatible with
+the repository's `cu121` extra because it requires a newer torch stack.
+
 If the model is gated on Hugging Face, put an authorized token in `.env`:
 
 ```bash
@@ -102,6 +106,10 @@ The smoke writes `runs/vllm-smoke/result.json` with Python, torch, CUDA, vLLM,
 GPU metadata, verifier JSON validity, and backend generation stats when
 available. Record that output in a benchmark note before switching production
 configs to `verifier.backend: vllm`.
+
+On vLLM 0.19.1, structured-output runs may print `xgrammar` nanobind leak
+warnings at process exit. Treat those as a validation caveat to record in the
+benchmark note; they did not cause the RTX 5080 smoke or eval command to fail.
 
 Compare the transformers baseline and vLLM backend on identical prepared clips:
 

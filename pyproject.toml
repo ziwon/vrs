@@ -28,7 +28,7 @@ quant = [
     "compressed-tensors>=0.9.1",
 ]
 constrained = ["xgrammar>=0.1"]
-vllm = ["vllm>=0.6.5"]
+vllm = ["vllm==0.19.1"]
 cu128 = ["torch>=2.6"]
 cu121 = ["torch==2.5.1+cu121"]
 
@@ -98,6 +98,10 @@ ignore-words-list = "nd,smoot,thirdparty"
 conflicts = [
     [
         { extra = "cu128" },
+        { extra = "cu121" },
+    ],
+    [
+        { extra = "vllm" },
         { extra = "cu121" },
     ],
 ]

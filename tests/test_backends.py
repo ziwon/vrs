@@ -20,7 +20,7 @@ from vrs.runtime import CosmosBackend, VLMBackend, build_cosmos_backend, build_v
 from vrs.runtime.backends import _KNOWN_BACKENDS
 
 
-def _fake_vllm_module(captured: dict):
+def _fake_vllm_module(captured: dict, *, structured_outputs: bool = True):
     """Return a ``vllm`` module stub that records calls for assertions."""
     fake = types.ModuleType("vllm")
     fake_sp = types.ModuleType("vllm.sampling_params")
@@ -66,9 +66,17 @@ def _fake_vllm_module(captured: dict):
             captured["guided_json_schema"] = json
             self.json = json
 
+    class _FakeStructuredOutputsParams:
+        def __init__(self, json):
+            captured["structured_json_schema"] = json
+            self.json = json
+
     fake.LLM = _FakeLLM
     fake.SamplingParams = _FakeSamplingParams
-    fake_sp.GuidedDecodingParams = _FakeGuidedDecodingParams
+    if structured_outputs:
+        fake_sp.StructuredOutputsParams = _FakeStructuredOutputsParams
+    else:
+        fake_sp.GuidedDecodingParams = _FakeGuidedDecodingParams
     fake.sampling_params = fake_sp
     return fake, fake_sp
 
@@ -164,7 +172,7 @@ def test_vllm_backend_passes_memory_tuning_knobs(monkeypatch):
     assert captured["llm_kwargs"]["gpu_memory_utilization"] == pytest.approx(0.70)
 
 
-def test_vllm_backend_passes_schema_as_guided_decoding(monkeypatch):
+def test_vllm_backend_passes_schema_as_structured_outputs(monkeypatch):
     captured: dict = {}
     fake, fake_sp = _fake_vllm_module(captured)
     monkeypatch.setitem(sys.modules, "vllm", fake)
@@ -189,11 +197,11 @@ def test_vllm_backend_passes_schema_as_guided_decoding(monkeypatch):
 
     out = backend.chat_video("sys", "user", frames, response_schema=schema)
 
-    # guided decoding was constructed from the schema and passed into SP
-    assert captured["guided_json_schema"] == schema
+    # structured output params were constructed from the schema and passed into SP
+    assert captured["structured_json_schema"] == schema
     assert captured["sp_kwargs"]["max_tokens"] == 64
     assert captured["sp_kwargs"]["temperature"] == pytest.approx(0.1)
-    assert captured["sp_kwargs"]["guided_decoding"].json == schema
+    assert captured["sp_kwargs"]["structured_outputs"].json == schema
     # messages include the text prompt plus one OpenAI-style image item per frame
     user_content = captured["messages"][1]["content"]
     image_items = [c for c in user_content if c.get("type") == "image_url"]
@@ -203,6 +211,34 @@ def test_vllm_backend_passes_schema_as_guided_decoding(monkeypatch):
     assert image_items[0]["image_url"]["detail"] == "auto"
     assert text_items[0]["text"] == "user"
     assert out.startswith("{")
+
+
+def test_vllm_backend_falls_back_to_guided_decoding(monkeypatch):
+    captured: dict = {}
+    fake, fake_sp = _fake_vllm_module(captured, structured_outputs=False)
+    monkeypatch.setitem(sys.modules, "vllm", fake)
+    monkeypatch.setitem(sys.modules, "vllm.sampling_params", fake_sp)
+    fake_cv2 = types.ModuleType("cv2")
+    fake_cv2.imencode = lambda ext, arr: (True, np.frombuffer(b"jpeg-bytes", dtype=np.uint8))
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+
+    from vrs.runtime.cosmos_loader import VLMConfig
+    from vrs.runtime.vllm_cosmos import VLLMCosmosBackend
+
+    backend = VLLMCosmosBackend(
+        VLMConfig(
+            model_id="nvidia/Cosmos-Reason2-2B",
+            dtype="bf16",
+            max_new_tokens=64,
+            temperature=0.1,
+        )
+    )
+    schema = {"type": "object", "properties": {"true_alert": {"type": "boolean"}}}
+
+    backend.chat_video("sys", "user", [np.zeros((8, 8, 3), dtype=np.uint8)], response_schema=schema)
+
+    assert captured["guided_json_schema"] == schema
+    assert captured["sp_kwargs"]["guided_decoding"].json == schema
 
 
 def test_vllm_backend_empty_frames_raises():

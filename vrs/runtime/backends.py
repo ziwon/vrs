@@ -20,7 +20,7 @@ Backends shipped:
 The Protocol is deliberately minimal. ``response_schema`` is passed
 through ``chat_video`` so each backend can map it to its native
 constraint surface (xgrammar logits processor for transformers,
-``GuidedDecodingParams`` for vLLM, constraint engines in TRT-LLM).
+vLLM structured outputs, constraint engines in TRT-LLM).
 """
 
 from __future__ import annotations

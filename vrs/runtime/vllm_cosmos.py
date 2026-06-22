@@ -7,15 +7,12 @@ nicely. Qwen3-VL architecture (which Cosmos-Reason2-2B inherits) is
 supported natively from vLLM ~0.6.5 onward.
 
 **Status note.** The transformers backend in ``cosmos_loader.py`` is
-exhaustively exercised by the repo's test suite. The vLLM backend is
-structurally complete and conforms to the ``VLMBackend`` Protocol
-(pinned by unit tests that substitute a fake ``vllm`` module), but the
-actual GPU round-trip against a live vLLM instance has not been validated
-in this repo's CI — that validation requires a CUDA host with vLLM
-installed and a Cosmos-Reason2-2B checkpoint mounted. The code below
-targets the vLLM ≥ 0.6.5 public API; when you flip a deployment to this
-backend, do a short smoke run and pin the exact version you validated
-against.
+exhaustively exercised by the repo's test suite. The vLLM backend conforms to
+the ``VLMBackend`` Protocol (pinned by unit tests that substitute a fake
+``vllm`` module) and has a live RTX 5080 smoke/eval note under
+``docs/benchmarks/``. That is still not a deployment-sizing claim: run the
+smoke and throughput benchmark on the target CUDA host before flipping a
+production profile to this backend.
 """
 
 from __future__ import annotations
@@ -46,9 +43,8 @@ class VLLMCosmosBackend:
 
     Construction imports ``vllm`` lazily and raises a clear ImportError
     pointing at the install extra if it's missing. Per-call, ``chat_video``
-    builds a Qwen3-VL-style chat message list, attaches
-    ``GuidedDecodingParams(json=schema)`` when a ``response_schema`` is
-    provided, and returns the decoded text.
+    builds a Qwen3-VL-style chat message list, attaches the response schema
+    through vLLM's structured-output surface, and returns the decoded text.
     """
 
     def __init__(self, cfg):
@@ -117,11 +113,6 @@ class VLLMCosmosBackend:
 
         from vllm import SamplingParams
 
-        try:
-            from vllm.sampling_params import GuidedDecodingParams
-        except ImportError:  # very old vllm — graceful downgrade
-            GuidedDecodingParams = None  # type: ignore[assignment]
-
         # vLLM's OpenAI chat parser accepts multimodal media as ``image_url``
         # parts. Plain ``image`` parts are rejected by current vLLM releases.
         messages = [
@@ -148,13 +139,15 @@ class VLLMCosmosBackend:
             max_tokens=int(self.cfg.max_new_tokens),
             temperature=max(float(self.cfg.temperature), 1e-5),
         )
-        if response_schema is not None and GuidedDecodingParams is not None:
-            sp_kwargs["guided_decoding"] = GuidedDecodingParams(json=response_schema)
-        elif response_schema is not None:
-            logger.warning(
-                "vLLM version lacks GuidedDecodingParams; verifier will run "
-                "unconstrained. Upgrade to vLLM >= 0.6.5 for guided JSON."
-            )
+        if response_schema is not None:
+            structured_output = _build_structured_output_params(response_schema)
+            if structured_output is None:
+                logger.warning(
+                    "vLLM version lacks a supported structured-output API; "
+                    "verifier will run unconstrained."
+                )
+            else:
+                sp_kwargs.update(structured_output)
 
         sampling = SamplingParams(**sp_kwargs)
 
@@ -181,3 +174,20 @@ class VLLMCosmosBackend:
             ),
         }
         return text
+
+
+def _build_structured_output_params(response_schema: dict[str, Any]) -> dict[str, Any] | None:
+    """Map a JSON schema to the structured-output API exposed by this vLLM."""
+    try:
+        from vllm.sampling_params import StructuredOutputsParams
+
+        return {"structured_outputs": StructuredOutputsParams(json=response_schema)}
+    except ImportError:
+        pass
+
+    try:
+        from vllm.sampling_params import GuidedDecodingParams
+
+        return {"guided_decoding": GuidedDecodingParams(json=response_schema)}
+    except ImportError:
+        return None

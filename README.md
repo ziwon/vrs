@@ -12,11 +12,11 @@ A modern, two-stage CCTV / video-understanding pipeline for a **single local GPU
 
 VRS is inspired by the architecture patterns in
 [NVIDIA Video Search and Summarization (VSS)](https://docs.nvidia.com/vss/latest/)
-and the Public Safety Blueprint: perception first, VLM-based alert verification,
-and optional higher-level incident reasoning. It is not a VSS clone. The goal is
-a smaller, hackable, local-GPU-oriented Video Reasoning System that can be
-evaluated, customized, and embedded into CCTV / VMS / edge-appliance
-environments.
+and [VAST Data VSS Blueprint](https://github.com/vast-data/vss-blueprint/):
+perception first, VLM-based alert verification, and optional higher-level
+incident reasoning. It is not a VSS clone. The goal is a smaller, hackable,
+local-GPU-oriented Video Reasoning System that can be evaluated, customized,
+and embedded into CCTV / VMS / edge-appliance environments.
 
 The deployment target is 16 GB cards when the verifier is quantized or otherwise
 capacity-tested. For BF16 Cosmos-Reason2-2B, validate on the target host first:

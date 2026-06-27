@@ -33,6 +33,11 @@ Acceptance criteria:
 The current eval harness is event-level. D-Fire-like datasets often need
 image-level or bbox-level scoring.
 
+Status: implemented. `scripts/eval.py --mode detector_only` bypasses the
+verifier for still-image datasets, D-Fire labels carry normalized boxes, scoring
+can require `--bbox-iou-threshold`, and `report.json` separates
+`detector_quality` from `full_cascade_quality`.
+
 Acceptance criteria:
 
 - Detector-only scoring path that bypasses Cosmos when labels are frame/image

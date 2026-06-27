@@ -14,8 +14,8 @@ Backends shipped:
   lives in ``vllm_cosmos``.
 * ``openai_compatible`` — served VLM over an OpenAI-compatible
   ``/chat/completions`` endpoint.
-* ``trtllm`` — reserved (a future addition that produces the biggest
-  latency win when paired with speculative decoding).
+* ``trtllm`` — TensorRT-LLM Python ``LLM`` API backend with guided JSON
+  decoding and optional speculative decoding config.
 
 The Protocol is deliberately minimal. ``response_schema`` is passed
 through ``chat_video`` so each backend can map it to its native
@@ -87,10 +87,9 @@ def build_vlm_backend(cfg, backend: str = "transformers") -> VLMBackend:
 
         return OpenAICompatibleVLMBackend(cfg)
     if name == "trtllm":
-        raise NotImplementedError(
-            "the trtllm backend is a planned follow-on once the vllm path "
-            "is validated end-to-end; track the #10 roadmap item."
-        )
+        from .trtllm_vlm import TensorRTLLMVLMBackend
+
+        return TensorRTLLMVLMBackend(cfg)
     raise ValueError(f"unknown verifier backend: {backend!r}. Valid: {sorted(_KNOWN_BACKENDS)}")
 
 

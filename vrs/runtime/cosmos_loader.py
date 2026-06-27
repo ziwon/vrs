@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import torch
@@ -40,6 +41,12 @@ class VLMConfig:
     max_frame_width: int | None = None
     max_model_len: int | None = None
     gpu_memory_utilization: float | None = None
+    tokenizer_id: str | None = None
+    guided_decoding_backend: str | None = None
+    draft_model_id: str | None = None
+    draft_engine_dir: str | None = None
+    speculative_tokens: int | None = None
+    trtllm_extra_llm_kwargs: dict[str, Any] | None = None
 
 
 CosmosConfig = VLMConfig

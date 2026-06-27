@@ -154,6 +154,16 @@ class MultiStreamPipeline:
                         if ver_cfg.get("gpu_memory_utilization") is not None
                         else None
                     ),
+                    tokenizer_id=ver_cfg.get("tokenizer_id"),
+                    guided_decoding_backend=ver_cfg.get("guided_decoding_backend"),
+                    draft_model_id=ver_cfg.get("draft_model_id"),
+                    draft_engine_dir=ver_cfg.get("draft_engine_dir"),
+                    speculative_tokens=(
+                        int(ver_cfg["speculative_tokens"])
+                        if ver_cfg.get("speculative_tokens") is not None
+                        else None
+                    ),
+                    trtllm_extra_llm_kwargs=ver_cfg.get("trtllm_extra_llm_kwargs"),
                 ),
                 backend=ver_cfg.get("backend", "transformers"),
             )

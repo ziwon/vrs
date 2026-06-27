@@ -51,10 +51,11 @@ verifier:
   # not a final model choice. Internal benchmarks and 2026 Qwen releases
   # justify adding/evaluating Qwen3.5/Qwen3.6-class verifier backends before
   # production model lock-in.
-  backend: "transformers"    # transformers (default) | vllm | openai_compatible | trtllm (reserved).
+  backend: "transformers"    # transformers (default) | vllm | openai_compatible | trtllm.
                              # vllm: higher gen throughput, needs `uv sync --extra vllm`
                              # and a GPU-local smoke run before prod — see vrs/runtime/vllm_cosmos.py.
                              # openai_compatible: served VLM at base_url/chat/completions.
+                             # trtllm: TensorRT-LLM LLM API; validate target GPU first.
   model_id: "nvidia/Cosmos-Reason2-2B"  # baseline; compare against Qwen candidates via eval
   base_url: null             # e.g. http://localhost:5445/v1 for openai_compatible
   api_key_env: null          # optional env var name containing bearer token
@@ -65,6 +66,12 @@ verifier:
   clip_fps: 4                # Cosmos-Reason2 was trained at FPS=4
   max_new_tokens: 1024       # CoT can run long; 1024 is safe for verify
   temperature: 0.2
+  guided_decoding_backend: null  # trtllm: e.g. xgrammar for JSON-schema constrained output
+  tokenizer_id: null             # trtllm: override tokenizer path/name when needed
+  draft_model_id: null           # trtllm: optional speculative decoding draft model
+  draft_engine_dir: null         # trtllm: optional prebuilt draft engine path
+  speculative_tokens: null       # trtllm: optional number of draft tokens
+  trtllm_extra_llm_kwargs: null  # trtllm: escape hatch for version-specific LLM kwargs
   failure_policy: pass_through  # pass_through: surface verifier failures as low-confidence alerts.
                                 # reject: log/suppress malformed verifier outputs.
   request_bbox: true         # ask the VLM for {x,y,w,h} of the event in normalized coords

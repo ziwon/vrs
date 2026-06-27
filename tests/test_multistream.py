@@ -284,6 +284,139 @@ def test_verifier_worker_dispatches_to_correct_stream_sink():
     assert stub.calls == ["fire", "fire"]
 
 
+def _candidate(
+    *,
+    class_name: str = "fire",
+    severity: str = "critical",
+    pts_s: float = 1.0,
+) -> CandidateAlert:
+    return CandidateAlert(
+        class_name=class_name,
+        severity=severity,
+        start_pts_s=max(0.0, pts_s - 0.5),
+        peak_pts_s=pts_s,
+        peak_frame_index=int(pts_s * 4),
+        peak_detections=[Detection(class_name=class_name, score=0.9, xyxy=(0, 0, 1, 1))],
+    )
+
+
+def _verified(
+    *,
+    class_name: str = "fire",
+    severity: str = "critical",
+    pts_s: float = 1.0,
+    true_alert: bool = True,
+    bbox: tuple[float, float, float, float] | None = None,
+) -> VerifiedAlert:
+    return VerifiedAlert(
+        candidate=_candidate(class_name=class_name, severity=severity, pts_s=pts_s),
+        true_alert=true_alert,
+        confidence=0.9,
+        false_negative_class=None,
+        rationale="stub",
+        bbox_xywh_norm=bbox,
+    )
+
+
+def test_incident_correlator_groups_adjacent_streams_inside_window():
+    from vrs.multistream.incidents import IncidentCorrelator
+
+    corr = IncidentCorrelator(
+        {
+            "enabled": True,
+            "window_s": 3.0,
+            "adjacency": {"cam-a": ["cam-b"]},
+        }
+    )
+
+    first = corr.assign("cam-a", _verified(pts_s=10.0))
+    second = corr.assign("cam-b", _verified(pts_s=11.0))
+
+    assert first.incident_id == "inc-000001"
+    assert second.incident_id == first.incident_id
+    assert second.incident_stream_ids == ["cam-a", "cam-b"]
+    assert second.incident_primary_stream_id == "cam-a"
+
+
+def test_incident_correlator_requires_adjacency_and_time_window():
+    from vrs.multistream.incidents import IncidentCorrelator
+
+    corr = IncidentCorrelator(
+        {
+            "enabled": True,
+            "window_s": 1.0,
+            "adjacency": {"cam-a": ["cam-b"]},
+        }
+    )
+
+    first = corr.assign("cam-a", _verified(pts_s=10.0))
+    non_adjacent = corr.assign("cam-c", _verified(pts_s=10.2))
+    late = corr.assign("cam-b", _verified(pts_s=12.0))
+
+    assert first.incident_id == "inc-000001"
+    assert non_adjacent.incident_id == "inc-000002"
+    assert late.incident_id == "inc-000003"
+
+
+def test_incident_correlator_can_require_bbox_overlap():
+    from vrs.multistream.incidents import IncidentCorrelator
+
+    corr = IncidentCorrelator(
+        {
+            "enabled": True,
+            "window_s": 3.0,
+            "adjacency": {"cam-a": ["cam-b"]},
+            "min_bbox_iou": 0.2,
+        }
+    )
+
+    first = corr.assign("cam-a", _verified(pts_s=10.0, bbox=(0.1, 0.1, 0.3, 0.3)))
+    far = corr.assign("cam-b", _verified(pts_s=10.5, bbox=(0.7, 0.7, 0.2, 0.2)))
+    near = corr.assign("cam-b", _verified(pts_s=10.8, bbox=(0.12, 0.12, 0.3, 0.3)))
+
+    assert first.incident_id == "inc-000001"
+    assert far.incident_id == "inc-000002"
+    assert near.incident_id == first.incident_id
+
+
+def test_verifier_worker_assigns_incident_ids_before_sink():
+    from vrs.multistream.incidents import IncidentCorrelator
+    from vrs.multistream.workers import _CandidateMsg
+
+    stop = threading.Event()
+    cand_q = BoundedQueue(maxsize=8)
+    sink_qs = {"cam-a": BoundedQueue(maxsize=8), "cam-b": BoundedQueue(maxsize=8)}
+    worker = VerifierWorker(
+        verifier=_StubVerifier(),
+        candidate_q=cand_q,
+        sink_queues=sink_qs,
+        stop_event=stop,
+        incident_correlator=IncidentCorrelator(
+            {
+                "enabled": True,
+                "window_s": 3.0,
+                "adjacency": {"cam-a": ["cam-b"]},
+            }
+        ),
+    )
+    worker.start()
+
+    cand_q.put(_CandidateMsg("cam-a", _candidate(pts_s=10.0)))
+    cand_q.put(_CandidateMsg("cam-b", _candidate(pts_s=11.0)))
+
+    time.sleep(0.3)
+    stop.set()
+    cand_q.close()
+    worker.join(timeout=1.0)
+
+    first = sink_qs["cam-a"].get(timeout=0.1).verified
+    second = sink_qs["cam-b"].get(timeout=0.1).verified
+    assert first is not None and second is not None
+    assert first.incident_id == "inc-000001"
+    assert second.incident_id == first.incident_id
+    assert second.to_json()["incident_stream_ids"] == ["cam-a", "cam-b"]
+
+
 def test_verifier_worker_records_queue_wait_and_token_rate():
     from vrs.multistream.workers import _CandidateMsg
 

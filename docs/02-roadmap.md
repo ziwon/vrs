@@ -118,6 +118,11 @@ Acceptance criteria:
 Current tracking reduces duplicates only within one stream. Operators need one
 incident when overlapping cameras see the same event.
 
+Status: implemented for the multistream pipeline as an opt-in
+`multistream.incident_correlation` stage. Verified alerts keep their original
+per-camera JSONL records and receive `incident_id`, `incident_stream_ids`, and
+`incident_primary_stream_id` fields when correlation is enabled.
+
 Acceptance criteria:
 
 - Incident IDs that group alerts across streams.

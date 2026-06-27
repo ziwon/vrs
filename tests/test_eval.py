@@ -23,7 +23,13 @@ from vrs.eval import (
     evaluate_detector_only_images,
     score_alerts_against_truth,
 )
-from vrs.eval.datasets import DFireDataset, LabeledDirDataset, UCFCrimeDataset, build_dataset
+from vrs.eval.datasets import (
+    DFireDataset,
+    LabeledDirDataset,
+    Le2iDataset,
+    UCFCrimeDataset,
+    build_dataset,
+)
 from vrs.eval.metrics import aggregate_scores
 from vrs.schemas import CandidateAlert, Detection, VerifiedAlert
 
@@ -334,6 +340,55 @@ def test_dataset_registry_builds_dfire(tmp_path: Path):
     dataset = build_dataset("dfire", root)
 
     assert isinstance(dataset, DFireDataset)
+
+
+# ─── Le2iDataset ──────────────────────────────────────────────────────
+
+
+def _make_le2i_root(tmp_path: Path) -> Path:
+    root = tmp_path / "le2i-mini"
+    (root / "Videos").mkdir(parents=True)
+    (root / "Annotation_files").mkdir()
+    (root / "Videos" / "fall_01.avi").write_bytes(b"fake")
+    (root / "Videos" / "adl_01.avi").write_bytes(b"fake")
+    return root
+
+
+def test_le2i_yields_fall_event_from_frame_range(tmp_path: Path):
+    root = _make_le2i_root(tmp_path)
+    (root / "Annotation_files" / "fall_01.txt").write_text(
+        "25\n75\n0 10 20 30 40 50\n",
+        encoding="utf-8",
+    )
+
+    dataset = build_dataset("le2i", root)
+
+    assert isinstance(dataset, Le2iDataset)
+    items = list(dataset)
+    fall = next(item for item in items if item.video_path.name == "fall_01.avi")
+    assert fall.events == [GroundTruthEvent("falldown", 1.0, 3.0)]
+    adl = next(item for item in items if item.video_path.name == "adl_01.avi")
+    assert adl.events == []
+
+
+def test_le2i_no_fall_annotation_is_empty(tmp_path: Path):
+    root = _make_le2i_root(tmp_path)
+    (root / "Annotation_files" / "fall_01.txt").write_text(
+        "0 10 20 30 40 50\n",
+        encoding="utf-8",
+    )
+
+    fall = next(item for item in Le2iDataset(root) if item.video_path.name == "fall_01.avi")
+
+    assert fall.events == []
+
+
+def test_le2i_rejects_invalid_frame_range(tmp_path: Path):
+    root = _make_le2i_root(tmp_path)
+    (root / "Annotation_files" / "fall_01.txt").write_text("100\n50\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="fall_start_frame"):
+        list(Le2iDataset(root))
 
 
 # ─── UCFCrimeDataset ──────────────────────────────────────────────────
@@ -702,6 +757,21 @@ def test_eval_cli_accepts_ucf_crime_dataset_format():
     )
 
     assert args.dataset_format == "ucf_crime"
+
+
+def test_eval_cli_accepts_le2i_dataset_format():
+    from scripts.eval import build_arg_parser
+
+    args = build_arg_parser().parse_args(
+        [
+            "--dataset",
+            "fixtures/le2i",
+            "--dataset-format",
+            "le2i",
+        ]
+    )
+
+    assert args.dataset_format == "le2i"
 
 
 def test_dfire_threshold_sweep_scores_cached_alerts():

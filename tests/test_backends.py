@@ -81,17 +81,58 @@ def _fake_vllm_module(captured: dict, *, structured_outputs: bool = True):
     return fake, fake_sp
 
 
+def _fake_trtllm_modules(captured: dict):
+    fake = types.ModuleType("tensorrt_llm")
+    fake_api = types.ModuleType("tensorrt_llm.llmapi")
+
+    class _FakeLLM:
+        def __init__(self, **kwargs):
+            captured["llm_kwargs"] = kwargs
+            self.tokenizer = types.SimpleNamespace(
+                apply_chat_template=lambda messages, tokenize=False: str(messages)
+            )
+
+        def chat(self, messages, sampling_params):
+            captured["messages"] = messages
+            captured["sampling_params"] = sampling_params
+
+            class _Out:
+                def __init__(self):
+                    self.text = (
+                        '{"true_alert": true, "confidence": 0.9, '
+                        '"false_negative_class": null, "rationale": "ok"}'
+                    )
+                    self.token_ids = [1, 2, 3, 4]
+
+            class _Result:
+                def __init__(self):
+                    self.outputs = [_Out()]
+
+            return [_Result()]
+
+    class _FakeSamplingParams:
+        def __init__(self, **kwargs):
+            captured["sampling_kwargs"] = kwargs
+            for k, v in kwargs.items():
+                setattr(self, k, v)
+
+    class _FakeGuidedDecodingParams:
+        def __init__(self, json):
+            captured["guided_json_schema"] = json
+            self.json = json
+
+    fake.LLM = _FakeLLM
+    fake.SamplingParams = _FakeSamplingParams
+    fake_api.GuidedDecodingParams = _FakeGuidedDecodingParams
+    return fake, fake_api
+
+
 # ─── factory ──────────────────────────────────────────────────────────
 
 
 def test_build_vlm_backend_rejects_unknown():
     with pytest.raises(ValueError, match="unknown verifier backend"):
         build_vlm_backend(object(), backend="banana")
-
-
-def test_build_vlm_backend_trtllm_is_explicitly_not_implemented():
-    with pytest.raises(NotImplementedError, match="trtllm"):
-        build_vlm_backend(object(), backend="trtllm")
 
 
 def test_cosmos_factory_and_protocol_names_remain_aliases():
@@ -289,6 +330,96 @@ def test_vllm_backend_close_shuts_down_engine_core(monkeypatch):
 
     assert captured["engine_core_shutdown_timeout"] == 5
     assert backend.llm is None
+
+
+# ─── TensorRT-LLM backend ─────────────────────────────────────────────
+
+
+def test_trtllm_backend_raises_clean_importerror_when_missing(monkeypatch):
+    monkeypatch.setitem(sys.modules, "tensorrt_llm", None)
+    from vrs.runtime.cosmos_loader import VLMConfig
+    from vrs.runtime.trtllm_vlm import TensorRTLLMVLMBackend
+
+    with pytest.raises(ImportError, match="TRT-LLM backend requires"):
+        TensorRTLLMVLMBackend(VLMConfig(model_id="nvidia/Cosmos-Reason2-2B"))
+
+
+def test_trtllm_backend_passes_guided_schema_and_speculative_config(monkeypatch):
+    captured: dict = {}
+    fake, fake_api = _fake_trtllm_modules(captured)
+    monkeypatch.setitem(sys.modules, "tensorrt_llm", fake)
+    monkeypatch.setitem(sys.modules, "tensorrt_llm.llmapi", fake_api)
+    fake_cv2 = types.ModuleType("cv2")
+    fake_cv2.imencode = lambda ext, arr: (True, np.frombuffer(b"jpeg-bytes", dtype=np.uint8))
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+
+    from vrs.runtime.cosmos_loader import VLMConfig
+    from vrs.runtime.trtllm_vlm import TensorRTLLMVLMBackend
+
+    backend = TensorRTLLMVLMBackend(
+        VLMConfig(
+            model_id="nvidia/Cosmos-Reason2-2B",
+            tokenizer_id="tokenizer-path",
+            dtype="bf16",
+            max_model_len=4096,
+            max_new_tokens=64,
+            temperature=0.0,
+            guided_decoding_backend="xgrammar",
+            draft_model_id="Qwen/Qwen3-0.6B",
+            speculative_tokens=4,
+        )
+    )
+    schema = {"type": "object", "properties": {"true_alert": {"type": "boolean"}}}
+    out = backend.chat_video(
+        "sys",
+        "user",
+        [np.zeros((8, 8, 3), dtype=np.uint8)],
+        response_schema=schema,
+    )
+
+    assert isinstance(backend, VLMBackend)
+    assert out.startswith("{")
+    assert captured["llm_kwargs"]["model"] == "nvidia/Cosmos-Reason2-2B"
+    assert captured["llm_kwargs"]["tokenizer"] == "tokenizer-path"
+    assert captured["llm_kwargs"]["guided_decoding_backend"] == "xgrammar"
+    assert captured["llm_kwargs"]["speculative_config"] == {
+        "draft_model": "Qwen/Qwen3-0.6B",
+        "num_draft_tokens": 4,
+    }
+    assert captured["sampling_kwargs"]["max_tokens"] == 64
+    assert captured["sampling_kwargs"]["guided_decoding"].json == json.dumps(schema)
+    user_content = captured["messages"][1]["content"]
+    assert user_content[0] == {"type": "text", "text": "user"}
+    assert user_content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert backend.last_generation_stats["completion_tokens"] == 4
+
+
+def test_factory_routes_trtllm_to_backend(monkeypatch):
+    captured: dict = {}
+    fake, fake_api = _fake_trtllm_modules(captured)
+    monkeypatch.setitem(sys.modules, "tensorrt_llm", fake)
+    monkeypatch.setitem(sys.modules, "tensorrt_llm.llmapi", fake_api)
+
+    from vrs.runtime.cosmos_loader import VLMConfig
+    from vrs.runtime.trtllm_vlm import TensorRTLLMVLMBackend
+
+    backend = build_vlm_backend(VLMConfig(model_id="x"), backend="trtllm")
+
+    assert isinstance(backend, TensorRTLLMVLMBackend)
+
+
+def test_trtllm_backend_empty_frames_raises(monkeypatch):
+    captured: dict = {}
+    fake, fake_api = _fake_trtllm_modules(captured)
+    monkeypatch.setitem(sys.modules, "tensorrt_llm", fake)
+    monkeypatch.setitem(sys.modules, "tensorrt_llm.llmapi", fake_api)
+
+    from vrs.runtime.cosmos_loader import VLMConfig
+    from vrs.runtime.trtllm_vlm import TensorRTLLMVLMBackend
+
+    backend = TensorRTLLMVLMBackend(VLMConfig(model_id="x"))
+    with pytest.raises(ValueError, match="at least one frame"):
+        backend.chat_video("sys", "user", [])
 
 
 # ─── OpenAI-compatible served backend ─────────────────────────────────

@@ -49,6 +49,11 @@ class YOLOEDetector:
         # per-class score floors from the policy (at least cfg.conf_floor)
         self._min_score = {it.name: max(it.min_score, cfg.conf_floor) for it in policy}
 
+    def update_policy(self, policy: WatchPolicy) -> None:
+        """Update runtime-safe policy fields without changing YOLOE vocabulary."""
+        self.policy = policy
+        self._min_score = {it.name: max(it.min_score, self.cfg.conf_floor) for it in policy}
+
     # ---- main api ---------------------------------------------------
 
     def __call__(self, frame: Frame) -> list[Detection]:

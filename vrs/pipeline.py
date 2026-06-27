@@ -7,7 +7,9 @@ module so this file stays short.
 from __future__ import annotations
 
 import logging
+import signal
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,7 @@ from .calibration import build_calibrator
 from .ingest import StreamReader
 from .observability import build_metrics
 from .policy import WatchPolicy, load_watch_policy
+from .policy.hot_reload import PolicyReloader
 from .privacy import build_face_detector
 from .runtime import VLMConfig, build_vlm_backend
 from .schemas import VerifiedAlert
@@ -67,9 +70,11 @@ class VRSPipeline:
         config: dict[str, Any],
         policy: WatchPolicy,
         out_dir: str | Path,
+        policy_path: str | Path | None = None,
     ):
         self.cfg = config
         self.policy = policy
+        self.policy_path = Path(policy_path) if policy_path is not None else None
         self.out_dir = Path(out_dir)
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.metrics = build_metrics(config)
@@ -120,6 +125,15 @@ class VRSPipeline:
 
         # --- calibration (stage A, log-only) ---
         self.calibrator = build_calibrator(config.get("calibration"), policy, self.out_dir)
+        reload_cfg = config.get("policy_reload") or {}
+        self._policy_reloader = (
+            PolicyReloader(self.policy_path, policy)
+            if self.policy_path is not None and bool(reload_cfg.get("enabled", False))
+            else None
+        )
+        self._policy_reload_interval_s = float(reload_cfg.get("poll_interval_s", 1.0))
+        self._policy_reload_requested = False
+        self._last_policy_reload_check = 0.0
 
     @staticmethod
     def _build_verifier(ver_cfg: dict[str, Any], policy: WatchPolicy) -> AlertVerifier | None:
@@ -177,6 +191,8 @@ class VRSPipeline:
             roi_polygon=ing_cfg.get("roi_polygon"),
         )
 
+        previous_sighup = self._install_sighup_handler()
+
         jsonl_path = self.out_dir / sink_cfg.get("jsonl", "alerts.jsonl")
         privacy_cfg = self.cfg.get("privacy") or {}
         thumbnail_sink: EventThumbnailSink | None = None
@@ -203,6 +219,7 @@ class VRSPipeline:
         try:
             with JsonlSink(jsonl_path, audit=audit_cfg) as jsonl:
                 for frame in reader:
+                    self._maybe_reload_policy()
                     detector_t0 = time.perf_counter()
                     try:
                         detections = self.detector(frame)
@@ -268,6 +285,7 @@ class VRSPipeline:
                     if annotator is not None:
                         annotator.write(frame, detections)
         finally:
+            self._restore_sighup_handler(previous_sighup)
             if annotator is not None:
                 annotator.close()
             if self.calibrator is not None:
@@ -281,6 +299,48 @@ class VRSPipeline:
         close = getattr(vlm, "close", None)
         if callable(close):
             close()
+
+    def _install_sighup_handler(self):
+        if self._policy_reloader is None or not hasattr(signal, "SIGHUP"):
+            return None
+        try:
+            previous = signal.getsignal(signal.SIGHUP)
+
+            def _handler(signum, frame):
+                logger.info("policy reload requested (signal %s)", signum)
+                self._policy_reload_requested = True
+
+            signal.signal(signal.SIGHUP, _handler)
+            return previous
+        except ValueError:
+            return None
+
+    def _restore_sighup_handler(self, previous) -> None:
+        if previous is None or not hasattr(signal, "SIGHUP"):
+            return
+        with suppress(ValueError):
+            signal.signal(signal.SIGHUP, previous)
+
+    def _maybe_reload_policy(self) -> None:
+        if self._policy_reloader is None:
+            return
+        now = time.monotonic()
+        force = self._policy_reload_requested
+        if not force and (now - self._last_policy_reload_check) < self._policy_reload_interval_s:
+            return
+        self._policy_reload_requested = False
+        self._last_policy_reload_check = now
+        result = self._policy_reloader.maybe_reload(force=force)
+        if not result.reloaded:
+            return
+        new_policy = self._policy_reloader.policy
+        self.policy = new_policy
+        self.detector.update_policy(new_policy)
+        self.event_state.update_policy(new_policy)
+        if self.verifier is not None:
+            self.verifier.update_policy(new_policy)
+        if self.calibrator is not None:
+            self.calibrator.policy = new_policy
 
     @staticmethod
     def _log(v: VerifiedAlert) -> None:
@@ -305,4 +365,4 @@ def build_pipeline(
 ) -> VRSPipeline:
     cfg = load_config(config_path)
     policy = load_watch_policy(policy_path)
-    return VRSPipeline(cfg, policy, out_dir)
+    return VRSPipeline(cfg, policy, out_dir, policy_path=policy_path)

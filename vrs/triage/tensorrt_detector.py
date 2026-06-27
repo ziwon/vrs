@@ -88,6 +88,11 @@ class TensorRTYOLOEDetector:
         self._prompt_to_event = [policy.event_for_prompt_index(i) for i in range(len(prompts))]
         self._min_score = {it.name: max(it.min_score, cfg.conf_floor) for it in policy}
 
+    def update_policy(self, policy: WatchPolicy) -> None:
+        """Update runtime-safe policy fields without changing baked TRT prompts."""
+        self.policy = policy
+        self._min_score = {it.name: max(it.min_score, self.cfg.conf_floor) for it in policy}
+
     # ---- detection API -------------------------------------------
 
     def __call__(self, frame: Frame) -> list[Detection]:

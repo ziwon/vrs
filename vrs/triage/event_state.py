@@ -51,14 +51,8 @@ class EventStateQueue:
         self.cooldown_s = float(cooldown_s)
         self.keyframes = int(keyframes)
         self.context_window_s = float(context_window_s)
-        self._context_window_by_class = {
-            it.name: (
-                float(it.verifier_window_s)
-                if it.verifier_window_s is not None
-                else self.context_window_s
-            )
-            for it in policy
-        }
+        self.target_fps = float(target_fps)
+        self._context_window_by_class = self._build_context_window_by_class(policy)
 
         self._state: dict[str, _ClassState] = {
             it.name: _ClassState(
@@ -73,8 +67,29 @@ class EventStateQueue:
         max_context_window_s = max(
             self._context_window_by_class.values(), default=self.context_window_s
         )
-        ring_len = max(int(max_context_window_s * target_fps) * 2 + 4, 16)
+        ring_len = max(int(max_context_window_s * self.target_fps) * 2 + 4, 16)
         self._ring: deque[tuple[Frame, list[Detection]]] = deque(maxlen=ring_len)
+
+    def update_policy(self, policy: WatchPolicy) -> None:
+        """Apply runtime-safe policy changes while preserving current state."""
+        self.policy = policy
+        self._context_window_by_class = self._build_context_window_by_class(policy)
+        max_context_window_s = max(
+            self._context_window_by_class.values(), default=self.context_window_s
+        )
+        ring_len = max(int(max_context_window_s * self.target_fps) * 2 + 4, 16)
+        if self._ring.maxlen is None or ring_len != self._ring.maxlen:
+            self._ring = deque(self._ring, maxlen=ring_len)
+
+    def _build_context_window_by_class(self, policy: WatchPolicy) -> dict[str, float]:
+        return {
+            it.name: (
+                float(it.verifier_window_s)
+                if it.verifier_window_s is not None
+                else self.context_window_s
+            )
+            for it in policy
+        }
 
     # ---- main api ---------------------------------------------------
 

@@ -29,6 +29,13 @@ event_state:
   default_min_persist_frames: 2
   cooldown_s: 10.0           # per-(class, track_id) debounce after an alert is raised
 
+policy_reload:
+  # Single-stream hot reload for runtime-safe watch-policy changes. Safe:
+  # min_score, min_persist_frames, severity, verifier text/window. Requires
+  # process/model restart: event names or detector prompt vocabulary.
+  enabled: false
+  poll_interval_s: 1.0
+
 tracker:
   # Groups alerts by physical object: when enabled, cooldown_s applies per
   # (class, track_id) instead of per class, so one persistent fire produces

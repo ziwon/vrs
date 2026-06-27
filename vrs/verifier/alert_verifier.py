@@ -185,6 +185,16 @@ class AlertVerifier:
             request_trajectory=self.request_trajectory,
         )
 
+    def update_policy(self, policy: WatchPolicy) -> None:
+        """Apply runtime-safe verifier prompt/severity changes."""
+        self.policy = policy
+        self._known_events = [(it.name, it.verifier_prompt) for it in policy]
+        self._response_schema = build_verifier_schema(
+            [it.name for it in policy],
+            request_bbox=self.request_bbox,
+            request_trajectory=self.request_trajectory,
+        )
+
     def _failure_verdict(self, alert: CandidateAlert, rationale: str) -> VerifiedAlert:
         """Build a VerifiedAlert for a failure case, respecting ``failure_policy``."""
         pass_through = self.failure_policy == FailurePolicy.PASS_THROUGH

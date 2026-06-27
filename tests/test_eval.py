@@ -23,7 +23,7 @@ from vrs.eval import (
     evaluate_detector_only_images,
     score_alerts_against_truth,
 )
-from vrs.eval.datasets import DFireDataset, LabeledDirDataset, build_dataset
+from vrs.eval.datasets import DFireDataset, LabeledDirDataset, UCFCrimeDataset, build_dataset
 from vrs.eval.metrics import aggregate_scores
 from vrs.schemas import CandidateAlert, Detection, VerifiedAlert
 
@@ -336,6 +336,67 @@ def test_dataset_registry_builds_dfire(tmp_path: Path):
     assert isinstance(dataset, DFireDataset)
 
 
+# ─── UCFCrimeDataset ──────────────────────────────────────────────────
+
+
+def _make_ucf_crime_root(tmp_path: Path) -> Path:
+    root = tmp_path / "ucf-crime-mini"
+    videos = root / "videos"
+    videos.mkdir(parents=True)
+    (videos / "Arson001_x264.mp4").write_bytes(b"fake")
+    (videos / "Normal001_x264.mp4").write_bytes(b"fake")
+    return root
+
+
+def test_ucf_crime_txt_annotations_yield_temporal_events(tmp_path: Path):
+    root = _make_ucf_crime_root(tmp_path)
+    (root / "Temporal_Anomaly_Annotation.txt").write_text(
+        "Arson001_x264 1.5 4.0 ##person starts a fire near a vehicle\n",
+        encoding="utf-8",
+    )
+
+    dataset = build_dataset("ucf_crime", root)
+
+    assert isinstance(dataset, UCFCrimeDataset)
+    items = list(dataset)
+    arson = next(item for item in items if item.video_path.name == "Arson001_x264.mp4")
+    assert arson.events == [GroundTruthEvent("arson", 1.5, 4.0)]
+    normal = next(item for item in items if item.video_path.name == "Normal001_x264.mp4")
+    assert normal.events == []
+
+
+def test_ucf_crime_json_annotations_support_class_map(tmp_path: Path):
+    root = _make_ucf_crime_root(tmp_path)
+    (root / "annotations.json").write_text(
+        json.dumps(
+            {
+                "Arson001_x264": {
+                    "duration": 10.0,
+                    "timestamps": [[2.0, 3.5]],
+                    "sentences": ["open flames are visible"],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    [item, *_] = list(UCFCrimeDataset(root, class_map={"arson": "fire"}))
+
+    assert item.video_path.name == "Arson001_x264.mp4"
+    assert item.events == [GroundTruthEvent("fire", 2.0, 3.5)]
+
+
+def test_ucf_crime_rejects_missing_annotated_video(tmp_path: Path):
+    root = _make_ucf_crime_root(tmp_path)
+    (root / "Temporal_Anomaly_Annotation.txt").write_text(
+        "Robbery999_x264 1.0 2.0 ##robbery at counter\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(FileNotFoundError, match="Robbery999_x264"):
+        list(UCFCrimeDataset(root))
+
+
 def test_evaluate_detector_only_images_reuses_detector_and_scores_boxes(tmp_path: Path):
     root = _make_dfire_root(tmp_path)
     image = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -626,6 +687,21 @@ def test_eval_cli_accepts_detector_only_mode():
     assert args.mode == "detector_only"
     assert args.dataset_format == "dfire"
     assert args.bbox_iou_threshold == 0.5
+
+
+def test_eval_cli_accepts_ucf_crime_dataset_format():
+    from scripts.eval import build_arg_parser
+
+    args = build_arg_parser().parse_args(
+        [
+            "--dataset",
+            "fixtures/ucf-crime",
+            "--dataset-format",
+            "ucf_crime",
+        ]
+    )
+
+    assert args.dataset_format == "ucf_crime"
 
 
 def test_dfire_threshold_sweep_scores_cached_alerts():

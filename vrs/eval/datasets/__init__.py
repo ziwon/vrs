@@ -12,10 +12,12 @@ from pathlib import Path
 from .base import Dataset
 from .dfire import DFireDataset
 from .labeled_dir import LabeledDirDataset
+from .ucf_crime import UCFCrimeDataset
 
 DATASET_ADAPTERS = {
     "labeled_dir": LabeledDirDataset,
     "dfire": DFireDataset,
+    "ucf_crime": UCFCrimeDataset,
 }
 
 
@@ -29,4 +31,11 @@ def build_dataset(adapter: str, root: str | Path) -> Dataset:
     return dataset_cls(root)
 
 
-__all__ = ["DATASET_ADAPTERS", "DFireDataset", "Dataset", "LabeledDirDataset", "build_dataset"]
+__all__ = [
+    "DATASET_ADAPTERS",
+    "DFireDataset",
+    "Dataset",
+    "LabeledDirDataset",
+    "UCFCrimeDataset",
+    "build_dataset",
+]

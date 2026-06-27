@@ -159,6 +159,27 @@ logged because they require rebuilding detector prompt mappings or exported TRT
 engines. Invalid YAML is also rejected; the current in-memory policy stays in
 effect.
 
+## UCF-Crime / UCA Evaluation
+
+The eval CLI can read UCF-Crime/UCA temporal annotations in either TXT or JSON
+form:
+
+```bash
+uv run scripts/eval.py \
+  --dataset /data/vrs/ucf-crime-uca \
+  --dataset-format ucf_crime \
+  --config configs/default.yaml \
+  --policy configs/policies/safety.yaml \
+  --out runs/eval-ucf-crime
+```
+
+Expected layout is a video directory such as `videos/` plus one annotation file
+named like `Temporal_Anomaly_Annotation.txt`, `annotations.txt`,
+`annotations.json`, or `uca.json`. TXT rows use the UCA shape
+`VideoName StartTime EndTime ##event description`; JSON entries use
+`timestamps` and `sentences` keyed by video name. Native UCF-Crime category
+names are preserved unless a caller builds `UCFCrimeDataset` with a `class_map`.
+
 On 16 GB validation hosts, the bakeoff recipe defaults the transformers
 candidate to `configs/tiny.yaml`; the BF16 `configs/default.yaml` baseline can
 OOM before the vLLM candidate runs. Override `vllm_bakeoff_baseline_config` if

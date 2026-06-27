@@ -8,13 +8,13 @@ Current scope:
   * Per-class P/R/F1 + verifier-flip rate + FN-flag rate (``metrics``).
   * Stable, versioned ``EvalReport`` JSON contract (``report``).
   * Harness that iterates a dataset → runs the cascade → scores
-    (``harness``), with labeled-directory, D-Fire, and UCF-Crime/UCA adapters under
-    ``datasets``.
+    (``harness``), with labeled-directory, D-Fire, Le2i, and UCF-Crime/UCA
+    adapters under ``datasets``.
   * Regression gate that compares two reports and exits non-zero on F1
     drops beyond a tolerance (``ci``, run as ``python -m vrs.eval.ci``).
 
 Upcoming:
-  * ``datasets/le2i.py`` — fall-detection public dataset coverage.
+  * UP-Fall multimodal dataset coverage if needed for non-RGB fall validation.
 """
 
 from __future__ import annotations

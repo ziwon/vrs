@@ -180,6 +180,26 @@ named like `Temporal_Anomaly_Annotation.txt`, `annotations.txt`,
 `timestamps` and `sentences` keyed by video name. Native UCF-Crime category
 names are preserved unless a caller builds `UCFCrimeDataset` with a `class_map`.
 
+## Le2i Fall Evaluation
+
+The eval CLI can read Le2i fall videos with paired text annotations:
+
+```bash
+uv run scripts/eval.py \
+  --dataset /data/vrs/le2i \
+  --dataset-format le2i \
+  --config configs/default.yaml \
+  --policy configs/policies/safety.yaml \
+  --out runs/eval-le2i
+```
+
+Expected layout is a video directory such as `Videos/` plus annotations under
+`Annotation_files/`. For fall clips, the first two non-empty annotation lines
+must be the fall start and end frame numbers. The adapter converts those frame
+ranges to seconds at 25 FPS by default and emits `falldown` ground-truth events.
+Videos without an annotation file, or annotation files without the two fall
+frame lines, are treated as no-fall/ADL clips.
+
 On 16 GB validation hosts, the bakeoff recipe defaults the transformers
 candidate to `configs/tiny.yaml`; the BF16 `configs/default.yaml` baseline can
 OOM before the vLLM candidate runs. Override `vllm_bakeoff_baseline_config` if

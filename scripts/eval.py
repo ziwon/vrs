@@ -10,8 +10,9 @@ Example:
 
 Layout of the dataset directory — see vrs.eval.datasets.labeled_dir for the
 sidecar-JSON schema, or pass ``--dataset-format dfire`` for a D-Fire
-``images/`` + ``labels/`` tree, or ``--dataset-format ucf_crime`` for UCA
-temporal annotations over UCF-Crime videos. Each media item gets its own subdir under
+``images/`` + ``labels/`` tree, ``--dataset-format le2i`` for Le2i fall
+frame-range labels, or ``--dataset-format ucf_crime`` for UCA temporal
+annotations over UCF-Crime videos. Each media item gets its own subdir under
 ``--out`` holding its ``alerts.jsonl`` and event thumbnails. A single versioned
 ``report.json`` lands at ``--out`` (or the path given via ``--report``).
 """

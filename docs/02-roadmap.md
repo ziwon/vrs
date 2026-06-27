@@ -15,9 +15,11 @@ Implement and verify dataset adapters for:
 - Le2i or UP-Fall fall-detection data.
 - UCF-Crime or internal CCTV anomaly clips.
 
-Status: partially implemented. `scripts/eval.py` supports `--dataset-format
-dfire` for D-Fire image/bbox labels and `--dataset-format ucf_crime` for
-UCF-Crime/UCA temporal annotations. Le2i or UP-Fall remains open.
+Status: adapter coverage implemented. `scripts/eval.py` supports
+`--dataset-format dfire` for D-Fire image/bbox labels, `--dataset-format le2i`
+for Le2i fall frame-range labels, and `--dataset-format ucf_crime` for
+UCF-Crime/UCA temporal annotations. Remaining work is running these against
+local full datasets and committing baseline reports.
 
 Acceptance criteria:
 

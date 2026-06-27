@@ -12,11 +12,13 @@ from pathlib import Path
 from .base import Dataset
 from .dfire import DFireDataset
 from .labeled_dir import LabeledDirDataset
+from .le2i import Le2iDataset
 from .ucf_crime import UCFCrimeDataset
 
 DATASET_ADAPTERS = {
     "labeled_dir": LabeledDirDataset,
     "dfire": DFireDataset,
+    "le2i": Le2iDataset,
     "ucf_crime": UCFCrimeDataset,
 }
 
@@ -36,6 +38,7 @@ __all__ = [
     "DFireDataset",
     "Dataset",
     "LabeledDirDataset",
+    "Le2iDataset",
     "UCFCrimeDataset",
     "build_dataset",
 ]

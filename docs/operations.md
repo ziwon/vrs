@@ -140,6 +140,25 @@ policy is not mutated; use the export as the review/rollback artifact before
 copying selected thresholds into the watch policy or a deployment-specific
 override.
 
+## Hot Policy Reload
+
+Single-stream runs can poll the watch-policy file and reload runtime-safe
+changes without restarting the process:
+
+```yaml
+policy_reload:
+  enabled: true
+  poll_interval_s: 1.0
+```
+
+You can also send `SIGHUP` to request an immediate reload on platforms that
+support it. Runtime-safe changes are policy fields that do not alter the YOLOE
+class vocabulary: `min_score`, `min_persist_frames`, `severity`, verifier text,
+and `verifier_window_s`. Event-name or detector-prompt changes are rejected and
+logged because they require rebuilding detector prompt mappings or exported TRT
+engines. Invalid YAML is also rejected; the current in-memory policy stays in
+effect.
+
 On 16 GB validation hosts, the bakeoff recipe defaults the transformers
 candidate to `configs/tiny.yaml`; the BF16 `configs/default.yaml` baseline can
 OOM before the vLLM candidate runs. Override `vllm_bakeoff_baseline_config` if

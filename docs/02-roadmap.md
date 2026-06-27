@@ -184,6 +184,11 @@ Acceptance criteria:
 
 Operators should not restart the process for threshold-only policy changes.
 
+Status: implemented for the single-stream pipeline as opt-in
+`policy_reload`. Runtime-safe policy edits reload by file polling or SIGHUP;
+invalid files and detector-vocabulary changes are rejected while the current
+policy stays active.
+
 Acceptance criteria:
 
 - Atomic policy reload on file change or SIGHUP.

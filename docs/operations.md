@@ -118,6 +118,28 @@ just prepare-verifier-eval
 just eval-verifier-vllm-bakeoff
 ```
 
+## Calibration Stage B
+
+Calibration is disabled by default. Stage A writes suggestions to
+`calibration_suggestions.jsonl`; Stage B can also promote those suggestions into
+an operator-reviewable override export and append-only audit log:
+
+```yaml
+calibration:
+  enabled: true
+  apply_enabled: true
+  apply_cooldown_s: 3600
+  apply_audit: calibration_applied.jsonl
+  apply_export: calibration_overrides.yaml
+```
+
+Stage B keeps separate scores per `(stream_id, class_name)`, enforces caps and a
+per-key cooldown, writes old/new values plus verifier statistics to the audit
+log, and atomically rewrites `calibration_overrides.yaml`. The running detector
+policy is not mutated; use the export as the review/rollback artifact before
+copying selected thresholds into the watch policy or a deployment-specific
+override.
+
 On 16 GB validation hosts, the bakeoff recipe defaults the transformers
 candidate to `configs/tiny.yaml`; the BF16 `configs/default.yaml` baseline can
 OOM before the vLLM candidate runs. Override `vllm_bakeoff_baseline_config` if

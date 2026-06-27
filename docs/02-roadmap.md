@@ -144,6 +144,11 @@ Acceptance criteria:
 
 Stage A writes suggestions. Stage B should apply them under tight controls.
 
+Status: implemented as an opt-in calibration apply/export stage. It keeps
+per-stream/per-class applied scores, enforces caps and cooldowns, writes
+`calibration_applied.jsonl`, and atomically exports
+`calibration_overrides.yaml` for operator review or rollback.
+
 Acceptance criteria:
 
 - Per-stream/per-class min-score updates with caps.

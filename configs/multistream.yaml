@@ -38,6 +38,23 @@ multistream:
   # Per-stream sink queue. Rarely fills unless the disk is slow.
   sink_queue_size: 32
 
+  # Cross-camera incident correlation groups verified alerts from overlapping
+  # cameras into one operator-facing incident id while preserving each original
+  # per-camera alert record in that stream's alerts.jsonl.
+  incident_correlation:
+    enabled: false
+    window_s: 5.0
+    match_class: true
+    match_severity: true
+    include_false_alerts: false
+    # Optional geometry gate on normalized bboxes. Leave null to use only
+    # stream overlap + class/severity + time-window matching.
+    min_bbox_iou: null
+    adjacency:
+      cam_lobby: [cam_corridor]
+      cam_corridor: [cam_lobby, cam_warehouse]
+      cam_warehouse: [cam_corridor]
+
   # How often (seconds) to sample queue drop counters and log a WARNING
   # naming every queue whose counter grew since the last sample. 0 disables.
   # 5 s catches sustained overload quickly without logging on a healthy

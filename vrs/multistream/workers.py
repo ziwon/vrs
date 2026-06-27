@@ -212,6 +212,7 @@ class VerifierWorker(threading.Thread):
         sink_queues: dict[str, BoundedQueue],
         stop_event: threading.Event,
         calibrator: Any | None = None,
+        incident_correlator: Any | None = None,
         metrics: Any | None = None,
         verifier_backend: str = "disabled",
     ):
@@ -221,6 +222,7 @@ class VerifierWorker(threading.Thread):
         self.sink_queues = sink_queues
         self.stop_event = stop_event
         self.calibrator = calibrator
+        self.incident_correlator = incident_correlator
         self.metrics = metrics or NullVRSMetrics()
         self.verifier_backend = verifier_backend
 
@@ -266,6 +268,15 @@ class VerifierWorker(threading.Thread):
                     false_negative_class=None,
                     rationale="verifier disabled",
                 )
+            if self.incident_correlator is not None:
+                try:
+                    verified = self.incident_correlator.assign(msg.stream_id, verified)
+                except Exception as e:
+                    logger.warning(
+                        "incident correlator failed on [%s]: %s",
+                        msg.stream_id,
+                        e,
+                    )
             verdict = "true_alert" if verified.true_alert else "false_alert"
             self.metrics.inc_verified_alerts(msg.stream_id, verified.candidate.class_name, verdict)
 

@@ -95,6 +95,9 @@ class VerifiedAlert:
     verifier_raw: str = ""
     verifier_json_valid: bool | None = None
     thumbnail_path: str | None = None
+    incident_id: str | None = None
+    incident_stream_ids: list[str] = field(default_factory=list)
+    incident_primary_stream_id: str | None = None
 
     def to_json(self) -> dict[str, Any]:
         out = self.candidate.summary()
@@ -109,6 +112,9 @@ class VerifiedAlert:
             verifier_raw=self.verifier_raw,
             verifier_json_valid=self.verifier_json_valid,
             thumbnail_path=self.thumbnail_path,
+            incident_id=self.incident_id,
+            incident_stream_ids=list(self.incident_stream_ids),
+            incident_primary_stream_id=self.incident_primary_stream_id,
         )
         return out
 

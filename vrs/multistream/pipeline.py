@@ -24,6 +24,7 @@ from ..policy import WatchPolicy, load_watch_policy
 from ..runtime import VLMConfig, build_vlm_backend
 from ..triage import YOLOEConfig, build_detector
 from ..verifier import AlertVerifier
+from .incidents import IncidentCorrelationConfig, IncidentCorrelator
 from .queues import BoundedQueue, DropPolicy
 from .readers import build_reader
 from .workers import DecoderThread, DetectorWorker, SinkWorker, VerifierWorker
@@ -203,6 +204,9 @@ class MultiStreamPipeline:
         self._tracker_cfg = config.get("tracker")
         self._privacy_cfg = config.get("privacy") or {}
         self._sink_cfg = config["sink"]
+        self._incident_correlator = IncidentCorrelator(
+            IncidentCorrelationConfig.from_mapping(ms_cfg.get("incident_correlation"))
+        )
 
         self._decoders: list[DecoderThread] = []
         self._sinks: list[SinkWorker] = []
@@ -245,6 +249,7 @@ class MultiStreamPipeline:
             sink_queues=self._sink_qs,
             stop_event=self._stop,
             calibrator=self._calibrator,
+            incident_correlator=self._incident_correlator,
             metrics=self.metrics,
             verifier_backend=str(self._ver_cfg.get("backend", "disabled")),
         )

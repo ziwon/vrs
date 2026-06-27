@@ -50,6 +50,12 @@ Acceptance criteria:
 The code defaults to `yoloe-11l-seg.pt`. Newer YOLOE-26 variants should be
 tested, not assumed better for the watch policy.
 
+Status: implemented. `scripts/eval_detector_models.py` runs fixed-policy
+side-by-side detector comparisons, records precision/recall/F1 and latency
+deltas against a baseline model, and writes an auditable `model_refresh.json`
+decision report. The RTX 5080 D-Fire YOLOE-26 comparison is recorded in
+`docs/benchmarks/dfire-yoloe26-model-refresh-2026-06-21.md`.
+
 Acceptance criteria:
 
 - Side-by-side eval of current YOLOE-L and candidate YOLOE-26 model.
@@ -71,6 +77,15 @@ Priority candidates:
 - Smaller local Qwen VL candidate only if the deployment must stay on one
   16 GB GPU.
 
+Status: implementation ready; live candidate bake-off still required.
+`VLMBackend` supports `transformers`, `vllm`, and `openai_compatible` verifier
+backends; `configs/qwen-openai-compatible.yaml` defines the served Qwen-style
+profile; and `scripts/eval_verifier_backends.py` runs identical full-cascade
+evals and writes `verifier_bakeoff.json` with metrics, quality signals,
+latency, and runtime memory fields. Remaining work is to point the served
+profile at a selected Qwen3.5/Qwen3.6-class endpoint and commit the resulting
+comparison report.
+
 Acceptance criteria:
 
 - Use the generalized `VLMBackend` abstraction to plug in candidate backends.
@@ -85,6 +100,11 @@ Acceptance criteria:
 
 Before changing runtimes, measure where time is spent.
 
+Status: implemented. Eval reports include verifier latency p50/p95/p99 and
+backend token generation rate when exposed. Runtime metrics export verifier
+latency, verifier backend errors, token generation throughput, and separate
+queue wait histograms for worker queues.
+
 Acceptance criteria:
 
 - Per-verify latency p50/p95/p99.
@@ -97,9 +117,10 @@ Acceptance criteria:
 The vLLM backend is implemented as a structural skeleton. It needs live GPU
 validation before deployment.
 
-Status: RTX 5080 Cosmos live smoke/eval completed on 2026-06-22 with
-`vllm==0.19.1`; see
-`docs/benchmarks/rtx5080-vllm-cosmos-validation-2026-06-22.md`. Remaining work
+Status: validated for the Cosmos baseline on RTX 5080. Live smoke/eval
+completed on 2026-06-22 with `vllm==0.19.1`; see
+`docs/benchmarks/rtx5080-vllm-cosmos-validation-2026-06-22.md`. The validation
+confirmed structured JSON and pinned the optional `vllm` extra. Remaining work
 is target-host deployment sizing and a comparable Qwen-class candidate when a
 selected model is available through vLLM or a served backend.
 

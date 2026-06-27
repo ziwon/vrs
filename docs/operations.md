@@ -118,6 +118,31 @@ just prepare-verifier-eval
 just eval-verifier-vllm-bakeoff
 ```
 
+## TensorRT-LLM Verifier Validation
+
+The `trtllm` verifier backend uses TensorRT-LLM's Python `LLM` API behind the
+same `VLMBackend` contract. It is opt-in and target-host specific: install
+TensorRT-LLM in the validation environment, start from
+`configs/trtllm-cosmos.yaml`, and run the same smoke and labeled bake-off used
+for other verifier backends.
+
+The backend passes the verifier JSON schema through TensorRT-LLM guided
+decoding, defaulting to `guided_decoding_backend: xgrammar`. Optional
+speculative decoding fields are available in the config:
+
+```yaml
+verifier:
+  backend: trtllm
+  guided_decoding_backend: xgrammar
+  draft_model_id: null
+  draft_engine_dir: null
+  speculative_tokens: null
+```
+
+Do not promote `trtllm` until a benchmark note records JSON validity,
+precision/recall/F1, malformed JSON rate, verifier p50/p95/p99, token rate,
+peak VRAM, and a same-clip comparison against the transformers baseline.
+
 ## Calibration Stage B
 
 Calibration is disabled by default. Stage A writes suggestions to

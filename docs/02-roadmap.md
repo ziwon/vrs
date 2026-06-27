@@ -136,6 +136,13 @@ Acceptance criteria:
 
 TRT-LLM is the next large verifier-speed path.
 
+Status: structural backend implemented; live GPU benchmark still required.
+`verifier.backend: trtllm` routes through `VLMBackend`, uses TensorRT-LLM's
+Python `LLM` API, passes the verifier JSON schema through guided decoding, and
+accepts optional draft-model speculative decoding config. Remaining work is a
+target-GPU smoke/eval benchmark proving latency reduction versus transformers
+before any production promotion.
+
 Acceptance criteria:
 
 - Backend implementation behind `VLMBackend`.

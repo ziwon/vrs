@@ -18,6 +18,7 @@ from pathlib import Path
 
 from ..policy import WatchPolicy
 from ..schemas import VerifiedAlert
+from .applier import CalibrationApplier
 from .schemas import Suggestion, WindowEntry
 from .sink import CalibrationSink
 from .suggester import suggest
@@ -43,6 +44,7 @@ class Calibrator:
         min_score_cap: float = 0.15,
         max_score_cap: float = 0.80,
         target_alerts_per_hour: float | None = None,
+        applier: CalibrationApplier | None = None,
     ):
         self.policy = policy
         self.sink = sink
@@ -56,6 +58,7 @@ class Calibrator:
         self.target_alerts_per_hour = (
             float(target_alerts_per_hour) if target_alerts_per_hour is not None else None
         )
+        self.applier = applier
 
         self._windows: dict[tuple[str, str], deque[WindowEntry]] = defaultdict(
             lambda: deque(maxlen=self.window_size)
@@ -82,10 +85,14 @@ class Calibrator:
             )
         )
 
+        current_min_score = float(item.min_score)
+        if self.applier is not None:
+            current_min_score = self.applier.current_min_score(stream_id, cls, current_min_score)
+
         suggestion = suggest(
             stream_id=stream_id,
             class_name=cls,
-            current_min_score=float(item.min_score),
+            current_min_score=current_min_score,
             window=self._windows[key],
             max_flip_rate=self.max_flip_rate,
             min_flip_rate=self.min_flip_rate,
@@ -99,12 +106,16 @@ class Calibrator:
             return None
 
         self.sink.write(suggestion)
+        if self.applier is not None:
+            self.applier.apply(suggestion)
         # fresh sample after each emission — see module docstring
         self._windows[key].clear()
         return suggestion
 
     def close(self) -> None:
         self.sink.close()
+        if self.applier is not None:
+            self.applier.close()
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -133,12 +144,25 @@ def build_calibrator(
           min_score_cap: 0.15
           max_score_cap: 0.80
           target_alerts_per_hour: null   # loosen-arm gate; null = tighten only
+          apply_enabled: false           # Stage B export/audit
+          apply_cooldown_s: 3600
     """
     if not cfg or not cfg.get("enabled", False):
         return None
 
     out = Path(out_dir)
     sink = CalibrationSink(out / filename)
+    applier = None
+    if cfg.get("apply_enabled", False):
+        applier = CalibrationApplier(
+            policy=policy,
+            out_dir=out,
+            cooldown_s=float(cfg.get("apply_cooldown_s", 3600.0)),
+            min_score_cap=float(cfg.get("min_score_cap", 0.15)),
+            max_score_cap=float(cfg.get("max_score_cap", 0.80)),
+            audit_filename=str(cfg.get("apply_audit", "calibration_applied.jsonl")),
+            export_filename=str(cfg.get("apply_export", "calibration_overrides.yaml")),
+        )
     return Calibrator(
         policy=policy,
         sink=sink,
@@ -150,4 +174,5 @@ def build_calibrator(
         min_score_cap=float(cfg.get("min_score_cap", 0.15)),
         max_score_cap=float(cfg.get("max_score_cap", 0.80)),
         target_alerts_per_hour=cfg.get("target_alerts_per_hour"),
+        applier=applier,
     )

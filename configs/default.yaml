@@ -104,10 +104,10 @@ privacy:
   margin_pct: 0.15           # expand each face bbox this fraction before blur
 
 calibration:
-  # Stage A — log-only threshold self-calibration.
+  # Stage A — log-only threshold self-calibration. Optional Stage B can export
+  # applied threshold overrides under tight cooldown/cap controls.
   # Aggregates verifier flip rate per (stream_id, class) and writes
   # suggested min_score deltas to <out>/calibration_suggestions.jsonl.
-  # A human reviews + applies; nothing is auto-tuned at this stage.
   enabled: false             # opt-in; flip to true once you're comfortable reading the log
   window_size: 100           # rolling verdict buffer per (stream, class)
   min_sample: 10             # don't suggest off fewer than this many verdicts
@@ -118,6 +118,10 @@ calibration:
   max_score_cap: 0.80        # never suggest above this
   target_alerts_per_hour: null  # null = tighten-only (safe default).
                                 # set a number to enable the loosen arm.
+  apply_enabled: false       # Stage B: write applied overrides + audit log
+  apply_cooldown_s: 3600     # per (stream, class) minimum seconds between applies
+  apply_audit: calibration_applied.jsonl
+  apply_export: calibration_overrides.yaml
 
 observability:
   metrics:

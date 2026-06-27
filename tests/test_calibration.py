@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from vrs.calibration import (
+    CalibrationApplier,
     CalibrationSink,
     Calibrator,
     Suggestion,
@@ -222,6 +223,100 @@ def test_calibrator_ignores_unknown_classes(tmp_path: Path):
     assert out is None
 
 
+def test_calibration_applier_writes_audit_and_export(tmp_path: Path):
+    applier = CalibrationApplier(
+        _policy(),
+        tmp_path,
+        cooldown_s=60.0,
+        min_score_cap=0.15,
+        max_score_cap=0.80,
+    )
+    sug = Suggestion(
+        ts="2026-04-22T00:00:00+00:00",
+        stream_id="cam_lobby",
+        class_name="fire",
+        current_min_score=0.30,
+        suggested_min_score=0.32,
+        direction="tighten",
+        reason="flip rate high",
+        flip_rate=0.6,
+        fn_flag_rate=0.1,
+        n_alerts=10,
+        alerts_per_hour=5.0,
+    )
+
+    record = applier.apply(sug, now_monotonic=100.0)
+    applier.close()
+
+    assert record is not None
+    assert record["old_min_score"] == pytest.approx(0.30)
+    assert record["new_min_score"] == pytest.approx(0.32)
+    audit = (tmp_path / "calibration_applied.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(audit) == 1
+    assert json.loads(audit[0])["reason"] == "flip rate high"
+    exported = (tmp_path / "calibration_overrides.yaml").read_text(encoding="utf-8")
+    assert "cam_lobby" in exported
+    assert "min_score: 0.32" in exported
+
+
+def test_calibration_applier_enforces_per_key_cooldown(tmp_path: Path):
+    applier = CalibrationApplier(_policy(), tmp_path, cooldown_s=60.0)
+    first = Suggestion(
+        ts="2026-04-22T00:00:00+00:00",
+        stream_id="cam_lobby",
+        class_name="fire",
+        current_min_score=0.30,
+        suggested_min_score=0.32,
+        direction="tighten",
+        reason="first",
+        flip_rate=0.6,
+        fn_flag_rate=0.0,
+        n_alerts=10,
+        alerts_per_hour=None,
+    )
+    second = Suggestion(
+        ts="2026-04-22T00:01:00+00:00",
+        stream_id="cam_lobby",
+        class_name="fire",
+        current_min_score=0.32,
+        suggested_min_score=0.34,
+        direction="tighten",
+        reason="second",
+        flip_rate=0.7,
+        fn_flag_rate=0.0,
+        n_alerts=10,
+        alerts_per_hour=None,
+    )
+
+    assert applier.apply(first, now_monotonic=100.0) is not None
+    assert applier.apply(second, now_monotonic=120.0) is None
+    assert applier.apply(second, now_monotonic=161.0) is not None
+    applier.close()
+
+    audit = (tmp_path / "calibration_applied.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(audit) == 2
+
+
+def test_calibrator_stage_b_uses_applied_score_for_next_suggestion(tmp_path: Path):
+    sink = CalibrationSink(tmp_path / "cal.jsonl")
+    applier = CalibrationApplier(_policy(), tmp_path, cooldown_s=0.0)
+    cal = Calibrator(_policy(), sink, min_sample=2, max_flip_rate=0.30, applier=applier)
+
+    cal.record("cam_lobby", _verified(true_alert=False))
+    first = cal.record("cam_lobby", _verified(true_alert=False))
+    assert first is not None
+    assert first.current_min_score == pytest.approx(0.30)
+    assert first.suggested_min_score == pytest.approx(0.32)
+
+    cal.record("cam_lobby", _verified(true_alert=False))
+    second = cal.record("cam_lobby", _verified(true_alert=False))
+    cal.close()
+
+    assert second is not None
+    assert second.current_min_score == pytest.approx(0.32)
+    assert second.suggested_min_score == pytest.approx(0.34)
+
+
 def test_build_calibrator_disabled_by_default():
     assert build_calibrator(None, _policy(), "/tmp") is None
     assert build_calibrator({}, _policy(), "/tmp") is None
@@ -245,6 +340,25 @@ def test_build_calibrator_constructs_when_enabled(tmp_path: Path):
     assert cal.min_sample == 5
     assert cal.max_flip_rate == 0.25
     assert cal.score_delta == 0.03
+
+
+def test_build_calibrator_constructs_stage_b_applier_when_enabled(tmp_path: Path):
+    cal = build_calibrator(
+        {
+            "enabled": True,
+            "apply_enabled": True,
+            "apply_cooldown_s": 123,
+            "apply_audit": "applied.jsonl",
+            "apply_export": "overrides.yaml",
+        },
+        _policy(),
+        tmp_path,
+    )
+    assert isinstance(cal, Calibrator)
+    assert isinstance(cal.applier, CalibrationApplier)
+    assert cal.applier.cooldown_s == pytest.approx(123)
+    assert cal.applier.audit_path == tmp_path / "applied.jsonl"
+    assert cal.applier.export_path == tmp_path / "overrides.yaml"
 
 
 def test_calibration_sink_does_not_create_empty_file(tmp_path: Path):

@@ -68,13 +68,14 @@ def test_vrs_metrics_render_prometheus_text():
     metrics.set_queue_depth("frame", "all", 3)
     metrics.set_queue_dropped_total("frame", "all", 2)
     metrics.inc_candidates("cam01", "fire")
-    metrics.inc_verified_alerts("cam01", "fire", "true_alert")
+    metrics.inc_verified_alerts("cam01", "fire", "true_alert", "critical")
     metrics.observe_detector_latency(0.02)
     metrics.observe_verifier_latency(1.5)
     metrics.observe_queue_wait("candidate", "cam01", 0.25)
     metrics.observe_verifier_tokens_per_second("transformers", 12.5)
     metrics.inc_verifier_errors("transformers")
     metrics.inc_sink_write_errors("cam01")
+    metrics.inc_privacy_setup_failures("yunet")
 
     text = registry.render()
 
@@ -83,7 +84,8 @@ def test_vrs_metrics_render_prometheus_text():
     assert 'vrs_queue_dropped_total{queue="frame",stream_id="all"} 2' in text
     assert 'vrs_candidates_total{stream_id="cam01",class="fire"} 1' in text
     assert (
-        'vrs_verified_alerts_total{stream_id="cam01",class="fire",verdict="true_alert"} 1' in text
+        'vrs_verified_alerts_total{stream_id="cam01",class="fire",verdict="true_alert",severity="critical"} 1'
+        in text
     )
     assert "vrs_detector_latency_seconds_count 1" in text
     assert "vrs_verifier_latency_seconds_count 1" in text
@@ -91,6 +93,7 @@ def test_vrs_metrics_render_prometheus_text():
     assert 'vrs_verifier_tokens_per_second_count{backend="transformers"} 1' in text
     assert 'vrs_verifier_errors_total{backend="transformers"} 1' in text
     assert 'vrs_sink_write_errors_total{stream_id="cam01"} 1' in text
+    assert 'vrs_privacy_setup_failures_total{backend="yunet"} 1' in text
 
 
 def test_metrics_endpoint_is_disabled_by_default():
@@ -202,7 +205,8 @@ def test_verifier_worker_records_verified_alert_and_latency_metrics():
 
     text = registry.render()
     assert (
-        'vrs_verified_alerts_total{stream_id="cam01",class="fire",verdict="true_alert"} 1' in text
+        'vrs_verified_alerts_total{stream_id="cam01",class="fire",verdict="true_alert",severity="critical"} 1'
+        in text
     )
     assert "vrs_verifier_latency_seconds_count" in text
     assert 'vrs_queue_wait_seconds_count{queue="candidate",stream_id="cam01"} 1' in text

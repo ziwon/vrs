@@ -115,15 +115,18 @@ def test_factory_degrades_to_null_on_yunet_setup_failure(tmp_path, caplog):
     pipeline — it drops back to a no-op blur with a warning so operators
     see it in the logs. Safer than refusing to run, which would take a
     whole deployment down on a config typo."""
+    failures: list[tuple[str, Exception]] = []
     with caplog.at_level(logging.WARNING, logger="vrs.privacy.detectors"):
         det = build_face_detector(
             {
                 "enabled": True,
                 "backend": "yunet",
                 "model": str(tmp_path / "nonexistent.onnx"),
-            }
+            },
+            setup_failure_callback=lambda backend, exc: failures.append((backend, exc)),
         )
     assert isinstance(det, NullFaceDetector)
+    assert failures and failures[0][0] == "yunet"
     assert any("YuNet face detector setup failed" in r.getMessage() for r in caplog.records)
 
 

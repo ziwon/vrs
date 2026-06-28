@@ -231,11 +231,19 @@ class _RecordingMetrics:
         pass
 
     def inc_verified_alerts(
-        self, stream_id: str, class_name: str, verdict: str, amount: int = 1
+        self,
+        stream_id: str,
+        class_name: str,
+        verdict: str,
+        severity: str = "unknown",
+        amount: int = 1,
     ) -> None:
         pass
 
     def inc_verifier_errors(self, backend: str, amount: int = 1) -> None:
+        pass
+
+    def inc_privacy_setup_failures(self, backend: str, amount: int = 1) -> None:
         pass
 
 

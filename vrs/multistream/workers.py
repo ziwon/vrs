@@ -278,7 +278,12 @@ class VerifierWorker(threading.Thread):
                         e,
                     )
             verdict = "true_alert" if verified.true_alert else "false_alert"
-            self.metrics.inc_verified_alerts(msg.stream_id, verified.candidate.class_name, verdict)
+            self.metrics.inc_verified_alerts(
+                msg.stream_id,
+                verified.candidate.class_name,
+                verdict,
+                verified.candidate.severity,
+            )
 
             sink_q = self.sink_queues.get(msg.stream_id)
             if sink_q is not None:
@@ -362,6 +367,10 @@ class SinkWorker(threading.Thread):
 
         annotator = None
         thumbnail_sink = None
+
+        def privacy_failure_cb(backend: str, exc: Exception) -> None:
+            self.metrics.inc_privacy_setup_failures(backend)
+
         if self.write_thumbnails:
             from ..privacy import build_face_detector  # lazy — cv2 dep
             from ..sinks.thumbnail_sink import EventThumbnailSink  # cv2 dep
@@ -371,7 +380,10 @@ class SinkWorker(threading.Thread):
                 dir_name=self.thumbnails_dir,
                 ext=self.thumbnail_ext,
                 quality=self.thumbnail_quality,
-                face_detector=build_face_detector(self.privacy_cfg),
+                face_detector=build_face_detector(
+                    self.privacy_cfg,
+                    setup_failure_callback=privacy_failure_cb,
+                ),
                 blur_kernel=int(self.privacy_cfg.get("blur_kernel", 31)),
                 blur_margin_pct=float(self.privacy_cfg.get("margin_pct", 0.15)),
             )
@@ -382,7 +394,10 @@ class SinkWorker(threading.Thread):
             annotator = VideoAnnotator(
                 self.out_dir / self.mp4_name,
                 fps=self.fps,
-                face_detector=build_face_detector(self.privacy_cfg),
+                face_detector=build_face_detector(
+                    self.privacy_cfg,
+                    setup_failure_callback=privacy_failure_cb,
+                ),
                 blur_kernel=int(self.privacy_cfg.get("blur_kernel", 31)),
                 blur_margin_pct=float(self.privacy_cfg.get("margin_pct", 0.15)),
             )

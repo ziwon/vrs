@@ -205,6 +205,10 @@ class VRSPipeline:
 
         jsonl_path = self.out_dir / sink_cfg.get("jsonl", "alerts.jsonl")
         privacy_cfg = self.cfg.get("privacy") or {}
+
+        def privacy_failure_cb(backend: str, exc: Exception) -> None:
+            self.metrics.inc_privacy_setup_failures(backend)
+
         thumbnail_sink: EventThumbnailSink | None = None
         if sink_cfg.get("write_thumbnails", True):
             thumbnail_sink = EventThumbnailSink(
@@ -212,7 +216,10 @@ class VRSPipeline:
                 dir_name=sink_cfg.get("thumbnails_dir", "thumbnails"),
                 ext=sink_cfg.get("thumbnail_ext", "jpg"),
                 quality=int(sink_cfg.get("thumbnail_quality", 90)),
-                face_detector=build_face_detector(privacy_cfg),
+                face_detector=build_face_detector(
+                    privacy_cfg,
+                    setup_failure_callback=privacy_failure_cb,
+                ),
                 blur_kernel=int(privacy_cfg.get("blur_kernel", 31)),
                 blur_margin_pct=float(privacy_cfg.get("margin_pct", 0.15)),
             )
@@ -221,7 +228,10 @@ class VRSPipeline:
             annotator = VideoAnnotator(
                 self.out_dir / sink_cfg.get("annotated_mp4", "annotated.mp4"),
                 fps=float(ing_cfg["target_fps"]),
-                face_detector=build_face_detector(privacy_cfg),
+                face_detector=build_face_detector(
+                    privacy_cfg,
+                    setup_failure_callback=privacy_failure_cb,
+                ),
                 blur_kernel=int(privacy_cfg.get("blur_kernel", 31)),
                 blur_margin_pct=float(privacy_cfg.get("margin_pct", 0.15)),
             )
@@ -277,7 +287,10 @@ class VRSPipeline:
                             )
                         verdict = "true_alert" if verified.true_alert else "false_alert"
                         self.metrics.inc_verified_alerts(
-                            "default", verified.candidate.class_name, verdict
+                            "default",
+                            verified.candidate.class_name,
+                            verdict,
+                            verified.candidate.severity,
                         )
                         if thumbnail_sink is not None:
                             try:

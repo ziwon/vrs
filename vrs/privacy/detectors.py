@@ -8,6 +8,7 @@ dependency (only ultralytics CI hosts have the ONNX runtime hooked up).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -35,7 +36,11 @@ class NullFaceDetector:
         return []
 
 
-def build_face_detector(cfg: dict | None) -> FaceDetector:
+def build_face_detector(
+    cfg: dict | None,
+    *,
+    setup_failure_callback: Callable[[str, Exception], None] | None = None,
+) -> FaceDetector:
     """Construct a face detector from a YAML block, or ``NullFaceDetector``
     when disabled / misconfigured (a misconfigured detector should never
     take the pipeline down — the blur pass silently becomes a no-op and
@@ -58,6 +63,8 @@ def build_face_detector(cfg: dict | None) -> FaceDetector:
                 top_k=int(cfg.get("top_k", 5000)),
             )
         except Exception as e:
+            if setup_failure_callback is not None:
+                setup_failure_callback(backend, e)
             logger.warning(
                 "YuNet face detector setup failed (%s); face blurring "
                 "will be disabled for this run. Check `privacy.model` "

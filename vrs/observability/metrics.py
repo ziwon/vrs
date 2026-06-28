@@ -324,7 +324,12 @@ class NullVRSMetrics:
         return
 
     def inc_verified_alerts(
-        self, stream_id: str, class_name: str, verdict: str, amount: int = 1
+        self,
+        stream_id: str,
+        class_name: str,
+        verdict: str,
+        severity: str = "unknown",
+        amount: int = 1,
     ) -> None:
         return
 
@@ -344,6 +349,9 @@ class NullVRSMetrics:
         return
 
     def inc_sink_write_errors(self, stream_id: str, amount: int = 1) -> None:
+        return
+
+    def inc_privacy_setup_failures(self, backend: str, amount: int = 1) -> None:
         return
 
     def close(self) -> None:
@@ -376,7 +384,7 @@ class VRSMetrics:
         self.verified_alerts = self.registry.counter(
             "vrs_verified_alerts_total",
             "Total verified alerts by verdict.",
-            ("stream_id", "class", "verdict"),
+            ("stream_id", "class", "verdict", "severity"),
         )
         self.detector_latency = self.registry.histogram(
             "vrs_detector_latency_seconds",
@@ -407,6 +415,11 @@ class VRSMetrics:
             "Total sink write errors by stream.",
             ("stream_id",),
         )
+        self.privacy_setup_failures = self.registry.counter(
+            "vrs_privacy_setup_failures_total",
+            "Total privacy detector setup failures by backend.",
+            ("backend",),
+        )
 
     @property
     def url(self) -> str | None:
@@ -422,10 +435,19 @@ class VRSMetrics:
         self.candidates.inc(float(amount), stream_id=stream_id, **{"class": class_name})
 
     def inc_verified_alerts(
-        self, stream_id: str, class_name: str, verdict: str, amount: int = 1
+        self,
+        stream_id: str,
+        class_name: str,
+        verdict: str,
+        severity: str = "unknown",
+        amount: int = 1,
     ) -> None:
         self.verified_alerts.inc(
-            float(amount), stream_id=stream_id, verdict=verdict, **{"class": class_name}
+            float(amount),
+            stream_id=stream_id,
+            verdict=verdict,
+            severity=severity,
+            **{"class": class_name},
         )
 
     def observe_detector_latency(self, seconds: float) -> None:
@@ -446,6 +468,9 @@ class VRSMetrics:
 
     def inc_sink_write_errors(self, stream_id: str, amount: int = 1) -> None:
         self.sink_write_errors.inc(float(amount), stream_id=stream_id)
+
+    def inc_privacy_setup_failures(self, backend: str, amount: int = 1) -> None:
+        self.privacy_setup_failures.inc(float(amount), backend=backend)
 
     def close(self) -> None:
         if self._server is not None:

@@ -56,8 +56,10 @@ class IncidentCorrelator:
     """Assign stable incident ids to related alerts from overlapping cameras."""
 
     def __init__(self, cfg: IncidentCorrelationConfig | dict[str, Any] | None = None):
-        self.cfg = cfg if isinstance(cfg, IncidentCorrelationConfig) else (
-            IncidentCorrelationConfig.from_mapping(cfg)
+        self.cfg = (
+            cfg
+            if isinstance(cfg, IncidentCorrelationConfig)
+            else (IncidentCorrelationConfig.from_mapping(cfg))
         )
         self._next_id = 1
         self._active: list[_Incident] = []
@@ -148,9 +150,7 @@ def _parse_adjacency(raw: Any) -> dict[str, set[str]]:
             out.setdefault(sid, set())
             continue
         if isinstance(neighbors, str):
-            raise ValueError(
-                "multistream.incident_correlation.adjacency values must be lists"
-            )
+            raise ValueError("multistream.incident_correlation.adjacency values must be lists")
         try:
             neighbor_set = {str(item) for item in neighbors}
         except TypeError as exc:

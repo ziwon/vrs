@@ -80,9 +80,13 @@ class UCFCrimeDataset(Dataset):
         if not self.root.is_dir():
             raise FileNotFoundError(f"{self.root} is not a directory")
         self.annotation_path = (
-            self.root / annotation_file if annotation_file is not None else _find_annotation(self.root)
+            self.root / annotation_file
+            if annotation_file is not None
+            else _find_annotation(self.root)
         )
-        self.video_root = self.root / video_dir if video_dir is not None else _find_video_root(self.root)
+        self.video_root = (
+            self.root / video_dir if video_dir is not None else _find_video_root(self.root)
+        )
         self.class_map = {str(k).lower(): str(v) for k, v in (class_map or {}).items()}
         self._videos = _index_videos(self.video_root)
         self._events_by_stem = self._load_annotations()

@@ -53,7 +53,9 @@ class Le2iDataset(Dataset):
         if self.fps <= 0:
             raise ValueError("Le2i fps must be > 0")
         self.class_name = str(class_name)
-        self.video_root = self.root / video_dir if video_dir is not None else _find_dir_with_videos(self.root)
+        self.video_root = (
+            self.root / video_dir if video_dir is not None else _find_dir_with_videos(self.root)
+        )
         self.annotation_root = (
             self.root / annotation_dir
             if annotation_dir is not None
@@ -63,11 +65,15 @@ class Le2iDataset(Dataset):
     def __iter__(self) -> Iterator[EvalItem]:
         for video in _iter_videos(self.video_root):
             annotation = _find_annotation_file(self.annotation_root, video)
-            events = _load_fall_event(
-                annotation,
-                fps=self.fps,
-                class_name=self.class_name,
-            ) if annotation is not None else []
+            events = (
+                _load_fall_event(
+                    annotation,
+                    fps=self.fps,
+                    class_name=self.class_name,
+                )
+                if annotation is not None
+                else []
+            )
             yield EvalItem(video_path=video, events=events)
 
 

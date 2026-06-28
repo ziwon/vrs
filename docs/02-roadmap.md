@@ -173,6 +173,12 @@ Acceptance criteria:
 
 Slow events need longer context than instantaneous events.
 
+Status: implemented. Watch-policy items accept optional `verifier_window_s`
+overrides, `EventStateQueue` falls back to `verifier.context_window_s` when the
+override is absent, and policy reload treats window-only edits as runtime-safe.
+The default safety policy uses a longer smoke verifier window while fire keeps
+the global default.
+
 Acceptance criteria:
 
 - Add `verifier_window_s` or equivalent to each watch-policy item.
@@ -200,6 +206,12 @@ Acceptance criteria:
 ### 11. Metrics Endpoint
 
 Expose runtime health without scraping logs.
+
+Status: implemented. Runtime configs can enable a Prometheus-compatible
+`/metrics` endpoint. The endpoint exports queue depth/drop counters,
+detector/verifier latency histograms, verified-alert counters labeled by stream,
+class, verdict, and severity, verifier/backend error counters, privacy setup
+failure counters, and sink write error counters.
 
 Acceptance criteria:
 

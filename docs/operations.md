@@ -245,8 +245,9 @@ observability:
 
 Prometheus can then scrape `http://<host>:9108/metrics`. The endpoint exports
 queue depth and drop counters for multi-stream runs, detector/verifier latency
-histograms, candidate counters, verified-alert counters, verifier error
-counters, and sink write error counters.
+histograms, candidate counters, verified-alert counters labeled by stream,
+class, verdict, and severity, verifier error counters, privacy detector setup
+failure counters, and sink write error counters.
 
 ## GPU Smoke Tests
 

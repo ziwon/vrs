@@ -37,3 +37,12 @@ build/deepstream/vrs-deepstream-worker \
 
 The example pipeline is a template. Mount a real video, PGIE config, TensorRT
 engine, labels file, and tracker config before using it for validation.
+
+## YOLOE PGIE Status
+
+The image also installs `libnvdsinfer_custom_yoloe.so`, a custom parser for the
+YOLOE safety TensorRT config under `configs/deepstream`. This path is still in
+validation: the parser loads and receives YOLOE tensors, but Python YOLOE and
+DeepStream `nvinfer` parity has not been accepted. See
+`docs/benchmarks/deepstream-ds8-yoloe-validation-2026-06-30.md` before using it
+as a production detector.

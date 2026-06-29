@@ -79,3 +79,11 @@ uv run scripts/compare_detector_parity.py \
   --candidate-detections runs/deepstream/detections.jsonl \
   --out runs/parity/deepstream_parity.json
 ```
+
+The first DS 8 YOLOE validation is recorded in
+`docs/benchmarks/deepstream-ds8-yoloe-validation-2026-06-30.md`. The worker and
+custom parser load correctly, but YOLOE TensorRT parity is not accepted yet:
+the MIVIA Python baseline emits five detections while the DeepStream `nvinfer`
+path emits zero at production thresholds. Treat the checked-in YOLOE PGIE config
+as a validation target, not a production detector profile, until that parity gap
+is closed.

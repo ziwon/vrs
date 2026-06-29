@@ -1,0 +1,59 @@
+{{- if .Values.verifierWorker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vrs.fullname" . }}-verifier
+  labels:
+    {{- include "vrs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: verifier-worker
+spec:
+  replicas: {{ .Values.verifierWorker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "vrs.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: verifier-worker
+  template:
+    metadata:
+      labels:
+        {{- include "vrs.labels" . | nindent 8 }}
+        app.kubernetes.io/component: verifier-worker
+        vrs.ai/gpu-role: {{ .Values.verifierWorker.gpuRole | quote }}
+    spec:
+      containers:
+        - name: verifier-worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: {{ toJson .Values.verifierWorker.command }}
+          env:
+            - name: VRS_TRANSPORT
+              value: redis-streams
+            {{- include "vrs.objectStorageEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.verifierWorker.resources | nindent 12 }}
+          {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled }}
+          volumeMounts:
+            {{- if eq .Values.objectStorage.mode "local-pvc" }}
+            - name: data
+              mountPath: {{ .Values.objectStorage.mountPath | quote }}
+            {{- else if .Values.runtime.scratch.enabled }}
+            - name: scratch
+              mountPath: {{ .Values.objectStorage.mountPath | quote }}
+            {{- end }}
+          {{- end }}
+      {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled }}
+      volumes:
+        {{- if eq .Values.objectStorage.mode "local-pvc" }}
+        - name: data
+          {{- if .Values.objectStorage.pvc.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "vrs.fullname" . }}-evidence
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- else if .Values.runtime.scratch.enabled }}
+        - name: scratch
+          emptyDir: {}
+        {{- end }}
+      {{- end }}
+{{- end }}

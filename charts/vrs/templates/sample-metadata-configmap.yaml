@@ -1,0 +1,12 @@
+{{- if and .Values.deepstreamWorker.enabled .Values.sampleMetadata.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vrs.fullname" . }}-sample-metadata
+  labels:
+    {{- include "vrs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: deepstream-metadata-adapter
+data:
+  {{ .Values.sampleMetadata.filename }}: |
+{{ .Values.sampleMetadata.content | indent 4 }}
+{{- end }}

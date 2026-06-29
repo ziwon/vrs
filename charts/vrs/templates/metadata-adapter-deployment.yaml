@@ -1,0 +1,72 @@
+{{- if .Values.deepstreamWorker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vrs.fullname" . }}-metadata-adapter
+  labels:
+    {{- include "vrs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metadata-adapter
+spec:
+  replicas: {{ .Values.deepstreamWorker.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "vrs.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: metadata-adapter
+  template:
+    metadata:
+      labels:
+        {{- include "vrs.labels" . | nindent 8 }}
+        app.kubernetes.io/component: metadata-adapter
+        vrs.ai/gpu-role: {{ .Values.deepstreamWorker.gpuRole | quote }}
+    spec:
+      containers:
+        - name: metadata-adapter
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: {{ toJson .Values.deepstreamWorker.command }}
+          env:
+            - name: VRS_TRANSPORT
+              value: redis-streams
+            {{- include "vrs.objectStorageEnv" . | nindent 12 }}
+          {{- if and .Values.deepstreamWorker.resources (ne .Values.deepstreamWorker.gpuRole "none") }}
+          resources:
+            {{- toYaml .Values.deepstreamWorker.resources | nindent 12 }}
+          {{- end }}
+          {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled .Values.sampleMetadata.enabled }}
+          volumeMounts:
+            {{- if eq .Values.objectStorage.mode "local-pvc" }}
+            - name: data
+              mountPath: {{ .Values.objectStorage.mountPath | quote }}
+            {{- else if .Values.runtime.scratch.enabled }}
+            - name: scratch
+              mountPath: {{ .Values.objectStorage.mountPath | quote }}
+            {{- end }}
+            {{- if .Values.sampleMetadata.enabled }}
+            - name: sample-metadata
+              mountPath: /data/deepstream/metadata.jsonl
+              subPath: {{ .Values.sampleMetadata.filename }}
+              readOnly: true
+            {{- end }}
+          {{- end }}
+      {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled .Values.sampleMetadata.enabled }}
+      volumes:
+        {{- if eq .Values.objectStorage.mode "local-pvc" }}
+        - name: data
+          {{- if .Values.objectStorage.pvc.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "vrs.fullname" . }}-evidence
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- else if .Values.runtime.scratch.enabled }}
+        - name: scratch
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.sampleMetadata.enabled }}
+        - name: sample-metadata
+          configMap:
+            name: {{ include "vrs.fullname" . }}-sample-metadata
+        {{- end }}
+      {{- end }}
+{{- end }}

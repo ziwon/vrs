@@ -1,0 +1,60 @@
+{{- if .Values.api.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vrs.fullname" . }}-api
+  labels:
+    {{- include "vrs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "vrs.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "vrs.labels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+        vrs.ai/gpu-role: {{ .Values.api.gpuRole | quote }}
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: {{ toJson .Values.api.command }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.port }}
+          env:
+            - name: VRS_RUNS_DIR
+              value: {{ .Values.runtime.outputPath | quote }}
+            {{- include "vrs.objectStorageEnv" . | nindent 12 }}
+          {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled }}
+          volumeMounts:
+            {{- if eq .Values.objectStorage.mode "local-pvc" }}
+            - name: data
+              mountPath: {{ .Values.objectStorage.mountPath | quote }}
+            {{- else if .Values.runtime.scratch.enabled }}
+            - name: scratch
+              mountPath: {{ .Values.objectStorage.mountPath | quote }}
+            {{- end }}
+          {{- end }}
+      {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled }}
+      volumes:
+        {{- if eq .Values.objectStorage.mode "local-pvc" }}
+        - name: data
+          {{- if .Values.objectStorage.pvc.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "vrs.fullname" . }}-evidence
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- else if .Values.runtime.scratch.enabled }}
+        - name: scratch
+          emptyDir: {}
+        {{- end }}
+      {{- end }}
+{{- end }}

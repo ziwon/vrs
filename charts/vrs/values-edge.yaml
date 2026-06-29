@@ -1,0 +1,30 @@
+profile: single-node-edge
+
+deepstreamWorker:
+  enabled: true
+  replicas: 1
+  gpuRole: deepstream
+
+verifierWorker:
+  enabled: false
+  replicas: 1
+  gpuRole: verifier
+
+redis:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 8Gi
+
+objectStorage:
+  mode: local-pvc
+  pvc:
+    enabled: true
+    size: 100Gi
+  seaweedfs:
+    enabled: false
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false

@@ -1,0 +1,134 @@
+{{- if and (eq .Values.objectStorage.mode "local-pvc") .Values.objectStorage.pvc.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "vrs.fullname" . }}-evidence
+  labels:
+    {{- include "vrs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: object-storage
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.objectStorage.pvc.size }}
+{{- end }}
+{{- if and (eq .Values.objectStorage.mode "seaweedfs") .Values.objectStorage.seaweedfs.enabled }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "vrs.fullname" . }}-seaweedfs
+  labels:
+    {{- include "vrs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+type: Opaque
+stringData:
+  accessKey: {{ .Values.objectStorage.seaweedfs.accessKey | quote }}
+  secretKey: {{ .Values.objectStorage.seaweedfs.secretKey | quote }}
+  s3-config.json: |
+    {
+      "identities": [
+        {
+          "name": {{ .Values.objectStorage.seaweedfs.accessKey | quote }},
+          "credentials": [
+            {
+              "accessKey": {{ .Values.objectStorage.seaweedfs.accessKey | quote }},
+              "secretKey": {{ .Values.objectStorage.seaweedfs.secretKey | quote }}
+            }
+          ],
+          "actions": ["Admin", "Read", "Write"]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vrs.fullname" . }}-seaweedfs
+  labels:
+    {{- include "vrs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "vrs.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: seaweedfs
+  template:
+    metadata:
+      labels:
+        {{- include "vrs.labels" . | nindent 8 }}
+        app.kubernetes.io/component: seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          image: {{ .Values.objectStorage.seaweedfs.image | quote }}
+          args:
+            - server
+            - -dir=/data
+            - -s3
+            - -s3.port={{ .Values.objectStorage.seaweedfs.s3Port }}
+            - -s3.config=/etc/seaweedfs/s3-config.json
+            - -master.port={{ .Values.objectStorage.seaweedfs.masterPort }}
+            - -filer.port={{ .Values.objectStorage.seaweedfs.filerPort }}
+          ports:
+            - name: s3
+              containerPort: {{ .Values.objectStorage.seaweedfs.s3Port }}
+            - name: master
+              containerPort: {{ .Values.objectStorage.seaweedfs.masterPort }}
+            - name: filer
+              containerPort: {{ .Values.objectStorage.seaweedfs.filerPort }}
+          volumeMounts:
+            - name: seaweedfs-data
+              mountPath: /data
+            - name: seaweedfs-s3-config
+              mountPath: /etc/seaweedfs
+              readOnly: true
+      volumes:
+        - name: seaweedfs-data
+          persistentVolumeClaim:
+            claimName: {{ include "vrs.fullname" . }}-seaweedfs
+        - name: seaweedfs-s3-config
+          secret:
+            secretName: {{ include "vrs.fullname" . }}-seaweedfs
+            items:
+              - key: s3-config.json
+                path: s3-config.json
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "vrs.fullname" . }}-seaweedfs
+  labels:
+    {{- include "vrs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.objectStorage.seaweedfs.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vrs.fullname" . }}-seaweedfs
+  labels:
+    {{- include "vrs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seaweedfs
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "vrs.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: seaweedfs
+  ports:
+    - name: s3
+      port: {{ .Values.objectStorage.seaweedfs.s3Port }}
+      targetPort: s3
+    - name: master
+      port: {{ .Values.objectStorage.seaweedfs.masterPort }}
+      targetPort: master
+    - name: filer
+      port: {{ .Values.objectStorage.seaweedfs.filerPort }}
+      targetPort: filer
+{{- end }}

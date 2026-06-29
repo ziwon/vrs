@@ -1,0 +1,41 @@
+profile: production-cluster
+
+api:
+  replicas: 2
+
+runtime:
+  scratch:
+    enabled: false
+
+deepstreamWorker:
+  enabled: true
+  replicas: 2
+  gpuRole: deepstream
+
+verifierWorker:
+  enabled: false
+  replicas: 2
+  gpuRole: verifier
+
+redis:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 20Gi
+
+objectStorage:
+  mode: seaweedfs
+  pvc:
+    enabled: false
+  seaweedfs:
+    enabled: true
+    bucket: vrs-evidence
+    size: 500Gi
+
+sampleMetadata:
+  enabled: false
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: true

@@ -1,0 +1,102 @@
+profile: dev
+
+image:
+  repository: vrs
+  tag: latest
+  pullPolicy: IfNotPresent
+
+api:
+  enabled: true
+  replicas: 1
+  port: 8000
+  command: ["uvicorn", "vrs.web.api:app", "--host", "0.0.0.0", "--port", "8000"]
+  gpuRole: none
+
+runtime:
+  configPath: /etc/vrs/config.yaml
+  policyPath: /etc/vrs/policy.yaml
+  outputPath: /data/runs
+  scratch:
+    enabled: true
+
+deepstreamWorker:
+  enabled: true
+  replicas: 1
+  command:
+    - python
+    - -m
+    - vrs.deepstream.worker
+    - --input
+    - /data/deepstream/metadata.jsonl
+    - --out
+    - /data/runs/deepstream_detections.jsonl
+  gpuRole: deepstream
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+
+verifierWorker:
+  enabled: false
+  replicas: 1
+  command: ["python", "-m", "vrs.verifier.worker"]
+  gpuRole: verifier
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  port: 6379
+  persistence:
+    enabled: true
+    size: 8Gi
+    mountPath: /data
+
+objectStorage:
+  mode: local-pvc # local-pvc | seaweedfs | external
+  mountPath: /data
+  pvc:
+    enabled: true
+    size: 50Gi
+  seaweedfs:
+    enabled: false
+    image: chrislusf/seaweedfs:3.80
+    bucket: vrs-evidence
+    region: us-east-1
+    prefix: ""
+    accessKey: vrs
+    secretKey: vrs-evidence-secret
+    s3Port: 8333
+    masterPort: 9333
+    filerPort: 8888
+    size: 100Gi
+  external:
+    endpoint: ""
+    bucket: ""
+    region: us-east-1
+    prefix: ""
+    forcePathStyle: "true"
+    existingSecret: ""
+    accessKeySecretKey: accessKey
+    secretKeySecretKey: secretKey
+
+sampleMetadata:
+  enabled: true
+  filename: metadata.jsonl
+  content: |
+    {"stream_id":"kind-cam-01","clip_id":"sample","frame_index":1,"pts_s":0.25,"class_name":"fire","confidence":0.91,"bbox_xyxy":[10,20,80,120],"detector_id":"sample-deepstream-export"}
+
+metrics:
+  enabled: true
+  port: 9100
+  serviceMonitor:
+    enabled: false
+
+streamAssignment:
+  mode: static
+  streams: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

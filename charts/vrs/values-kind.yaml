@@ -1,0 +1,31 @@
+profile: kind-smoke
+
+deepstreamWorker:
+  enabled: true
+  replicas: 1
+  gpuRole: none
+  resources:
+    limits: {}
+
+verifierWorker:
+  enabled: false
+  resources: {}
+
+redis:
+  enabled: true
+  persistence:
+    enabled: false
+
+objectStorage:
+  mode: local-pvc
+  pvc:
+    enabled: true
+    size: 1Gi
+
+sampleMetadata:
+  enabled: true
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false

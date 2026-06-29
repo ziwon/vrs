@@ -178,9 +178,7 @@ class S3CompatibleObjectStore:
                 "Install vrs with the storage dependency or use LocalObjectStore."
             ) from exc
 
-        s3_config = Config(
-            s3={"addressing_style": "path" if config.force_path_style else "auto"}
-        )
+        s3_config = Config(s3={"addressing_style": "path" if config.force_path_style else "auto"})
         return boto3.client(
             "s3",
             endpoint_url=config.endpoint_url,

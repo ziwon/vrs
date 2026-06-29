@@ -89,12 +89,9 @@ def test_helm_template_renders_storage_mounts_and_sample_metadata() -> None:
     assert adapter_container["resources"]["limits"]["nvidia.com/gpu"] == 1
     adapter_mounts = adapter_container["volumeMounts"]
     assert any(mount["mountPath"] == "/data" for mount in adapter_mounts)
+    assert any(mount["mountPath"] == "/data/deepstream/metadata.jsonl" for mount in adapter_mounts)
     assert any(
-        mount["mountPath"] == "/data/deepstream/metadata.jsonl" for mount in adapter_mounts
-    )
-    assert any(
-        vol["name"] == "sample-metadata"
-        for vol in adapter["spec"]["template"]["spec"]["volumes"]
+        vol["name"] == "sample-metadata" for vol in adapter["spec"]["template"]["spec"]["volumes"]
     )
     assert _container(redis, "redis")["volumeMounts"][0]["mountPath"] == "/data"
     assert any(
@@ -131,8 +128,7 @@ def test_helm_template_prod_renders_seaweedfs_storage() -> None:
         for doc in docs
     )
     assert any(
-        doc["kind"] == "Secret" and doc["metadata"]["name"] == "test-vrs-seaweedfs"
-        for doc in docs
+        doc["kind"] == "Secret" and doc["metadata"]["name"] == "test-vrs-seaweedfs" for doc in docs
     )
     secret = next(
         doc
@@ -159,7 +155,9 @@ def test_helm_template_prod_renders_seaweedfs_storage() -> None:
         doc["kind"] == "ConfigMap" and doc["metadata"]["name"] == "test-vrs-sample-metadata"
         for doc in docs
     )
-    assert any(doc["kind"] == "ServiceMonitor" and doc["metadata"]["name"] == "test-vrs" for doc in docs)
+    assert any(
+        doc["kind"] == "ServiceMonitor" and doc["metadata"]["name"] == "test-vrs" for doc in docs
+    )
 
 
 def test_helm_template_kind_renders_without_gpu_request() -> None:

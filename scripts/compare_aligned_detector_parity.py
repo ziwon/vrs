@@ -46,7 +46,10 @@ def main() -> None:
     args = ap.parse_args()
 
     policy = load_watch_policy(args.policy)
-    prompt_to_event = {prompt: policy.event_for_prompt_index(i) for i, prompt in enumerate(policy.yoloe_vocabulary())}
+    prompt_to_event = {
+        prompt: policy.event_for_prompt_index(i)
+        for i, prompt in enumerate(policy.yoloe_vocabulary())
+    }
 
     python_records = load_records(args.python_detections)
     candidate_records = [

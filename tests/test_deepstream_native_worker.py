@@ -19,6 +19,8 @@ def test_native_deepstream_worker_reads_nvds_metadata_and_emits_detection_contra
     assert "detection.v1" in source
     assert "source_runtime" in source
     assert "deepstream" in source
+    assert "--bbox-offset-y" in source
+    assert "bbox_scale_x" in source
     assert "candidate_alert.v1" not in source
     assert "verified_alert.v1" not in source
 

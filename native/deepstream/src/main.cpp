@@ -35,6 +35,10 @@ struct Options {
   std::string probe_pad = "sink";
   std::string labels_path;
   bool append = false;
+  double bbox_scale_x = 1.0;
+  double bbox_scale_y = 1.0;
+  double bbox_offset_x = 0.0;
+  double bbox_offset_y = 0.0;
 };
 
 struct Context {
@@ -53,13 +57,23 @@ void print_usage(const char *argv0) {
       << "  --probe-element NAME    named GStreamer element to probe (default: sink)\n"
       << "  --probe-pad NAME        pad name on probe element (default: sink)\n"
       << "  --labels FILE           newline-delimited class labels fallback\n"
+      << "  --bbox-scale-x VALUE    scale object bbox x coordinates before writing\n"
+      << "  --bbox-scale-y VALUE    scale object bbox y coordinates before writing\n"
+      << "  --bbox-offset-x VALUE   add to object bbox x coordinates before scaling\n"
+      << "  --bbox-offset-y VALUE   add to object bbox y coordinates before scaling\n"
       << "  --append                append to output JSONL instead of truncating\n"
       << "  --print-example-pipeline\n";
 }
 
 std::string example_pipeline() {
+  // The muxer is square and matches the detector input (640x640) with
+  // enable-padding=1 so any source aspect ratio is letterboxed once, preserving
+  // geometry. A non-square muxer (e.g. 1280x720) stretches non-16:9 sources and
+  // breaks detector parity with the Ultralytics letterbox path. See
+  // docs/benchmarks/deepstream-ds8-yoloe-validation-2026-06-30.md.
   return "filesrc location=/data/vrs/sample.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! "
-         "m.sink_0 nvstreammux name=m batch-size=1 width=1280 height=720 live-source=0 ! "
+         "m.sink_0 nvstreammux name=m batch-size=1 width=640 height=640 enable-padding=1 "
+         "live-source=0 ! "
          "nvinfer config-file-path=/etc/vrs/deepstream/pgie.txt ! "
          "nvtracker ll-lib-file=/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so ! "
          "fakesink name=sink sync=false";
@@ -91,6 +105,14 @@ Options parse_args(int argc, char **argv) {
       options.probe_pad = require_value(arg);
     } else if (arg == "--labels") {
       options.labels_path = require_value(arg);
+    } else if (arg == "--bbox-scale-x") {
+      options.bbox_scale_x = std::stod(require_value(arg));
+    } else if (arg == "--bbox-scale-y") {
+      options.bbox_scale_y = std::stod(require_value(arg));
+    } else if (arg == "--bbox-offset-x") {
+      options.bbox_offset_x = std::stod(require_value(arg));
+    } else if (arg == "--bbox-offset-y") {
+      options.bbox_offset_y = std::stod(require_value(arg));
     } else if (arg == "--append") {
       options.append = true;
     } else if (arg == "--print-example-pipeline") {
@@ -211,10 +233,16 @@ std::string class_name_for(const NvDsObjectMeta *obj_meta, const Context *ctx) {
 void write_detection(const NvDsFrameMeta *frame_meta, const NvDsObjectMeta *obj_meta, Context *ctx) {
   const double pts_s = pts_seconds(frame_meta);
   const auto &rect = obj_meta->rect_params;
-  const double left = static_cast<double>(rect.left);
-  const double top = static_cast<double>(rect.top);
-  const double right = left + static_cast<double>(rect.width);
-  const double bottom = top + static_cast<double>(rect.height);
+  const double left =
+      (static_cast<double>(rect.left) + ctx->options.bbox_offset_x) * ctx->options.bbox_scale_x;
+  const double top =
+      (static_cast<double>(rect.top) + ctx->options.bbox_offset_y) * ctx->options.bbox_scale_y;
+  const double right = (static_cast<double>(rect.left) + static_cast<double>(rect.width) +
+                       ctx->options.bbox_offset_x) *
+                      ctx->options.bbox_scale_x;
+  const double bottom = (static_cast<double>(rect.top) + static_cast<double>(rect.height) +
+                        ctx->options.bbox_offset_y) *
+                       ctx->options.bbox_scale_y;
   const std::string class_name = class_name_for(obj_meta, ctx);
   const std::string raw_label = obj_meta->obj_label[0] != '\0' ? obj_meta->obj_label : class_name;
   const std::string track_id =

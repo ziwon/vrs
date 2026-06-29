@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrs.local/contracts/verified_alert.v1.schema.json",
+  "title": "verified_alert.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "alert_id",
+    "event_id",
+    "candidate_alert_id",
+    "verification_id",
+    "verification_attempt",
+    "verdict_version",
+    "idempotency_key",
+    "candidate",
+    "true_alert",
+    "confidence",
+    "false_negative_class",
+    "rationale",
+    "bbox_xywh_norm",
+    "trajectory_xy_norm",
+    "source_runtime",
+    "created_at",
+    "evidence_refs"
+  ],
+  "properties": {
+    "schema_version": { "const": "verified_alert.v1" },
+    "record_type": { "const": "verified_alert" },
+    "alert_id": { "type": "string", "minLength": 1 },
+    "event_id": { "type": "string", "minLength": 1 },
+    "candidate_alert_id": { "type": "string", "minLength": 1 },
+    "verification_id": { "type": "string", "minLength": 1 },
+    "verification_attempt": { "type": "integer", "minimum": 1 },
+    "verdict_version": { "type": "string", "minLength": 1 },
+    "idempotency_key": { "type": "string", "minLength": 1 },
+    "stream_id": { "type": "string", "minLength": 1 },
+    "source_id": { "type": "string", "minLength": 1 },
+    "policy_id": { "type": "string", "minLength": 1 },
+    "candidate": { "$ref": "candidate_alert.v1.schema.json" },
+    "true_alert": { "type": "boolean" },
+    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "false_negative_class": { "type": ["string", "null"] },
+    "rationale": { "type": "string" },
+    "bbox_xywh_norm": {
+      "type": ["array", "null"],
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "trajectory_xy_norm": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [{ "type": "number" }, { "type": "number" }],
+        "items": false,
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "verifier_raw": { "type": "string" },
+    "verifier_json_valid": { "type": ["boolean", "null"] },
+    "thumbnail_path": { "type": ["string", "null"] },
+    "incident_id": { "type": ["string", "null"] },
+    "incident_stream_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "incident_primary_stream_id": { "type": ["string", "null"] },
+    "verifier_id": { "type": ["string", "null"] },
+    "model_id": { "type": ["string", "null"] },
+    "model_version": { "type": ["string", "null"] },
+    "prompt_id": { "type": ["string", "null"] },
+    "prompt_version": { "type": ["string", "null"] },
+    "verifier_metadata": { "type": "object" },
+    "source_runtime": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "evidence_ref.v1.schema.json" }
+    }
+  }
+}

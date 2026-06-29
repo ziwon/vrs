@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrs.local/contracts/object_manifest.v1.schema.json",
+  "title": "object_manifest.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "manifest_id",
+    "created_at",
+    "evidence_refs",
+    "records"
+  ],
+  "properties": {
+    "schema_version": { "const": "object_manifest.v1" },
+    "record_type": { "const": "object_manifest" },
+    "manifest_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "stream_id": { "type": "string", "minLength": 1 },
+    "event_id": { "type": "string", "minLength": 1 },
+    "alert_id": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "evidence_ref.v1.schema.json" }
+    },
+    "records": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "record_refs": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "metadata": { "type": "object" }
+  }
+}

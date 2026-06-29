@@ -333,6 +333,7 @@ class SinkWorker(threading.Thread):
         thumbnails_dir: str = "thumbnails",
         thumbnail_ext: str = "jpg",
         thumbnail_quality: int = 90,
+        write_manifest: bool = True,
         audit_cfg: dict | None = None,
         privacy_cfg: dict | None = None,
         metrics: Any | None = None,
@@ -349,6 +350,7 @@ class SinkWorker(threading.Thread):
         self.thumbnails_dir = thumbnails_dir
         self.thumbnail_ext = thumbnail_ext
         self.thumbnail_quality = int(thumbnail_quality)
+        self.write_manifest = bool(write_manifest)
         self.audit_cfg = audit_cfg
         self.q = sink_q
         self.stop_event = stop_event
@@ -359,10 +361,16 @@ class SinkWorker(threading.Thread):
         # Import each sink directly (not via the package __init__) so an
         # annotator-less run doesn't require cv2.
         from ..sinks.jsonl_sink import JsonlSink
+        from ..sinks.manifest_sink import ObjectManifestSink
 
         jsonl_path = self.out_dir / self.jsonl_name
         jsonl = (
             JsonlSink(jsonl_path, audit=self.audit_cfg) if self.audit_cfg else JsonlSink(jsonl_path)
+        )
+        manifest_sink = (
+            ObjectManifestSink(self.out_dir, stream_id=self.stream_id)
+            if self.write_manifest
+            else None
         )
 
         annotator = None
@@ -431,6 +439,8 @@ class SinkWorker(threading.Thread):
                             if thumbnail_sink is not None:
                                 thumbnail_sink.write(msg.verified)
                             jsonl.write(msg.verified)
+                            if manifest_sink is not None:
+                                manifest_sink.write(msg.verified)
                             if annotator is not None:
                                 annotator.note_alert(msg.verified)
                     except Exception as e:

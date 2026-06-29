@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrs.local/contracts/stream.v1.schema.json",
+  "title": "stream.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "stream_id", "source_uri"],
+  "properties": {
+    "schema_version": { "const": "stream.v1" },
+    "record_type": { "const": "stream" },
+    "stream_id": { "type": "string", "minLength": 1 },
+    "source_uri": { "type": "string", "minLength": 1 },
+    "name": { "type": "string" },
+    "roi_polygon": { "type": "array" },
+    "metadata": { "type": "object" }
+  }
+}

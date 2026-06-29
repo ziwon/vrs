@@ -204,6 +204,11 @@ class VRSPipeline:
         previous_sighup = self._install_sighup_handler()
 
         jsonl_path = self.out_dir / sink_cfg.get("jsonl", "alerts.jsonl")
+        manifest_sink = None
+        if bool(sink_cfg.get("write_manifest", True)):
+            from .sinks.manifest_sink import ObjectManifestSink
+
+            manifest_sink = ObjectManifestSink(self.out_dir, stream_id="default")
         privacy_cfg = self.cfg.get("privacy") or {}
 
         def privacy_failure_cb(backend: str, exc: Exception) -> None:
@@ -299,6 +304,12 @@ class VRSPipeline:
                                 self.metrics.inc_sink_write_errors("default")
                                 logger.warning("thumbnail write failed: %s", e)
                         jsonl.write(verified)
+                        if manifest_sink is not None:
+                            try:
+                                manifest_sink.write(verified)
+                            except Exception as e:
+                                self.metrics.inc_sink_write_errors("default")
+                                logger.warning("manifest write failed: %s", e)
                         if annotator is not None:
                             annotator.note_alert(verified)
                         if self.calibrator is not None:

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrs.local/contracts/detection.v1.schema.json",
+  "title": "detection.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "detection_id",
+    "idempotency_key",
+    "class_name",
+    "score",
+    "bbox_xyxy",
+    "source_runtime",
+    "observed_at",
+    "evidence_refs"
+  ],
+  "properties": {
+    "schema_version": { "const": "detection.v1" },
+    "record_type": { "const": "detection" },
+    "detection_id": { "type": "string", "minLength": 1 },
+    "idempotency_key": { "type": "string", "minLength": 1 },
+    "stream_id": { "type": "string", "minLength": 1 },
+    "source_id": { "type": "string", "minLength": 1 },
+    "clip_id": { "type": "string", "minLength": 1 },
+    "frame_index": { "type": "integer" },
+    "pts_s": { "type": "number" },
+    "class_name": { "type": "string", "minLength": 1 },
+    "score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "bbox_xyxy": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "raw_label": { "type": "string" },
+    "track_id": { "type": ["integer", "null"] },
+    "detector_id": { "type": "string", "minLength": 1 },
+    "source_runtime": { "type": "string", "minLength": 1 },
+    "observed_at": { "type": "string", "minLength": 1 },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "evidence_ref.v1.schema.json" }
+    }
+  }
+}

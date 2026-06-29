@@ -10,6 +10,8 @@ from typing import Any
 
 import numpy as np
 
+from . import contracts
+
 
 @dataclass
 class Frame:
@@ -30,6 +32,9 @@ class Detection:
     raw_label: str = ""  # the YOLOE prompt that fired (for debugging)
     track_id: int | None = None  # assigned by the tracker; None if untracked
 
+    def to_contract(self, **kwargs: Any) -> dict[str, Any]:
+        return contracts.detection_v1(self, **kwargs)
+
 
 @dataclass
 class CandidateAlert:
@@ -44,6 +49,9 @@ class CandidateAlert:
     keyframes: list[np.ndarray] = field(default_factory=list)  # BGR uint8
     keyframe_pts: list[float] = field(default_factory=list)
     track_id: int | None = None  # tracker id of the peak detection, or None if untracked
+
+    def to_contract(self, **kwargs: Any) -> dict[str, Any]:
+        return contracts.candidate_alert_v1(self, **kwargs)
 
     def summary(self) -> dict[str, Any]:
         return {
@@ -98,6 +106,9 @@ class VerifiedAlert:
     incident_id: str | None = None
     incident_stream_ids: list[str] = field(default_factory=list)
     incident_primary_stream_id: str | None = None
+
+    def to_contract(self, **kwargs: Any) -> dict[str, Any]:
+        return contracts.verified_alert_v1(self, **kwargs)
 
     def to_json(self) -> dict[str, Any]:
         out = self.candidate.summary()

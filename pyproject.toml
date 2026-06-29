@@ -19,6 +19,7 @@ dependencies = [
     "safetensors>=0.4",
     "qwen-vl-utils>=0.0.10",
     "av>=12.0",
+    "boto3>=1.34",
     "uvicorn[standard]>=0.29",
 ]
 

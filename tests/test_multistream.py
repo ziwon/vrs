@@ -6,6 +6,7 @@ stubbed YOLOE / Cosmos so nothing GPU-bound is required.
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 
@@ -508,6 +509,13 @@ def test_sink_worker_writes_jsonl_and_handles_missing_frames(tmp_path):
     assert len(jsonl) == 1
     assert '"fire"' in jsonl[0]
     assert '"true_alert": true' in jsonl[0]
+    index_row = json.loads((tmp_path / "object_manifest.index.jsonl").read_text(encoding="utf-8"))
+    manifest_path = tmp_path / index_row["manifest_ref"]["metadata"]["relative_path"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == "object_manifest.v1"
+    assert manifest["stream_id"] == "s1"
+    assert manifest["records"][0]["schema_version"] == "verified_alert.v1"
+    assert manifest["records"][0]["stream_id"] == "s1"
 
 
 def test_queue_stats_report_backpressure():

@@ -86,6 +86,9 @@ sink:
   thumbnails_dir: thumbnails
   thumbnail_ext: jpg
   thumbnail_quality: 90
+  # Canonical contract snapshot for object-storage/event-bus integration.
+  # alerts.jsonl remains the audit/export fallback.
+  write_manifest: true
   annotated_mp4: annotated.mp4
   write_annotated: false
 

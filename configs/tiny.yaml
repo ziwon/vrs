@@ -39,5 +39,6 @@ sink:
   thumbnails_dir: thumbnails
   thumbnail_ext: jpg
   thumbnail_quality: 90
+  write_manifest: true
   annotated_mp4: annotated.mp4
   write_annotated: false

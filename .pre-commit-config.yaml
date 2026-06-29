@@ -15,6 +15,7 @@ repos:
         args: ["--maxkb=1024"]
         exclude: ^uv\.lock$
       - id: check-yaml
+        exclude: ^charts/vrs/templates/.*\.ya?ml$
       - id: check-toml
       - id: check-json
       - id: mixed-line-ending

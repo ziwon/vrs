@@ -274,9 +274,15 @@ nvmultiurisrcbin
   -> nvinfer / nvinferserver
   -> nvtracker
   -> nvdsanalytics optional
-  -> custom metadata exporter
+  -> custom metadata exporter, eventually gst-vrsmeta
   -> event bus / evidence store
 ```
+
+The concrete plugin migration plan is tracked in
+`docs/architecture/deepstream-plugin-runtime.md`. The current native worker is a
+bootstrap implementation that reads DeepStream metadata through an application
+pad probe. The production boundary should become a C++ `GstBaseTransform`
+plugin that emits `detection.v1` without copying frame pixels.
 
 ### 5.1 Why DeepStream
 

@@ -5,6 +5,11 @@ It is the first real DeepStream/GStreamer data-plane implementation: it runs a
 pipeline, attaches a pad probe, reads DeepStream object metadata, and emits
 canonical `detection.v1` JSONL.
 
+The next production step is to move the metadata export logic from an
+application pad probe into a reusable GStreamer element. See
+`docs/architecture/deepstream-plugin-runtime.md` for the `gst-vrsmeta`
+milestones and zero-copy boundary.
+
 The existing Python `vrs.deepstream.worker` remains useful for kind and contract
 smoke tests because it does not require NVIDIA runtime libraries.
 

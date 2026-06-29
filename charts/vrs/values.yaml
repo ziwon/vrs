@@ -22,6 +22,10 @@ runtime:
 deepstreamWorker:
   enabled: true
   replicas: 1
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: ""
   command:
     - python
     - -m
@@ -30,6 +34,7 @@ deepstreamWorker:
     - /data/deepstream/metadata.jsonl
     - --out
     - /data/runs/deepstream_detections.jsonl
+  args: []
   gpuRole: deepstream
   resources:
     limits:

@@ -44,6 +44,9 @@ def test_helm_profiles_keep_gpu_roles_explicit() -> None:
     assert edge["verifierWorker"]["gpuRole"] == "verifier"
     assert edge["verifierWorker"]["enabled"] is False
     assert prod["objectStorage"]["mode"] == "seaweedfs"
+    assert prod["deepstreamWorker"]["image"]["repository"] == "vrs-deepstream"
+    assert prod["deepstreamWorker"]["command"] == ["/opt/vrs/bin/vrs-deepstream-worker"]
+    assert "--pipeline" in prod["deepstreamWorker"]["args"]
     assert prod["metrics"]["serviceMonitor"]["enabled"] is True
     assert prod["sampleMetadata"]["enabled"] is False
     assert kind["deepstreamWorker"]["gpuRole"] == "none"
@@ -140,6 +143,9 @@ def test_helm_template_prod_renders_seaweedfs_storage() -> None:
     assert "secretKey" in secret["stringData"]
     adapter_env = _env_by_name(adapter_container)
     api_env = _env_by_name(api_container)
+    assert adapter_container["image"] == "vrs-deepstream:ds8"
+    assert adapter_container["command"] == ["/opt/vrs/bin/vrs-deepstream-worker"]
+    assert "--pipeline" in adapter_container["args"]
     assert adapter_env["VRS_OBJECT_STORE"]["value"] == "seaweedfs"
     assert adapter_env["VRS_OBJECT_STORE_ENDPOINT"]["value"] == "http://test-vrs-seaweedfs:8333"
     assert adapter_env["VRS_OBJECT_STORE_BUCKET"]["value"] == "vrs-evidence"

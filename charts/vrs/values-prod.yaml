@@ -10,6 +10,25 @@ runtime:
 deepstreamWorker:
   enabled: true
   replicas: 2
+  image:
+    repository: vrs-deepstream
+    tag: ds8
+    pullPolicy: IfNotPresent
+  command:
+    - /opt/vrs/bin/vrs-deepstream-worker
+  args:
+    - --pipeline
+    - filesrc location=/data/vrs/input.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! m.sink_0 nvstreammux name=m batch-size=1 width=1280 height=720 live-source=0 ! nvinfer config-file-path=/etc/vrs/deepstream/pgie.txt ! nvtracker ll-lib-file=/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so ! fakesink name=sink sync=false
+    - --probe-element
+    - sink
+    - --probe-pad
+    - sink
+    - --stream-id
+    - production-stream
+    - --detector-id
+    - ds8-nvinfer
+    - --out
+    - /tmp/vrs/deepstream_detections.jsonl
   gpuRole: deepstream
 
 verifierWorker:

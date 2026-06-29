@@ -22,9 +22,12 @@ spec:
     spec:
       containers:
         - name: metadata-adapter
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ default .Values.image.repository .Values.deepstreamWorker.image.repository }}:{{ default .Values.image.tag .Values.deepstreamWorker.image.tag }}"
+          imagePullPolicy: {{ default .Values.image.pullPolicy .Values.deepstreamWorker.image.pullPolicy }}
           command: {{ toJson .Values.deepstreamWorker.command }}
+          {{- if .Values.deepstreamWorker.args }}
+          args: {{ toJson .Values.deepstreamWorker.args }}
+          {{- end }}
           env:
             - name: VRS_TRANSPORT
               value: redis-streams

@@ -1,0 +1,34 @@
+ARG DEEPSTREAM_IMAGE=nvcr.io/nvidia/deepstream:8.0-triton-multiarch
+FROM ${DEEPSTREAM_IMAGE} AS builder
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,graphics
+
+WORKDIR /workspace/vrs
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      build-essential \
+      cmake \
+      pkg-config \
+      libgstreamer1.0-dev \
+      libgstreamer-plugins-base1.0-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY native/deepstream ./native/deepstream
+
+RUN cmake -S native/deepstream -B build/deepstream \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DDEEPSTREAM_ROOT=/opt/nvidia/deepstream/deepstream \
+    && cmake --build build/deepstream -j"$(nproc)" \
+    && cmake --install build/deepstream --prefix /opt/vrs
+
+FROM ${DEEPSTREAM_IMAGE} AS runtime
+
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,graphics \
+    LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:${LD_LIBRARY_PATH}
+
+COPY --from=builder /opt/vrs/bin/vrs-deepstream-worker /opt/vrs/bin/vrs-deepstream-worker
+COPY native/deepstream/configs /opt/vrs/share/deepstream/configs
+
+ENTRYPOINT ["/opt/vrs/bin/vrs-deepstream-worker"]

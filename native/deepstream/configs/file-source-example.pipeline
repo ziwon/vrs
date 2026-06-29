@@ -1,0 +1,1 @@
+filesrc location=/data/vrs/sample.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! m.sink_0 nvstreammux name=m batch-size=1 width=1280 height=720 live-source=0 ! nvinfer config-file-path=/etc/vrs/deepstream/pgie.txt ! nvtracker ll-lib-file=/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so ! fakesink name=sink sync=false

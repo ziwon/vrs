@@ -25,6 +25,10 @@ NVIDIA's 2026 model card lists a 24 GB minimum for the reference inference path.
 - **Fast path:** open-vocabulary detection with **YOLOE-L** (~6 ms / frame on a T4).
   Add or change event classes by editing one YAML line — no prompt-bank curation,
   no per-class fine-tuning.
+- **DeepStream path:** a native **DeepStream 8 C++ worker** now runs real
+  GStreamer/DeepStream pipelines and emits `detection.v1` from `NvDsObjectMeta`.
+  The YOLOE `nvinfer` parser/config are implemented, but detector parity is
+  still under validation and is not production-approved yet.
 - **Slow path:** a pluggable VLM verifier. The current baseline is
   **NVIDIA Cosmos-Reason2-2B**, but 2026 research and internal benchmarks show
   it should not be treated as the final verifier. Qwen3.5/Qwen3.6-class VLMs
@@ -128,6 +132,7 @@ kept swappable:
 | Stage | Model | Why |
 |-------|-------|-----|
 | Detect | **Ultralytics YOLOE-L** (`yoloe-11l-seg.pt` by default) | Open-vocabulary text prompts, returns bounding boxes, no per-site retraining loop |
+| DeepStream detect | **DeepStream 8 + TensorRT YOLOE-S validation path** | Native C++ worker and custom YOLOE parser are implemented for zero-copy production work, but class-score parity still needs raw-tensor validation before promotion. |
 | Reason | **nvidia/Cosmos-Reason2-2B** baseline | Physical-reasoning specialization, FPS=4 video path, bbox/point/trajectory-oriented prompting. Treat as a baseline, not the expected winner. |
 
 Sources:
@@ -147,6 +152,14 @@ Sources:
 The detector runs on every sampled frame, while the verifier only runs after
 event-state promotes a stable candidate. This keeps the local GPU budget focused
 on real alert decisions instead of spending VLM time on quiet frames.
+
+![Diagram of the charts/vrs Kubernetes production architecture: DeepStream workers, Redis transport, API replicas, optional verifier workers, SeaweedFS object storage, and metrics.](docs/assets/vrs-helm-architecture.svg)
+
+The Helm chart under `charts/vrs` separates the production data plane from the
+control/API plane: DeepStream workers own GPU video ingest and metadata export,
+Redis carries work between components, API replicas serve artifacts and runtime
+state, SeaweedFS backs evidence/object storage in the production profile, and
+metrics are exposed through a Service plus optional ServiceMonitor.
 
 ## Policy flow
 
@@ -217,6 +230,10 @@ written to JSONL, thumbnails, and the local console.
   enterprise storage.
 - [Runtime validation matrix](docs/runtime-matrix.md) — validated,
   unvalidated, and planned GPU/runtime profiles.
+- [DeepStream worker](docs/deepstream-worker.md) — DS 8 C++ worker build/run
+  notes and contract boundary.
+- [DeepStream YOLOE validation](docs/benchmarks/deepstream-ds8-yoloe-validation-2026-06-30.md)
+  — current parser/preprocessing/parity evidence and remaining blockers.
 
 ## GPU Setup
 
@@ -268,6 +285,32 @@ uv run scripts/run_multistream.py \
   --out     runs/live
 ```
 
+Native DeepStream 8 worker:
+
+```bash
+docker build -t vrs-deepstream:ds8 -f Dockerfile.deepstream .
+
+docker run --rm --gpus all \
+  -v "$PWD/runs:/runs" \
+  -v /data/vrs:/data/vrs:ro \
+  -v "$PWD/configs/deepstream:/etc/vrs/deepstream:ro" \
+  -v "$PWD/runs/engines:/models:ro" \
+  vrs-deepstream:ds8 \
+  --pipeline "$(cat configs/deepstream/ds8-file-example.pipeline)" \
+  --probe-element sink \
+  --probe-pad sink \
+  --stream-id file-demo \
+  --detector-id ds8-yoloe-safety \
+  --labels /etc/vrs/deepstream/yoloe-safety-labels.txt \
+  --out /runs/deepstream/detections.jsonl
+```
+
+When using a padded square muxer such as `width=640 height=640
+enable-padding=1`, pass the matching `--bbox-offset-*` and `--bbox-scale-*`
+options so `detection.v1` boxes are written in source-frame coordinates. See the
+DeepStream validation note before treating YOLOE `nvinfer` output as production
+detector output.
+
 Outputs:
 
 - `runs/<name>/alerts.jsonl` — one JSON per verified alert (verdict, confidence, bbox, trajectory, rationale, thumbnail path)
@@ -287,6 +330,7 @@ Outputs:
 |---------|----------|----------|-------|
 | `default.yaml` | YOLOE-L FP16 | Cosmos-Reason2-2B BF16 | Accuracy-oriented local profile; validate memory on target GPU. NVIDIA's reference model card lists 24 GB minimum. |
 | `tiny.yaml` | YOLOE-S FP16 | Cosmos-Reason2-2B W4A16 | Intended for 8-16 GB cards / Jetson-class deployments after quantized-runtime validation. |
+| DeepStream 8 native | TensorRT YOLOE-S via `nvinfer` | External/served verifier target | Worker/parser are implemented and GPU-smoke-tested; 120.mp4 smoke parity is strong, but fire/smoke class-score divergence remains a production blocker. |
 
 ## Layout
 
@@ -297,8 +341,9 @@ Outputs:
 ├── docs/                   Current docs, operations notes, benchmarks, archive
 ├── configs/                Runtime configs, stream manifests, watch policies
 ├── scripts/                CLI runners, fixtures, benchmarks, eval helpers
+├── native/deepstream/      DeepStream 8 C++ worker and custom YOLOE parser
 ├── docker-compose.yaml     RTSP, backend, frontend, and inference workflow
-├── Dockerfile.*            Backend, frontend, and GPU inference images
+├── Dockerfile.*            Backend, frontend, GPU inference, and DeepStream images
 └── vrs/
     ├── web/                FastAPI artifact browser for dashboard data
     ├── ingest/             RTSP/mp4 frame iterator

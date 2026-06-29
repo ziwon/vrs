@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-labelledby="title desc">
+  <title id="title">VRS Helm production architecture</title>
+  <desc id="desc">Kubernetes architecture diagram for charts/vrs showing API, DeepStream workers, optional verifier workers, Redis transport, SeaweedFS object storage, metrics, and GPU node roles.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.55" stop-color="#172033"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="gpu" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#84cc16"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <linearGradient id="control" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="storeGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#fb7185"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#020617" flood-opacity="0.42"/>
+    </filter>
+    <marker id="arrowGpu" markerWidth="6.5" markerHeight="6.5" refX="4.6" refY="2" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,4 L5.2,2 z" fill="#84cc16"/>
+    </marker>
+    <marker id="arrowControl" markerWidth="6.5" markerHeight="6.5" refX="4.6" refY="2" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,4 L5.2,2 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrowStore" markerWidth="6.5" markerHeight="6.5" refX="4.6" refY="2" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,4 L5.2,2 z" fill="#f59e0b"/>
+    </marker>
+    <style>
+      text{font-family:sans-serif;fill:#f8fafc;font-style:normal}
+      .label{fill:#f8fafc;font-style:normal}
+      .muted{fill:#94a3b8;font-style:normal}
+      .tiny{font-size:13px}
+      .small{font-size:15px}
+      .medium{font-size:20px;font-weight:700}
+      .large{font-size:30px;font-weight:800}
+      .panel{fill:#1f2937;stroke:#334155;stroke-width:1.5;filter:url(#shadow)}
+      .node{fill:#243044;stroke:#475569;stroke-width:1.4;filter:url(#shadow)}
+      .store{fill:#1e293b;stroke:#64748b;stroke-width:1.5;filter:url(#shadow)}
+      .chip{fill:#111827;stroke:#334155;stroke-width:1}
+      .dim{opacity:.72}
+      .flow{fill:none;stroke-linecap:round;stroke-width:4;stroke-dasharray:8 8;opacity:.88}
+      .gpuStroke{stroke:#84cc16;marker-end:url(#arrowGpu)}
+      .controlStroke{stroke:#38bdf8;marker-end:url(#arrowControl)}
+      .storeStroke{stroke:#f59e0b;marker-end:url(#arrowStore)}
+      .pulse{filter:url(#shadow)}
+      @media (prefers-reduced-motion:no-preference){
+        .flow{animation:dash 1.8s linear infinite}
+        .p1{animation:video 5.8s linear infinite}
+        .p2{animation:meta 5.8s linear infinite}
+        .p3{animation:store 5.8s linear infinite}
+        .p4{animation:api 5.8s linear infinite}
+      }
+      @keyframes dash{to{stroke-dashoffset:-58}}
+      @keyframes video{
+        0%{transform:translate(102px,265px);opacity:0}
+        8%{opacity:1}
+        32%{transform:translate(318px,265px);opacity:1}
+        40%,100%{transform:translate(318px,265px);opacity:0}
+      }
+      @keyframes meta{
+        0%,30%{transform:translate(468px,265px);opacity:0}
+        40%{opacity:1}
+        62%{transform:translate(662px,265px);opacity:1}
+        70%,100%{transform:translate(662px,265px);opacity:0}
+      }
+      @keyframes store{
+        0%,45%{transform:translate(468px,310px);opacity:0}
+        55%{opacity:1}
+        78%{transform:translate(596px,504px);opacity:1}
+        86%,100%{transform:translate(596px,504px);opacity:0}
+      }
+      @keyframes api{
+        0%,60%{transform:translate(810px,265px);opacity:0}
+        70%{opacity:1}
+        92%{transform:translate(1006px,265px);opacity:1}
+        100%{transform:translate(1006px,265px);opacity:0}
+      }
+    </style>
+  </defs>
+
+  <rect width="1200" height="680" rx="28" fill="url(#bg)"/>
+  <path d="M0 82H1200" stroke="#334155" stroke-width="1"/>
+  <text fill="#f8fafc" class="label large" x="42" y="54">Helm production deployment</text>
+  <text fill="#94a3b8" class="label muted small" x="746" y="52">charts/vrs: data plane, control API, storage, metrics</text>
+
+  <rect class="panel" x="42" y="112" width="1116" height="394" rx="20"/>
+  <text fill="#f8fafc" class="label medium" x="72" y="150">Kubernetes namespace: vrs</text>
+  <text fill="#94a3b8" class="label muted small" x="328" y="150">release-scoped Deployments, Services, PVCs, and Secrets</text>
+
+  <rect class="node" x="72" y="214" width="176" height="104" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="112" y="254">Streams</text>
+  <text fill="#94a3b8" class="label muted tiny" x="102" y="280">RTSP / MP4 inputs</text>
+  <text fill="#94a3b8" class="label muted tiny" x="102" y="300">static assignment</text>
+
+  <rect class="node" x="316" y="190" width="196" height="150" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="354" y="230">DeepStream</text>
+  <text fill="#f8fafc" class="label medium" x="358" y="254">worker x N</text>
+  <text fill="#94a3b8" class="label muted tiny" x="346" y="282">vrs-deepstream:ds8</text>
+  <text fill="#94a3b8" class="label muted tiny" x="346" y="304">nvinfer + tracker</text>
+  <rect x="340" y="318" width="148" height="30" rx="15" fill="url(#gpu)" opacity=".22" stroke="#84cc16"/>
+  <text fill="#f8fafc" class="label tiny" x="363" y="338">gpu-role: deepstream</text>
+
+  <rect class="node" x="612" y="190" width="196" height="150" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="650" y="230">Redis</text>
+  <text fill="#94a3b8" class="label muted tiny" x="642" y="258">redis-streams</text>
+  <text fill="#94a3b8" class="label muted tiny" x="642" y="280">detection / work queues</text>
+  <text fill="#94a3b8" class="label muted tiny" x="642" y="302">persistent PVC in prod</text>
+
+  <rect class="node dim" x="612" y="374" width="196" height="92" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="642" y="414">Verifier worker</text>
+  <text fill="#94a3b8" class="label muted tiny" x="642" y="440">optional GPU slow path</text>
+
+  <rect class="node" x="890" y="190" width="208" height="150" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="944" y="230">API x N</text>
+  <text fill="#94a3b8" class="label muted tiny" x="922" y="258">FastAPI artifact API</text>
+  <text fill="#94a3b8" class="label muted tiny" x="922" y="280">Service: http 8000</text>
+  <text fill="#94a3b8" class="label muted tiny" x="922" y="302">VRS_RUNS_DIR=/data/runs</text>
+
+  <rect class="store" x="316" y="394" width="196" height="72" rx="16"/>
+  <text fill="#f8fafc" class="label medium" x="358" y="424">Detections</text>
+  <text fill="#94a3b8" class="label muted tiny" x="346" y="448">detection.v1 JSONL</text>
+
+  <path class="flow gpuStroke" d="M248 266H316" fill="none" stroke="#84cc16" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowGpu)"/>
+  <path class="flow controlStroke" d="M512 266H612" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowControl)"/>
+  <path class="flow controlStroke" d="M808 266H890" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowControl)"/>
+  <path class="flow storeStroke" d="M414 340V394" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowStore)"/>
+  <path class="flow controlStroke" d="M710 340V374" fill="none" stroke="#38bdf8" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowControl)"/>
+
+  <circle class="pulse p1" r="8" fill="#84cc16"/>
+  <circle class="pulse p2" r="8" fill="#38bdf8"/>
+  <circle class="pulse p3" r="8" fill="#f59e0b"/>
+  <circle class="pulse p4" r="8" fill="#818cf8"/>
+
+  <rect class="panel" x="42" y="530" width="520" height="110" rx="18"/>
+  <text fill="#f8fafc" class="label medium" x="72" y="566">Object storage</text>
+  <text fill="#94a3b8" class="label muted small" x="72" y="594">SeaweedFS in production profile</text>
+  <text fill="#94a3b8" class="label muted tiny" x="72" y="620">S3 API service, Secret credentials, PVC-backed filer/master/s3 process</text>
+  <rect x="356" y="562" width="156" height="42" rx="21" fill="url(#storeGrad)" opacity=".18" stroke="#f59e0b"/>
+  <text fill="#f8fafc" class="label tiny" x="384" y="588">bucket: vrs-evidence</text>
+
+  <rect class="panel" x="596" y="530" width="562" height="110" rx="18"/>
+  <text fill="#f8fafc" class="label medium" x="626" y="566">Operations</text>
+  <text fill="#94a3b8" class="label muted small" x="626" y="594">Metrics Service + optional ServiceMonitor</text>
+  <text fill="#94a3b8" class="label muted tiny" x="626" y="620">GPU roles label pods for scheduling: none, deepstream, verifier</text>
+
+  <path class="flow storeStroke" d="M512 430C560 456 590 486 626 530" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowStore)"/>
+  <path class="flow storeStroke" d="M890 320C760 390 640 462 520 558" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowStore)"/>
+
+  <rect class="chip" x="72" y="470" width="250" height="32" rx="16"/>
+  <circle cx="94" cy="486" r="6" fill="#84cc16"/>
+  <text fill="#f8fafc" class="label tiny" x="110" y="491">prod: 2 DeepStream replicas</text>
+
+  <rect class="chip" x="346" y="470" width="248" height="32" rx="16"/>
+  <circle cx="368" cy="486" r="6" fill="#38bdf8"/>
+  <text fill="#f8fafc" class="label tiny" x="384" y="491">Redis transport boundary</text>
+
+  <rect class="chip" x="618" y="470" width="278" height="32" rx="16"/>
+  <circle cx="640" cy="486" r="6" fill="#f59e0b"/>
+  <text fill="#f8fafc" class="label tiny" x="656" y="491">SeaweedFS preferred evidence store</text>
+
+  <rect class="chip" x="920" y="470" width="202" height="32" rx="16"/>
+  <circle cx="942" cy="486" r="6" fill="#818cf8"/>
+  <text fill="#f8fafc" class="label tiny" x="958" y="491">Prometheus-ready metrics</text>
+</svg>

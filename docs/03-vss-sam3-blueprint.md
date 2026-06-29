@@ -50,7 +50,7 @@ allowing SAM3/SAM3.1 to evolve on a separate release cadence.
 
 ### 1.2 Platform Contract Layer
 
-Before introducing Kafka, PostgreSQL, MinIO, or vector databases, VRS must define
+Before introducing Kafka, object storage, relational indexes, or vector databases, VRS must define
 canonical contracts for:
 
 - Events.
@@ -66,6 +66,13 @@ canonical contracts for:
 
 Infrastructure components should implement these contracts. They should not
 define them implicitly.
+
+Initial versioned contracts now live under `contracts/schemas/` with Python
+adapters in `vrs.contracts`: `detection.v1`, `candidate_alert.v1`,
+`verified_alert.v1`, `evidence_ref.v1`, `stream.v1`, and
+`object_manifest.v1`. Existing dataclasses remain the in-process compatibility
+surface, and local JSONL remains the audit/export fallback while object storage
+becomes the canonical evidence and manifest store.
 
 ### 1.3 SAM3 Evaluation Gate
 
@@ -112,9 +119,12 @@ vendor's runtime, data platform, or deployment model.
 
 ### 1.7 Canonical Storage Direction
 
-After Phase 3, PostgreSQL plus object storage should become the canonical source
-for metadata and evidence assets. JSONL remains as an immutable audit/export
-fallback and lightweight edge-mode output.
+After Phase 3, object storage should become the canonical durable source for
+evidence assets and metadata manifests. PostgreSQL or another relational store
+may be used as a query index, operational projection, or API cache, but the
+system should be able to rebuild those indexes from object storage and event
+contracts. JSONL remains as an immutable audit/export fallback and lightweight
+edge-mode output.
 
 ## 2. Architectural Vision
 
@@ -202,8 +212,8 @@ objects.
 VerifiedAlert
     +-- Platform contract adapter
         +-- Event bus
-        +-- PostgreSQL metadata
-        +-- Object storage for clips / thumbnails / masks
+        +-- Object storage for clips / thumbnails / masks / metadata manifests
+        +-- Optional relational query index
         +-- Vector index for embeddings
         +-- FastAPI backend
         +-- Web UI
@@ -679,21 +689,22 @@ Recommended separation:
 | Alert/events | Kafka or equivalent durable stream. |
 | GPU tasks | Redis Streams or queue service. |
 | Metrics | Prometheus/OpenTelemetry. |
-| Metadata writes | PostgreSQL adapter. |
+| Metadata writes | Object metadata manifest writer plus optional relational projection. |
 
 ### 9.3 Storage Layer
 
-After Phase 3, PostgreSQL plus object storage becomes the canonical source for
-metadata and evidence assets.
+After Phase 3, object storage becomes the canonical durable source for evidence
+assets and metadata manifests. Relational databases are optional projections for
+query performance and API ergonomics.
 
 | Storage | Purpose | Canonical role |
 | --- | --- | --- |
-| PostgreSQL | Structured metadata, alert state, policy versions. | Canonical metadata store. |
-| Object storage | Clips, thumbnails, masks, tracks, exports. | Canonical evidence store. |
+| Object storage | Clips, thumbnails, masks, tracks, metadata manifests, exports. | Canonical evidence and metadata store. |
+| PostgreSQL or equivalent | Structured query index, alert state projection, policy version lookup. | Rebuildable projection, not the only durable source. |
 | JSONL | Immutable edge logs, audit fallback, export. | Fallback and audit/export format. |
 | Parquet | Analytics export. | Derived analytical format. |
 
-Object storage may be MinIO, S3-compatible storage, VAST, or another deployment
+Object storage may be SeaweedFS, S3-compatible storage, VAST, or another deployment
 choice. The contract should depend on object references, not a vendor-specific
 client.
 
@@ -929,7 +940,7 @@ Dashboard categories:
 | Edge | Single GPU appliance with JSONL/object files. |
 | NVIDIA edge | Optional DeepStream adapter for high-density RTSP ingest. |
 | Small cluster | Docker Compose with optional worker services. |
-| Medium scale | k3s with PostgreSQL/object storage/vector service. |
+| Medium scale | k3s with object storage, optional relational index, and vector service. |
 | Enterprise | Kubernetes with durable event bus and observability stack. |
 
 ### 16.2 GPU Allocation Strategy
@@ -1019,8 +1030,8 @@ Acceptance criteria:
 Deliverables:
 
 - Canonical event/clip/mask/track/alert schemas.
-- PostgreSQL metadata store.
-- Object storage evidence store.
+- Object storage evidence and metadata-manifest store.
+- Optional PostgreSQL or equivalent query projection.
 - JSONL audit/export fallback.
 - Idempotent storage adapters.
 - Initial FastAPI backend.
@@ -1029,7 +1040,7 @@ Goal: durable distributed event processing platform.
 
 Acceptance criteria:
 
-- PostgreSQL plus object storage is canonical for platform deployments.
+- Object storage is canonical for platform deployments; relational indexes are rebuildable projections.
 - JSONL remains supported for edge mode and audit/export fallback.
 - Storage writes are idempotent.
 - Evidence refs are resolvable from API responses.
@@ -1083,7 +1094,7 @@ vrs/
 |-- sam/               # SAM3 worker clients and contract adapters
 |-- vlm/               # verifier backends and prompt orchestration
 |-- pipelines/         # edge, multistream, and platform pipelines
-|-- storage/           # PostgreSQL/object/JSONL adapters
+|-- storage/           # object/relational-projection/JSONL adapters
 |-- vector/            # embedding and vector-index adapters
 |-- backend/           # FastAPI service
 |-- webui/             # operator UI

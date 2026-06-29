@@ -45,7 +45,8 @@ The following components are present and covered by unit tests where practical:
 - Detector backend protocol with Ultralytics YOLOE and TensorRT-engine loader
   branch.
 - VLM verifier backend protocol with transformers/Cosmos default, live-smoked
-  vLLM backend, OpenAI-compatible served backend, and reserved TRT-LLM branch.
+  vLLM backend, OpenAI-compatible served backend, and structurally implemented
+  TRT-LLM branch pending target-GPU validation.
   The next model-selection step is still a Qwen-class bake-off.
 - Verifier constrained-output support through optional XGrammar.
 - Verifier failure policy: `pass_through` or `reject`.
@@ -98,7 +99,9 @@ These are the important remaining issues as of this review:
   multimodal foundation models with stronger claimed visual/reasoning
   capability. Treat Cosmos as a baseline and require side-by-side eval against
   Qwen3.5/Qwen3.6-class VLMs before production model lock-in.
-- TRT-LLM and speculative decoding are still not implemented.
+- The TRT-LLM backend and speculative decoding configuration are structurally
+  implemented, but still need a target-GPU smoke/eval benchmark before any
+  production promotion.
 - Cross-camera incident correlation is missing. Current grouping is only
   per-stream/per-track.
 - Calibration is suggestion-only. There is no autonomous threshold application,

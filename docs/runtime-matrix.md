@@ -58,8 +58,8 @@ need complete benchmark notes before they can be used in deployment sizing.
 | Target class | Detector | Verifier backend/model | Runtime notes |
 |--------------|----------|------------------------|---------------|
 | Multi-stream production GPU | TensorRT-exported YOLOE engine | vLLM-served Cosmos or Qwen-class VLM | Requires sustained end-to-end benchmark under realistic alert rates. The RTX 5080 local vLLM Cosmos path is smoke/eval-tested, but not yet a multistream capacity claim. |
-| DeepStream / zero-copy path | TensorRT YOLOE through DeepStream | Served verifier backend | Reserved for a future DeepStream 8.0 path; not implemented in this release. |
-| TRT-LLM verifier | YOLOE-L or YOLOE-S | TRT-LLM | Backend name is reserved in code, but the implementation is not validated. |
+| DeepStream / zero-copy path | TensorRT YOLOE through DeepStream | Served verifier backend | Runnable metadata adapter and parity-report hooks exist for `detection.v1`; full DeepStream/GStreamer worker, TensorRT detector execution, and capacity validation are not implemented. |
+| TRT-LLM verifier | YOLOE-L or YOLOE-S | TRT-LLM | Structural backend is implemented behind `VLMBackend`, including guided JSON and optional speculative decoding config, but it is not validated on target GPU hardware. |
 | Qwen-class verifier comparison | YOLOE-L or YOLOE-S | Qwen3.5/Qwen3.6-class served VLM | Evaluation target before production model lock-in; requires accuracy and runtime reports. |
 
 ## Benchmark commands
@@ -96,6 +96,36 @@ The benchmark writes `bench_report.json` under the chosen output directory. Copy
 the relevant values into a benchmark note and keep the raw JSON path or artifact
 location in the note.
 
+Export Python detector output from the comparison clips as canonical
+`detection.v1` JSONL:
+
+```bash
+uv run scripts/export_python_detections.py \
+  --config configs/tiny.yaml \
+  --policy configs/policies/safety.yaml \
+  --out runs/parity/python_detections.jsonl \
+  runs/test_clips/fire.mp4 runs/test_clips/smoke.mp4
+```
+
+Then compare it with DeepStream/TensorRT detector output emitted as canonical
+`detection.v1` JSON or JSONL:
+
+```bash
+uv run scripts/compare_detector_parity.py \
+  --python-detections runs/parity/python_detections.jsonl \
+  --candidate-detections runs/parity/deepstream_detections.jsonl \
+  --class-map '{"flame":"fire"}' \
+  --python-runtime runs/parity/python_runtime.json \
+  --candidate-runtime runs/parity/deepstream_runtime.json \
+  --out runs/parity/detector_parity.json
+```
+
+The parity report records class mapping, match counts, bbox IoU and pixel deltas,
+confidence deltas, latency summaries, throughput, queue drops, and GPU memory
+when runtime summaries are provided. This is an evaluation hook only; do not move
+a DeepStream/TensorRT row out of Planned or Unvalidated until a benchmark note
+links the raw parity and capacity artifacts.
+
 ## Required benchmark note fields
 
 Every promoted row must record:
@@ -112,6 +142,7 @@ Every promoted row must record:
 - peak VRAM
 - single-stream FPS
 - multi-stream queue drops
+- detector parity report path when comparing Python and DeepStream/TensorRT
 - verifier p50/p95/p99 latency, or `not measured` with the reason
 - benchmark command, config, policy, and source clips
 - link or path to `bench_report.json`

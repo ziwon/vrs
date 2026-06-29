@@ -203,7 +203,119 @@ Acceptance criteria:
 
 ## P2 — Production Hardening
 
-### 11. Metrics Endpoint
+### 11. Canonical Runtime Contracts
+
+Status: identity-hardened runtime slice implemented. Versioned JSON Schema files live under
+`contracts/schemas/`, and `vrs.contracts` adapts current `Detection`,
+`CandidateAlert`, and `VerifiedAlert` dataclasses to `detection.v1`,
+`candidate_alert.v1`, and `verified_alert.v1` while preserving the existing
+local JSONL shape. Canonical contracts carry deterministic IDs and idempotency
+keys derived from stream/frame/event fields. Runtime sinks write one per-alert
+`object_manifest.v1` under `manifests/` plus `object_manifest.index.jsonl`,
+with `verified_alert.v1` and thumbnail `evidence_ref.v1` records by default.
+`stream.v1` defines the stream-source boundary for the upcoming transport and
+DeepStream work.
+
+Acceptance criteria:
+
+- Keep legacy Python dataclass compatibility and existing `alerts.jsonl`
+  consumers.
+- Publish canonical contract JSON at bus, object-store, and DeepStream service
+  boundaries.
+- Treat object storage as canonical for evidence assets and metadata manifests.
+- Keep relational stores as optional rebuildable query projections.
+
+### 12. Event Transport And Object Storage Interfaces
+
+Status: initial interfaces implemented. `vrs.transport` defines
+`EventTransport`, `EventMessage`, a deterministic `InMemoryEventTransport` for
+tests, and Redis Streams / Kafka config naming shapes without requiring either
+service. `vrs.storage` defines `ObjectStore`, `StoredObject`,
+`LocalObjectStore`, and an S3/SeaweedFS-compatible URI config scaffold. Runtime
+manifest writing uses the local object-store implementation.
+
+Acceptance criteria:
+
+- Keep unit tests free of Redis, Kafka, S3, and SeaweedFS service dependencies.
+- Use Redis Streams as the edge-mode transport shape.
+- Use Kafka as the production transport shape.
+- Keep JSONL as audit/export fallback.
+- Treat local filesystem object storage as the first concrete implementation.
+
+### 13. DeepStream Detection Metadata Adapter
+
+Status: runnable metadata-adapter boundary implemented. `vrs.deepstream.adapter`
+defines `DeepStreamDetectionMetadata` and converts exported DeepStream object
+metadata into `detection.v1` records with `source_runtime: deepstream`.
+`python -m vrs.deepstream.worker` converts DeepStream-style metadata JSON/JSONL
+to `detection.v1` JSONL. It does not import DeepStream bindings, run GStreamer,
+or execute a real DeepStream worker yet.
+
+Acceptance criteria:
+
+- Keep VLM verification outside DeepStream.
+- Keep the Python detector path functional for tests, eval, and development.
+- Publish DeepStream detections using the same `detection.v1` contract as the
+  Python runtime.
+- Use a future GStreamer/DeepStream process to map `NvDsFrameMeta` and
+  `NvDsObjectMeta` into this adapter.
+
+### 14. Detector Runtime Parity Hook
+
+Status: initial report hook implemented. `scripts/export_python_detections.py`
+emits Python detector `detection.v1` JSONL for comparison clips, and
+`scripts/compare_detector_parity.py` compares it with DeepStream/TensorRT
+`detection.v1` output from the same clips. The comparison writes
+`vrs.eval.detector_parity.v1` with class mapping, bbox IoU and pixel deltas,
+confidence deltas, match/unmatched counts, and runtime capacity fields for
+latency, throughput, queue drops, and GPU memory when provided.
+
+Acceptance criteria:
+
+- Compare outputs from the same clips and frame indexes.
+- Record class mapping and per-class unmatched records.
+- Record bbox and confidence deltas for matched detections.
+- Carry latency, throughput, queue-drop, and GPU-memory fields without making
+  production capacity claims.
+- Keep `docs/runtime-matrix.md` status rows evidence-backed.
+
+### 15. Helm Edge Profile Scaffold
+
+Status: executable metadata-adapter baseline implemented under `charts/vrs`. The chart has
+explicit `values-dev.yaml`, `values-edge.yaml`, and `values-prod.yaml` profiles,
+plus templates for API/runtime, metadata adapter worker, disabled verifier
+worker template, Redis edge bus, local PVC or SeaweedFS object storage, metrics
+service, and optional ServiceMonitor. The default chart mounts `/data`, provides
+sample metadata by ConfigMap, and runs the importable metadata adapter command.
+GPU roles are labeled as `vrs.ai/gpu-role: deepstream` and
+`vrs.ai/gpu-role: verifier`.
+
+Acceptance criteria:
+
+- Keep dev, single-node edge, and production cluster values explicit.
+- Keep Redis as the edge bus shape and object storage as local PVC or SeaweedFS.
+- Do not introduce a Kubernetes operator yet.
+- Keep DeepStream and verifier workers as separate workload classes.
+
+### 16. Control-Plane Primitives
+
+Status: initial primitives implemented. `vrs.control.static_assignment`
+converts stream manifest-style inputs to `stream.v1`, assigns streams to
+DeepStream worker IDs with optional capacity limits, and renders worker config
+payloads with transport and object-store settings. `vrs.control.registry` adds
+an in-memory stream registry, worker health records, and queue-pressure
+summaries from the existing multistream `queue_stats()` shape.
+
+Acceptance criteria:
+
+- Start with static stream assignment.
+- Render worker configs from existing stream manifest shapes.
+- Add stream registry and health reporting primitives.
+- Surface queue pressure as control-plane health data.
+- Keep active queue-pressure scheduling, GPU role scheduling, and Go operator
+  behavior deferred until contracts and Helm profiles are stable.
+
+### 17. Metrics Endpoint
 
 Expose runtime health without scraping logs.
 
@@ -221,7 +333,7 @@ Acceptance criteria:
 - Alert counts by stream, class, verdict, and severity.
 - Privacy detector setup failures.
 
-### 12. Signed Audit Log
+### 18. Signed Audit Log
 
 Alerts should be tamper-evident when used for compliance or incident review.
 
@@ -231,7 +343,7 @@ Acceptance criteria:
 - Key-id support for rotation.
 - Verification CLI for replay/audit.
 
-### 13. Hot Policy Reload
+### 19. Hot Policy Reload
 
 Operators should not restart the process for threshold-only policy changes.
 

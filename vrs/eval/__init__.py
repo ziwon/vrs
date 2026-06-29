@@ -12,6 +12,8 @@ Current scope:
     adapters under ``datasets``.
   * Regression gate that compares two reports and exits non-zero on F1
     drops beyond a tolerance (``ci``, run as ``python -m vrs.eval.ci``).
+  * Detector runtime parity reports for Python versus DeepStream/TensorRT
+    canonical detection outputs (``detector_parity``).
 
 Upcoming:
   * UP-Fall multimodal dataset coverage if needed for non-RGB fall validation.
@@ -19,6 +21,14 @@ Upcoming:
 
 from __future__ import annotations
 
+from .detection_export import detections_to_contracts, write_detection_jsonl
+from .detector_parity import (
+    DetectionRecord,
+    RuntimeSummary,
+    compare_detector_outputs,
+    load_detection_records,
+    write_parity_report,
+)
 from .harness import (
     EvalMode,
     HarnessResult,
@@ -51,6 +61,7 @@ from .schemas import ClassMetrics, EvalItem, GroundTruthEvent, RunScore
 __all__ = [
     "SCHEMA_VERSION",
     "ClassMetrics",
+    "DetectionRecord",
     "EvalItem",
     "EvalMode",
     "EvalReport",
@@ -66,11 +77,17 @@ __all__ = [
     "ReportRun",
     "ReportRuntime",
     "RunScore",
+    "RuntimeSummary",
     "aggregate_scores",
     "bbox_iou_xywh_norm",
+    "compare_detector_outputs",
     "config_for_eval_mode",
     "dataset_items_are_images",
+    "detections_to_contracts",
     "evaluate",
     "evaluate_detector_only_images",
+    "load_detection_records",
     "score_alerts_against_truth",
+    "write_detection_jsonl",
+    "write_parity_report",
 ]

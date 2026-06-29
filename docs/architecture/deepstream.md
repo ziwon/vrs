@@ -55,7 +55,9 @@ However, the current architecture is still limited as a production video analyti
 The main limitations are:
 
 * Decode is still handled through Python-side readers, primarily OpenCV or optional NVDEC via OpenCV CUDA bindings.
-* The DeepStream path is not implemented yet.
+* The native DeepStream path now has a DS 8.0 C++ worker scaffold, but it still
+  needs GPU smoke validation, production PGIE/tracker configuration, and
+  transport integration.
 * GPU assignment is mostly static through runtime configuration.
 * There is no cluster-level or pod-level GPU-aware scheduler.
 * The current bounded queues are in-process, not distributed.
@@ -239,13 +241,12 @@ and S3/SeaweedFS-compatible URI config scaffold. These are scaffolds for the bus
 object-store adapters; they are not production Redis, Kafka, S3, or SeaweedFS
 clients yet.
 
-`vrs.deepstream.adapter` provides the dependency-free DeepStream metadata
-boundary. `python -m vrs.deepstream.worker` is a runnable metadata adapter that
-converts DeepStream-style JSON/JSONL metadata into `detection.v1`; it does not
-run DeepStream, GStreamer, RTSP ingest, `nvstreammux`, `nvinfer`, or
-`nvtracker`. A production DeepStream exporter should map `NvDsFrameMeta` and
-`NvDsObjectMeta` fields into `DeepStreamDetectionMetadata`, then publish the
-resulting `detection.v1` record.
+`vrs.deepstream.adapter` provides the dependency-free Python metadata boundary
+for tests and JSON/JSONL fallback conversion. `native/deepstream` contains the
+DS 8.0 C++ worker path: it runs a GStreamer/DeepStream pipeline, attaches a pad
+probe, reads `NvDsFrameMeta` and `NvDsObjectMeta`, and emits `detection.v1`
+records. GPU smoke, deployment-specific PGIE/tracker configuration, and
+transport publishing still need production validation.
 
 ---
 

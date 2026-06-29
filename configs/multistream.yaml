@@ -13,9 +13,9 @@ multistream:
   #   opencv       — FFmpeg CPU decode (default, works everywhere).
   #   nvdec        — cv2.cudacodec NVDEC (requires OpenCV built with CUDA;
   #                  falls back to opencv with a warning if unavailable).
-  #   deepstream   — placeholder; full DeepStream 8.0 path is a future
-  #                  optimization that also requires TRT-exported YOLOE
-  #                  and Cosmos engines. Not implemented yet.
+  #   deepstream   — native DS 8.0 worker scaffold exists under
+  #                  native/deepstream; this Python multistream runtime does
+  #                  not invoke it yet.
   decoder_backend: opencv
 
   # Shared frame queue across all decoder threads. Drop oldest when the

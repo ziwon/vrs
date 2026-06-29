@@ -58,7 +58,7 @@ need complete benchmark notes before they can be used in deployment sizing.
 | Target class | Detector | Verifier backend/model | Runtime notes |
 |--------------|----------|------------------------|---------------|
 | Multi-stream production GPU | TensorRT-exported YOLOE engine | vLLM-served Cosmos or Qwen-class VLM | Requires sustained end-to-end benchmark under realistic alert rates. The RTX 5080 local vLLM Cosmos path is smoke/eval-tested, but not yet a multistream capacity claim. |
-| DeepStream / zero-copy path | TensorRT YOLOE through DeepStream | Served verifier backend | Runnable metadata adapter and parity-report hooks exist for `detection.v1`; full DeepStream/GStreamer worker, TensorRT detector execution, and capacity validation are not implemented. |
+| DeepStream / zero-copy path | TensorRT YOLOE through DeepStream | Served verifier backend | Native DS 8.0 C++ worker scaffold emits `detection.v1` from `NvDsObjectMeta`; TensorRT detector config, GPU smoke, and capacity validation are still pending. |
 | TRT-LLM verifier | YOLOE-L or YOLOE-S | TRT-LLM | Structural backend is implemented behind `VLMBackend`, including guided JSON and optional speculative decoding config, but it is not validated on target GPU hardware. |
 | Qwen-class verifier comparison | YOLOE-L or YOLOE-S | Qwen3.5/Qwen3.6-class served VLM | Evaluation target before production model lock-in; requires accuracy and runtime reports. |
 

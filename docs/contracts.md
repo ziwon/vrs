@@ -87,12 +87,11 @@ described by `S3CompatibleConfig`.
 
 ## DeepStream Boundary
 
-`vrs.deepstream.adapter` contains the first metadata adapter for the DeepStream
-data plane. It accepts dependency-free `DeepStreamDetectionMetadata` records and
-emits `detection.v1` with `source_runtime: deepstream`. A real DeepStream worker
-should map `NvDsFrameMeta` and `NvDsObjectMeta` into this adapter, then publish
-the result through an `EventTransport`. VLM verification remains outside
-DeepStream.
+`vrs.deepstream.adapter` contains the dependency-free Python metadata adapter
+for tests and fallback conversion. The native C++ DeepStream 8.0 worker under
+`native/deepstream` is the production data-plane direction: it maps
+`NvDsFrameMeta` and `NvDsObjectMeta` directly into `detection.v1` JSONL with
+`source_runtime: deepstream`. VLM verification remains outside DeepStream.
 
 `python -m vrs.deepstream.worker` is the first runnable service boundary. It
 converts DeepStream-exported metadata JSON/JSONL into canonical `detection.v1`

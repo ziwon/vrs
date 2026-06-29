@@ -1,8 +1,9 @@
 # kind Validation For Helm Wiring And Metadata Adapter
 
-This path validates Kubernetes wiring and the dependency-free DeepStream
-metadata adapter. It does not validate real DeepStream, GStreamer, NVIDIA GPU
-device plugins, RTSP ingest, `nvstreammux`, `nvinfer`, or `nvtracker`.
+This path validates Kubernetes wiring and the dependency-free Python
+DeepStream metadata adapter. It does not validate the native C++ DeepStream 8.0
+worker, GStreamer, NVIDIA GPU device plugins, RTSP ingest, `nvstreammux`,
+`nvinfer`, or `nvtracker`.
 
 Observed local data under `/data/vrs` on this workstation:
 
@@ -104,17 +105,20 @@ uv run scripts/compare_detector_parity.py \
 This produces a parity report shape. It does not prove model parity unless both
 files were generated from the same clips and frame indexes.
 
-## Real GPU/k3s Validation Later
+## Native DeepStream 8.0 Worker Validation Later
 
-Real DeepStream validation needs an NVIDIA runtime-enabled node with DeepStream,
-GStreamer, TensorRT engines, NVIDIA device plugin, and representative RTSP or
-video sources. The target path remains:
+The C++ worker lives under `native/deepstream` and is packaged by
+`Dockerfile.deepstream`. Real validation needs an NVIDIA runtime-enabled node
+with DeepStream 8.0, GStreamer, TensorRT engines, NVIDIA device plugin, and
+representative RTSP or video sources. The target path remains:
 
 ```text
 RTSP/video -> DeepStream/GStreamer -> nvinfer/nvtracker -> metadata export
   -> detection.v1 -> VRS event-state/policy -> candidate_alert.v1
   -> verifier -> verified_alert.v1
 ```
+
+See `docs/deepstream-worker.md` for the DS 8.0 build and smoke-test commands.
 
 ## Cleanup
 

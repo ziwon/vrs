@@ -22,18 +22,22 @@ Workload components:
 
 - API/runtime deployment.
 - Metadata adapter worker deployment with `vrs.ai/gpu-role: deepstream`.
+  The default and kind profiles use the Python metadata adapter. The production
+  profile uses the DS 8.0 native C++ worker image/command and should be pointed
+  at deployment-specific DeepStream pipeline/model configuration.
 - Verifier worker deployment template with `vrs.ai/gpu-role: verifier`, disabled
   by default until `vrs.verifier.worker` exists.
 - Redis edge bus.
 - Local PVC or SeaweedFS object storage.
 - Metrics service and optional ServiceMonitor.
 
-The metadata adapter worker command points at
+The default metadata adapter worker command points at
 `python -m vrs.deepstream.worker`, which converts DeepStream-style metadata
-JSON/JSONL into canonical `detection.v1` JSONL. It does not run DeepStream or
-GStreamer. The default chart mounts `/data`, creates a local PVC when
-`objectStorage.mode: local-pvc`, mounts sample metadata through a ConfigMap, and
-writes adapter output under `/data/runs`.
+JSON/JSONL into canonical `detection.v1` JSONL for CPU-only smoke tests. The
+production profile points at `/opt/vrs/bin/vrs-deepstream-worker`, the native
+DS 8.0 C++ worker. The default chart mounts `/data`, creates a local PVC when
+`objectStorage.mode: local-pvc`, mounts sample metadata through a ConfigMap,
+and writes adapter output under `/data/runs`.
 
 When `objectStorage.mode: seaweedfs`, SeaweedFS is exposed through its S3 API
 and workloads receive `VRS_OBJECT_STORE_ENDPOINT`,

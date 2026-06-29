@@ -244,12 +244,13 @@ Acceptance criteria:
 
 ### 13. DeepStream Detection Metadata Adapter
 
-Status: runnable metadata-adapter boundary implemented. `vrs.deepstream.adapter`
-defines `DeepStreamDetectionMetadata` and converts exported DeepStream object
-metadata into `detection.v1` records with `source_runtime: deepstream`.
-`python -m vrs.deepstream.worker` converts DeepStream-style metadata JSON/JSONL
-to `detection.v1` JSONL. It does not import DeepStream bindings, run GStreamer,
-or execute a real DeepStream worker yet.
+Status: native DS 8.0 worker scaffold implemented. `vrs.deepstream.adapter`
+still defines the dependency-free Python metadata conversion path for tests and
+fallback JSON/JSONL conversion. The C++ worker under `native/deepstream` builds
+inside the DeepStream 8.0 container, runs a GStreamer pipeline, reads
+`NvDsFrameMeta` and `NvDsObjectMeta` at a pad probe, and emits canonical
+`detection.v1` JSONL with `source_runtime: deepstream`. GPU smoke, real PGIE
+config, TensorRT engine validation, and transport publishing remain pending.
 
 Acceptance criteria:
 
@@ -257,8 +258,8 @@ Acceptance criteria:
 - Keep the Python detector path functional for tests, eval, and development.
 - Publish DeepStream detections using the same `detection.v1` contract as the
   Python runtime.
-- Use a future GStreamer/DeepStream process to map `NvDsFrameMeta` and
-  `NvDsObjectMeta` into this adapter.
+- Use the native GStreamer/DeepStream worker to map `NvDsFrameMeta` and
+  `NvDsObjectMeta` into canonical `detection.v1`.
 
 ### 14. Detector Runtime Parity Hook
 

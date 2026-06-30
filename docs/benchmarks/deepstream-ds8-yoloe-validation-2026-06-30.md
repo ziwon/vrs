@@ -461,6 +461,19 @@ uv run scripts/export_python_detections.py \
   /data/vrs/fire_dataset/extracted_sample/fire/120.mp4
 ```
 
+The full Python -> DS8 `vrsmeta` -> strict/loose parity flow is now wrapped as:
+
+```bash
+uv run scripts/run_deepstream_vrsmeta_parity.py \
+  --source /data/vrs/fire_dataset/extracted_sample/fire/120.mp4 \
+  --out-dir runs/parity/ds8-vrsmeta-runner-20260630 \
+  --stream-id fire120
+```
+
+This command probes the source geometry with `ffprobe`, exports the Python
+baseline, runs the DS8 container with `vrs-deepstream-worker --disable-probe`
+and `vrsmeta`, then writes strict and loose parity reports plus a summary JSON.
+
 The baseline produced 18 `smoke` records. Because the source is 640x360 and the
 DeepStream muxer is 640x640 with padding, candidate boxes must be de-padded by
 140 px on Y. `scripts/compare_aligned_detector_parity.py` now supports this via

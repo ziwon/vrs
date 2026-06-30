@@ -1,4 +1,7 @@
-# Jetson/Orin Python 3.10 environment additions.
+# Historical Jetson/Orin Python 3.10 prototype environment additions.
+#
+# This is not the production-oriented Compose or k3s/DeepStream runtime path.
+# Keep it only for reproducing older Python/OpenCV Jetson verifier experiments.
 #
 # This file intentionally does NOT install torch or torchvision.
 # Jetson CUDA PyTorch wheels are tied to JetPack/L4T, Python ABI, and aarch64.

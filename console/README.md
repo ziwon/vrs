@@ -51,7 +51,7 @@ For real inference on a GPU host:
 ```bash
 cp .env.example .env
 # edit .env and set HF_TOKEN / HUGGING_FACE_HUB_TOKEN
-docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml \
+docker compose -f docker-compose.yaml -f docker-compose.hf-cache.yaml \
   --profile inference up --build
 ```
 

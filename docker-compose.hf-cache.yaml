@@ -1,0 +1,16 @@
+# Optional Hugging Face cache override for local Compose inference.
+#
+# The base compose file uses a named Docker volume. Enable this file when you
+# want to reuse a host-side Hugging Face cache across rebuilds or projects:
+#
+#   VRS_HF_CACHE_DIR=/data/models/huggingface \
+#     docker compose -f docker-compose.yaml -f docker-compose.hf-cache.yaml \
+#     --profile inference up --build
+services:
+  inference:
+    environment:
+      HF_HOME: /models/huggingface
+      HF_HUB_CACHE: /models/huggingface/hub
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}
+    volumes:
+      - ${VRS_HF_CACHE_DIR:-./.cache/huggingface}:/models/huggingface

@@ -221,6 +221,7 @@ For CUDA/PyTorch setup details, see [docs/runtime-matrix.md](docs/runtime-matrix
 ├── Dockerfile.backend
 ├── Dockerfile.console      Static console image using console/nginx.conf
 ├── Dockerfile.deepstream
+├── docker-compose.hf-cache.yaml
 └── docker-compose.yaml
 ```
 

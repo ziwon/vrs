@@ -33,7 +33,7 @@ The Jetson runtime uses Python 3.10 with `--system-site-packages` so the environ
 
 Relevant setup files added for this profile:
 
-- `requirements-jetson.txt`
+- `docs/archive/requirements-jetson-opencv-prototype.txt`
 - `scripts/setup_jetson_venv.sh`
 - `configs/jetson-qwen3vl2b.yaml`
 - `configs/policies/falldown_orin_smoke.yaml`

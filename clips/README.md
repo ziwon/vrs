@@ -67,6 +67,6 @@ The Compose stack only publishes the selected clip as RTSP/HLS. To generate fres
 
 ```bash
 VRS_SAMPLE_CLIP=real-world-sample.mp4 \
-docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml \
+docker compose -f docker-compose.yaml -f docker-compose.hf-cache.yaml \
   --profile inference up --build
 ```

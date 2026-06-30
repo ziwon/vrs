@@ -6,6 +6,13 @@ cd "$ROOT"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 VENV_DIR="${VENV_DIR:-.venv-jetson}"
+REQUIREMENTS="${REQUIREMENTS:-docs/archive/requirements-jetson-opencv-prototype.txt}"
+
+cat >&2 <<'EOF'
+This helper is a historical Jetson Python/OpenCV prototype path.
+For production-oriented GPU experiments, prefer the Compose or k3s/DeepStream
+deployment paths documented in docs/local-console.md and docs/k3s-gpu.md.
+EOF
 
 if ! "$PYTHON_BIN" - <<'PY' >/dev/null
 import sys
@@ -29,7 +36,7 @@ else
 fi
 
 "$VENV_DIR/bin/python" -m pip install --upgrade pip
-"$VENV_DIR/bin/python" -m pip install -r requirements-jetson.txt
+"$VENV_DIR/bin/python" -m pip install -r "$REQUIREMENTS"
 "$VENV_DIR/bin/python" -m pip install --ignore-requires-python --no-deps -e .
 
 "$VENV_DIR/bin/python" - <<'PY'

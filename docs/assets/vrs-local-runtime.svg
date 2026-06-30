@@ -131,5 +131,5 @@
   <text fill="#f8fafc" class="label tiny" x="634" y="127">HF token + local cache supported</text>
 
   <rect x="80" y="414" width="950" height="1" fill="#334155"/>
-  <text fill="#94a3b8" class="label muted tiny" x="80" y="435">Compose path: docker-compose.yaml + docker-compose.hf-local.yaml, profile inference, output rooted at runs/live</text>
+  <text fill="#94a3b8" class="label muted tiny" x="80" y="435">Compose path: docker-compose.yaml + docker-compose.hf-cache.yaml, profile inference, output rooted at runs/live</text>
 </svg>

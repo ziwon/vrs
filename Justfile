@@ -1,7 +1,7 @@
 set shell := ["bash", "-uc"]
 
 compose := "docker compose -f docker-compose.yaml"
-compose-local := "docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml"
+compose-local := "docker compose -f docker-compose.yaml -f docker-compose.hf-cache.yaml"
 dfire_dataset := "/data/vrs/dfire-mini"
 dfire_out := "runs/eval-dfire"
 dfire_bbox_out := "runs/eval-dfire-bbox"

@@ -104,17 +104,19 @@ cp .env.example .env
 docker compose --profile inference up --build
 ```
 
-To reuse a host-side Hugging Face cache, keep `docker-compose.hf-local.yaml`
-enabled and adjust its bind mount if needed. The default local override maps:
+To reuse a host-side Hugging Face cache, enable
+`docker-compose.hf-cache.yaml`. The override maps `VRS_HF_CACHE_DIR` into the
+inference container:
 
 ```text
-/data/LLM/models/hugging-face:/models/huggingface
+${VRS_HF_CACHE_DIR:-./.cache/huggingface}:/models/huggingface
 ```
 
 Run the full local override stack with:
 
 ```bash
-docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml \
+VRS_HF_CACHE_DIR=/data/models/huggingface \
+docker compose -f docker-compose.yaml -f docker-compose.hf-cache.yaml \
   --profile inference up --build
 ```
 

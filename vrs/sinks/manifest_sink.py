@@ -14,16 +14,11 @@ from typing import Any
 
 from ..contracts import object_manifest_v1, stable_id
 from ..schemas import VerifiedAlert
-from ..storage import LocalObjectStore, ObjectStore
+from ..storage import LocalObjectStore, ObjectStore, object_store_from_env
 
 
 class ObjectManifestSink:
-    """Writes an object_manifest.v1 snapshot beside local run artifacts.
-
-    The local filesystem is the first object-store implementation. Evidence refs
-    use file URIs plus relative path metadata so the same contract shape can be
-    mapped to S3/SeaweedFS keys later without changing alert contracts.
-    """
+    """Writes an object_manifest.v1 snapshot and local append index."""
 
     def __init__(
         self,
@@ -34,10 +29,13 @@ class ObjectManifestSink:
         manifest_dir: str = "manifests",
         index_name: str = "object_manifest.index.jsonl",
         store: ObjectStore | None = None,
+        use_env_store: bool = True,
     ):
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)
-        self.store = store or LocalObjectStore(self.root_dir)
+        self.store = store or (
+            object_store_from_env() if use_env_store else LocalObjectStore(self.root_dir)
+        )
         self.stream_id = stream_id
         self.run_id = run_id or self.root_dir.name
         self.manifest_dir = manifest_dir.strip("/\\") or "manifests"
@@ -62,7 +60,7 @@ class ObjectManifestSink:
             records=[record],
             created_at=str(record["created_at"]),
             metadata={
-                "storage": "local-filesystem",
+                "storage": self._storage_kind(),
                 "manifest_strategy": "per-alert-with-jsonl-index",
                 "limitations": "clip/frame refs are included only when upstream sinks provide them",
             },
@@ -90,7 +88,7 @@ class ObjectManifestSink:
         obj = self.store.ref_for_key(rel.as_posix())
         return obj.to_evidence_ref(
             kind=kind,
-            metadata={"relative_path": rel.as_posix(), "storage": "local-filesystem"},
+            metadata={"relative_path": rel.as_posix(), "storage": self._storage_kind()},
         )
 
     def _append_index_once(
@@ -114,7 +112,7 @@ class ObjectManifestSink:
             "alert_id": alert_id,
             "manifest_ref": manifest_obj.to_evidence_ref(
                 kind="metadata_manifest",
-                metadata={"relative_path": manifest_obj.key, "storage": "local-filesystem"},
+                metadata={"relative_path": manifest_obj.key, "storage": self._storage_kind()},
             ),
             "evidence_refs": evidence_refs,
         }
@@ -137,3 +135,8 @@ class ObjectManifestSink:
             if manifest_id:
                 out.add(str(manifest_id))
         return out
+
+    def _storage_kind(self) -> str:
+        if isinstance(self.store, LocalObjectStore):
+            return "local-filesystem"
+        return "object-store"

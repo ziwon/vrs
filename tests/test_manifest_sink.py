@@ -5,6 +5,7 @@ import numpy as np
 
 from vrs.schemas import CandidateAlert, Detection, VerifiedAlert
 from vrs.sinks.manifest_sink import ObjectManifestSink
+from vrs.storage import S3CompatibleConfig, S3CompatibleObjectStore
 
 
 def _alert(*, thumbnail_path: str | None = None) -> VerifiedAlert:
@@ -31,7 +32,7 @@ def test_manifest_sink_writes_verified_contract_and_evidence_ref(tmp_path: Path)
     thumb = tmp_path / "thumbnails" / "fire.jpg"
     thumb.parent.mkdir()
     thumb.write_bytes(b"fake-jpeg")
-    sink = ObjectManifestSink(tmp_path, stream_id="cam-01", run_id="run-1")
+    sink = ObjectManifestSink(tmp_path, stream_id="cam-01", run_id="run-1", use_env_store=False)
 
     manifest = sink.write(_alert(thumbnail_path="thumbnails/fire.jpg"))
 
@@ -62,7 +63,7 @@ def test_manifest_sink_is_idempotent_for_same_alert_and_index(
     thumb = tmp_path / "thumbnails" / "fire.jpg"
     thumb.parent.mkdir()
     thumb.write_bytes(b"fake-jpeg")
-    sink = ObjectManifestSink(tmp_path, stream_id="cam-01")
+    sink = ObjectManifestSink(tmp_path, stream_id="cam-01", use_env_store=False)
 
     first = sink.write(_alert(thumbnail_path="thumbnails/fire.jpg"))
     manifest = sink.write(_alert(thumbnail_path="thumbnails/fire.jpg"))
@@ -75,3 +76,34 @@ def test_manifest_sink_is_idempotent_for_same_alert_and_index(
         len((tmp_path / "object_manifest.index.jsonl").read_text(encoding="utf-8").splitlines())
         == 1
     )
+
+
+def test_manifest_sink_writes_manifest_to_s3_compatible_store(tmp_path: Path) -> None:
+    class Client:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def put_object(self, **kwargs):
+            self.calls.append(kwargs)
+
+    thumb = tmp_path / "thumbnails" / "fire.jpg"
+    thumb.parent.mkdir()
+    thumb.write_bytes(b"fake-jpeg")
+    client = Client()
+    store = S3CompatibleObjectStore(
+        S3CompatibleConfig(bucket="vrs-evidence", endpoint_url="http://seaweedfs:8333"),
+        client=client,
+    )
+    sink = ObjectManifestSink(tmp_path, stream_id="cam-01", run_id="run-1", store=store)
+
+    manifest = sink.write(_alert(thumbnail_path="thumbnails/fire.jpg"))
+
+    assert len(client.calls) == 1
+    assert client.calls[0]["Bucket"] == "vrs-evidence"
+    assert client.calls[0]["Key"] == f"manifests/{manifest['manifest_id']}.json"
+    assert not (tmp_path / "manifests" / f"{manifest['manifest_id']}.json").exists()
+    index_row = json.loads((tmp_path / "object_manifest.index.jsonl").read_text(encoding="utf-8"))
+    assert index_row["manifest_ref"]["uri"] == (
+        f"s3://vrs-evidence/manifests/{manifest['manifest_id']}.json"
+    )
+    assert index_row["manifest_ref"]["metadata"]["storage"] == "object-store"

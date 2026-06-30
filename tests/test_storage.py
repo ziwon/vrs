@@ -3,7 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from vrs.storage import LocalObjectStore, S3CompatibleConfig, S3CompatibleObjectStore
+from vrs.storage import (
+    LocalObjectStore,
+    S3CompatibleConfig,
+    S3CompatibleObjectStore,
+    object_store_from_env,
+)
 
 
 def test_local_object_store_writes_json_and_returns_file_uri(tmp_path: Path) -> None:
@@ -70,3 +75,19 @@ def test_s3_compatible_object_store_puts_object_with_injected_client() -> None:
     assert obj.key == "edge/site-a/manifests/object_manifest.json"
     assert obj.size_bytes == len(client.calls[0]["Body"])
     assert obj.sha256 is not None
+
+
+def test_object_store_from_env_builds_seaweedfs_store(monkeypatch) -> None:
+    monkeypatch.setenv("VRS_OBJECT_STORE", "seaweedfs")
+    monkeypatch.setenv("VRS_OBJECT_STORE_ENDPOINT", "http://seaweedfs:8333")
+    monkeypatch.setenv("VRS_OBJECT_STORE_BUCKET", "vrs-evidence")
+    monkeypatch.setenv("VRS_OBJECT_STORE_PREFIX", "edge/site-a")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "vrs")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
+
+    store = object_store_from_env()
+
+    assert isinstance(store, S3CompatibleObjectStore)
+    assert store.config.bucket == "vrs-evidence"
+    assert store.config.endpoint_url == "http://seaweedfs:8333"
+    assert store.config.prefix == "edge/site-a"

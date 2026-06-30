@@ -25,6 +25,14 @@ class Record:
     pts_s: float | None
 
 
+@dataclass(frozen=True)
+class Transform:
+    scale_x: float = 1.0
+    scale_y: float = 1.0
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=(
@@ -43,6 +51,18 @@ def main() -> None:
     ap.add_argument("--candidate-scale-y", type=float, default=1.0)
     ap.add_argument("--candidate-offset-x", type=float, default=0.0)
     ap.add_argument("--candidate-offset-y", type=float, default=0.0)
+    ap.add_argument(
+        "--auto-candidate-letterbox",
+        action="store_true",
+        help=(
+            "derive candidate bbox de-padding transform from source and muxer dimensions; "
+            "matches nvstreammux maintain-aspect/enable-padding style letterbox geometry"
+        ),
+    )
+    ap.add_argument("--source-width", type=float, help="source video width for auto letterbox")
+    ap.add_argument("--source-height", type=float, help="source video height for auto letterbox")
+    ap.add_argument("--candidate-mux-width", type=float, help="DeepStream muxer width")
+    ap.add_argument("--candidate-mux-height", type=float, help="DeepStream muxer height")
     args = ap.parse_args()
 
     policy = load_watch_policy(args.policy)
@@ -51,14 +71,28 @@ def main() -> None:
         for i, prompt in enumerate(policy.yoloe_vocabulary())
     }
 
+    transform = Transform(
+        scale_x=args.candidate_scale_x,
+        scale_y=args.candidate_scale_y,
+        offset_x=args.candidate_offset_x,
+        offset_y=args.candidate_offset_y,
+    )
+    if args.auto_candidate_letterbox:
+        transform = candidate_letterbox_transform(
+            source_width=args.source_width,
+            source_height=args.source_height,
+            mux_width=args.candidate_mux_width,
+            mux_height=args.candidate_mux_height,
+        )
+
     python_records = load_records(args.python_detections)
     candidate_records = [
         transform_record(
             map_record(det, prompt_to_event),
-            args.candidate_scale_x,
-            args.candidate_scale_y,
-            args.candidate_offset_x,
-            args.candidate_offset_y,
+            transform.scale_x,
+            transform.scale_y,
+            transform.offset_x,
+            transform.offset_y,
         )
         for det in load_records(args.candidate_detections)
     ]
@@ -70,10 +104,11 @@ def main() -> None:
     )
     report["class_mapping"] = prompt_to_event
     report["candidate_transform"] = {
-        "scale_x": args.candidate_scale_x,
-        "scale_y": args.candidate_scale_y,
-        "offset_x": args.candidate_offset_x,
-        "offset_y": args.candidate_offset_y,
+        "scale_x": transform.scale_x,
+        "scale_y": transform.scale_y,
+        "offset_x": transform.offset_x,
+        "offset_y": transform.offset_y,
+        "auto_letterbox": args.auto_candidate_letterbox,
     }
     report["time_tolerance_s"] = args.time_tolerance_s
     report["iou_threshold"] = args.iou_threshold
@@ -149,6 +184,44 @@ def transform_record(record: Record, sx: float, sy: float, ox: float, oy: float)
         bbox_xyxy=((x1 + ox) * sx, (y1 + oy) * sy, (x2 + ox) * sx, (y2 + oy) * sy),
         frame_index=record.frame_index,
         pts_s=record.pts_s,
+    )
+
+
+def candidate_letterbox_transform(
+    *,
+    source_width: float | None,
+    source_height: float | None,
+    mux_width: float | None,
+    mux_height: float | None,
+) -> Transform:
+    missing = [
+        name
+        for name, value in (
+            ("source_width", source_width),
+            ("source_height", source_height),
+            ("candidate_mux_width", mux_width),
+            ("candidate_mux_height", mux_height),
+        )
+        if value is None
+    ]
+    if missing:
+        raise ValueError("--auto-candidate-letterbox requires " + ", ".join(missing))
+    assert source_width is not None
+    assert source_height is not None
+    assert mux_width is not None
+    assert mux_height is not None
+    if source_width <= 0 or source_height <= 0 or mux_width <= 0 or mux_height <= 0:
+        raise ValueError("source and muxer dimensions must be positive")
+
+    scale = min(mux_width / source_width, mux_height / source_height)
+    pad_x = (mux_width - source_width * scale) / 2.0
+    pad_y = (mux_height - source_height * scale) / 2.0
+    inverse_scale = 1.0 / scale
+    return Transform(
+        scale_x=inverse_scale,
+        scale_y=inverse_scale,
+        offset_x=-pad_x,
+        offset_y=-pad_y,
     )
 
 

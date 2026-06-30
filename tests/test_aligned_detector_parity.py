@@ -12,6 +12,7 @@ _SPEC.loader.exec_module(_MODULE)
 
 Record = _MODULE.Record
 compare = _MODULE.compare
+candidate_letterbox_transform = _MODULE.candidate_letterbox_transform
 map_record = _MODULE.map_record
 transform_record = _MODULE.transform_record
 
@@ -48,3 +49,17 @@ def test_aligned_parity_maps_prompt_and_transforms_bbox() -> None:
     assert report["totals"]["matched"] == 1
     assert report["matched_by_class"] == {"smoke": 1}
     assert report["bbox"]["min"] == 1.0
+
+
+def test_candidate_letterbox_transform_removes_square_mux_padding() -> None:
+    transform = candidate_letterbox_transform(
+        source_width=640,
+        source_height=360,
+        mux_width=640,
+        mux_height=640,
+    )
+
+    assert transform.scale_x == 1.0
+    assert transform.scale_y == 1.0
+    assert transform.offset_x == 0.0
+    assert transform.offset_y == -140.0

@@ -421,3 +421,75 @@ be the first thing to fix. **Decision: do not build a custom 114-gray
 preprocessing library yet.** The remaining fire/smoke class-score divergence
 should be investigated with a per-frame raw-tensor tool (PyTorch/ONNX/TRT/
 DeepStream on one decoded frame) before adding custom preprocessing.
+
+## VRSMeta Production Path Recheck
+
+After adding the `vrsmeta` GStreamer element, the production path was rechecked
+with the worker running as a launcher only:
+
+```text
+vrs-deepstream-worker --disable-probe
+  -> nvinfer
+  -> nvtracker
+  -> vrsmeta output-path=/out/fire120-ds8-disable-probe-vrsmeta.jsonl
+```
+
+Input:
+
+- Clip: `/data/vrs/fire_dataset/extracted_sample/fire/120.mp4`
+- Source geometry: 640x360, 24 fps, 132 frames
+- Muxer: `width=640 height=640 enable-padding=1`
+- Engine: `runs/engines/yoloe-11s-safety-rx5080-ds8-trtexec.engine`
+- PGIE config: `configs/deepstream/pgie-yoloe-safety.txt`
+
+Result:
+
+- `vrsmeta` wrote 133 valid `detection.v1` records.
+- Classes: `billowing smoke=127`, `smoke cloud=6`.
+- Score range: 0.278257 to 0.726425.
+- Redis bridge smoke published all 133 records into `vrs.detections`.
+
+Python baseline:
+
+```bash
+uv run scripts/export_python_detections.py \
+  --config configs/tiny.yaml \
+  --policy configs/policies/safety.yaml \
+  --out runs/parity/ds8-vrsmeta-20260630/python_fire120_policy.jsonl \
+  --stream-id fire120 \
+  --detector-id python-yoloe \
+  /data/vrs/fire_dataset/extracted_sample/fire/120.mp4
+```
+
+The baseline produced 18 `smoke` records. Because the source is 640x360 and the
+DeepStream muxer is 640x640 with padding, candidate boxes must be de-padded by
+140 px on Y. `scripts/compare_aligned_detector_parity.py` now supports this via
+`--auto-candidate-letterbox`:
+
+```bash
+uv run scripts/compare_aligned_detector_parity.py \
+  --python-detections runs/parity/ds8-vrsmeta-20260630/python_fire120_policy.jsonl \
+  --candidate-detections runs/deepstream-verify/fire120-ds8-disable-probe-vrsmeta.jsonl \
+  --policy configs/policies/safety.yaml \
+  --time-tolerance-s 0.08 \
+  --iou-threshold 0.5 \
+  --auto-candidate-letterbox \
+  --source-width 640 \
+  --source-height 360 \
+  --candidate-mux-width 640 \
+  --candidate-mux-height 640 \
+  --out runs/parity/ds8-vrsmeta-20260630/parity_fire120_strict_auto.json
+```
+
+Parity:
+
+| Tolerance | Matched | Python unmatched | Candidate unmatched | Mean IoU | Mean dt | Mean DS-Python score delta |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.08s | 17/18 | 1 | 116 | 0.941 | 0.022s | +0.210 |
+| 1.0s | 18/18 | 0 | 115 | 0.946 | 0.176s | +0.199 |
+
+This recheck validates the `vrsmeta` production export path and confirms that
+letterbox de-padding is required for source-coordinate parity. It does not close
+the broader detector parity gate for all classes and clips; it strengthens the
+smoke path on `120.mp4` and leaves MIVIA fire/falldown/smoke as the broader
+acceptance set.

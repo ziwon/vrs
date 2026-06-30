@@ -16,9 +16,10 @@ Implemented today:
 
 - `native/deepstream` builds a DS 8.0 C++ worker.
 - The worker runs a real GStreamer/DeepStream pipeline with `gst_parse_launch`.
-- It attaches a pad probe to a named element/pad.
-- It reads `NvDsBatchMeta`, `NvDsFrameMeta`, and `NvDsObjectMeta`.
-- It writes canonical `detection.v1` JSONL.
+- It can attach a pad probe to a named element/pad as a fallback/debug exporter.
+- It can run with `--disable-probe` so `vrsmeta` owns metadata export.
+- `vrsmeta` reads `NvDsBatchMeta`, `NvDsFrameMeta`, and `NvDsObjectMeta`.
+- Both the fallback probe and `vrsmeta` write canonical `detection.v1` JSONL.
 - It includes a custom YOLOE `nvinfer` parser library.
 - It can apply bbox scale/offset transforms before writing source-frame boxes.
 
@@ -30,8 +31,6 @@ What this gives us:
 
 What is still missing:
 
-- The metadata exporter is a pad probe inside an application, not a reusable
-  GStreamer element.
 - Output is still file-oriented JSONL by default.
 - The verifier/evidence path does not keep `NvBufSurface` objects on GPU.
 - Runtime configuration is still mostly a pipeline string plus process args.
@@ -310,8 +309,7 @@ Implemented:
 - It supports `stream-id`, `source-id`, `detector-id`, `labels`,
   `output-mode=jsonl`, `output-path`, `append`, bbox scale/offset, and `debug`
   properties.
-- The existing worker pad probe remains available as the fallback/bootstrap path
-  until Helm switches production pipelines to include `vrsmeta`.
+- The existing worker pad probe remains available as the fallback/debug path.
 
 Acceptance:
 
@@ -372,6 +370,7 @@ Deliverables:
 
 - Update `charts/vrs/values-prod.yaml` pipeline to include `vrsmeta`.
 - Mount labels and PGIE config consistently.
+- Run `vrs-deepstream-worker --disable-probe` so `vrsmeta` is the only writer.
 - Expose output mode, stream id, detector id, bbox transform, and Redis settings
   through values.
 

@@ -2,19 +2,14 @@
 
 VRS now includes a native C++ DeepStream worker under `native/deepstream`.
 It is the first real DeepStream/GStreamer data-plane implementation: it runs a
-pipeline, attaches a pad probe, reads DeepStream object metadata, and emits
-canonical `detection.v1` JSONL.
-
-The next production step is to move the metadata export logic from an
-application pad probe into a reusable GStreamer element. See
-`docs/architecture/deepstream-plugin-runtime.md` for the `gst-vrsmeta`
-milestones and zero-copy boundary.
+pipeline, can attach a pad probe for fallback metadata export, and can also run
+as a launcher/supervisor for the `vrsmeta` GStreamer element.
 
 The first `vrsmeta` plugin is now built into the DS8 image. It is installed under
 `/opt/vrs/lib/gstreamer-1.0` and exposed through `GST_PLUGIN_PATH`. It can export
 DeepStream object metadata to `detection.v1` JSONL when `output-path` is set. The
-worker pad probe remains available as the fallback/bootstrap path until Helm
-switches production pipelines to include `vrsmeta`.
+Helm production pipelines use `vrsmeta` as the primary metadata exporter. The
+worker pad probe remains available as a fallback/debug path.
 
 The existing Python `vrs.deepstream.worker` remains useful for kind and contract
 smoke tests because it does not require NVIDIA runtime libraries.
@@ -46,12 +41,7 @@ docker run --rm --gpus all --network host \
   -v "$PWD/configs/deepstream:/etc/vrs/deepstream:ro" \
   vrs-deepstream:ds8 \
   --pipeline "$(cat configs/deepstream/ds8-file-example.pipeline)" \
-  --probe-element sink \
-  --probe-pad sink \
-  --stream-id file-fire1 \
-  --detector-id ds8-nvinfer \
-  --labels /opt/vrs/share/deepstream/configs/yoloe-safety-labels.txt \
-  --out /runs/deepstream/detections.jsonl
+  --disable-probe
 ```
 
 The checked-in pipeline is a template. It uses the image-baked
@@ -100,6 +90,10 @@ Plugin-owned metadata export path:
   ! fakesink sync=false
 ```
 
+Use `--disable-probe` on `vrs-deepstream-worker` when the pipeline contains
+`vrsmeta`; otherwise both the worker pad probe and the plugin may write
+detections.
+
 After producing DeepStream JSONL, compare against the existing Python detector
 export path:
 
@@ -117,9 +111,9 @@ uv run scripts/compare_detector_parity.py \
 ```
 
 The first DS 8 YOLOE validation is recorded in
-`docs/benchmarks/deepstream-ds8-yoloe-validation-2026-06-30.md`. The worker and
-custom parser load correctly, but YOLOE TensorRT parity is not accepted yet:
-the MIVIA Python baseline emits five detections while the DeepStream `nvinfer`
-path emits zero at production thresholds. Treat the checked-in YOLOE PGIE config
-as a validation target, not a production detector profile, until that parity gap
-is closed.
+`docs/benchmarks/deepstream-ds8-yoloe-validation-2026-06-30.md`. The worker,
+`vrsmeta`, custom parser, and TensorRT engine load correctly, and the production
+threshold path has been GPU-smoke-tested on `/data/vrs/fire_dataset/.../120.mp4`.
+Detector parity is still not accepted for all clips/classes, so keep treating
+the checked-in YOLOE PGIE config as a validation target until parity thresholds
+are formalized.

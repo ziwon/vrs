@@ -298,18 +298,14 @@ docker run --rm --gpus all \
   -v "$PWD/runs/engines:/models:ro" \
   vrs-deepstream:ds8 \
   --pipeline "$(cat configs/deepstream/ds8-file-example.pipeline)" \
-  --probe-element sink \
-  --probe-pad sink \
-  --stream-id file-demo \
-  --detector-id ds8-yoloe-safety \
-  --labels /etc/vrs/deepstream/yoloe-safety-labels.txt \
-  --out /runs/deepstream/detections.jsonl
+  --disable-probe
 ```
 
 When using a padded square muxer such as `width=640 height=640
-enable-padding=1`, pass the matching `--bbox-offset-*` and `--bbox-scale-*`
-options so `detection.v1` boxes are written in source-frame coordinates. See the
-DeepStream validation note before treating YOLOE `nvinfer` output as production
+enable-padding=1`, configure matching `bbox-offset-*` and `bbox-scale-*`
+properties on `vrsmeta` so `detection.v1` boxes are written in source-frame
+coordinates. See the DeepStream validation note before treating YOLOE `nvinfer`
+output as production
 detector output.
 
 Outputs:

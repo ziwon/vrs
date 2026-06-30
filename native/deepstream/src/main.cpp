@@ -30,6 +30,7 @@ struct Options {
   std::string probe_element = "sink";
   std::string probe_pad = "sink";
   std::string labels_path;
+  bool disable_probe = false;
   bool append = false;
   double bbox_scale_x = 1.0;
   double bbox_scale_y = 1.0;
@@ -45,7 +46,8 @@ struct Context {
 
 void print_usage(const char *argv0) {
   std::cerr
-      << "Usage: " << argv0 << " --pipeline PIPELINE --out detections.jsonl [options]\n\n"
+      << "Usage: " << argv0
+      << " --pipeline PIPELINE [--out detections.jsonl | --disable-probe] [options]\n\n"
       << "Options:\n"
       << "  --stream-id ID          stream_id written to detection.v1 records\n"
       << "  --source-id ID          optional source_id written to detection.v1 records\n"
@@ -57,6 +59,7 @@ void print_usage(const char *argv0) {
       << "  --bbox-scale-y VALUE    scale object bbox y coordinates before writing\n"
       << "  --bbox-offset-x VALUE   add to object bbox x coordinates before scaling\n"
       << "  --bbox-offset-y VALUE   add to object bbox y coordinates before scaling\n"
+      << "  --disable-probe         run pipeline without worker-owned metadata export\n"
       << "  --append                append to output JSONL instead of truncating\n"
       << "  --print-example-pipeline\n";
 }
@@ -72,6 +75,9 @@ std::string example_pipeline() {
          "live-source=0 ! "
          "nvinfer config-file-path=/opt/vrs/share/deepstream/configs/pgie-yoloe-safety.txt ! "
          "nvtracker ll-lib-file=/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so ! "
+         "vrsmeta stream-id=deepstream-stream detector-id=ds8-yoloe "
+         "labels=/opt/vrs/share/deepstream/configs/yoloe-safety-labels.txt "
+         "output-path=/tmp/vrs/deepstream_detections.jsonl ! "
          "fakesink name=sink sync=false";
 }
 
@@ -109,6 +115,8 @@ Options parse_args(int argc, char **argv) {
       options.bbox_offset_x = std::stod(require_value(arg));
     } else if (arg == "--bbox-offset-y") {
       options.bbox_offset_y = std::stod(require_value(arg));
+    } else if (arg == "--disable-probe") {
+      options.disable_probe = true;
     } else if (arg == "--append") {
       options.append = true;
     } else if (arg == "--print-example-pipeline") {
@@ -124,7 +132,7 @@ Options parse_args(int argc, char **argv) {
   if (options.pipeline.empty()) {
     throw std::invalid_argument("--pipeline is required");
   }
-  if (options.out_path.empty()) {
+  if (!options.disable_probe && options.out_path.empty()) {
     throw std::invalid_argument("--out is required");
   }
   return options;
@@ -226,16 +234,18 @@ void install_probe(GstElement *pipeline, Context *ctx) {
 int run(const Options &options) {
   Context ctx;
   ctx.options = options;
-  ctx.labels = vrs::deepstream::load_labels(options.labels_path);
-  const std::filesystem::path out_path(options.out_path);
-  if (out_path.has_parent_path()) {
-    std::filesystem::create_directories(out_path.parent_path());
-  }
-  ctx.out.open(
-      options.out_path,
-      std::ios::out | (options.append ? std::ios::app : std::ios::trunc));
-  if (!ctx.out) {
-    throw std::runtime_error("failed to open output file: " + options.out_path);
+  if (!options.disable_probe) {
+    ctx.labels = vrs::deepstream::load_labels(options.labels_path);
+    const std::filesystem::path out_path(options.out_path);
+    if (out_path.has_parent_path()) {
+      std::filesystem::create_directories(out_path.parent_path());
+    }
+    ctx.out.open(
+        options.out_path,
+        std::ios::out | (options.append ? std::ios::app : std::ios::trunc));
+    if (!ctx.out) {
+      throw std::runtime_error("failed to open output file: " + options.out_path);
+    }
   }
 
   GError *error = nullptr;
@@ -247,7 +257,9 @@ int run(const Options &options) {
     }
     throw std::runtime_error("failed to create pipeline: " + msg);
   }
-  install_probe(pipeline, &ctx);
+  if (!options.disable_probe) {
+    install_probe(pipeline, &ctx);
+  }
 
   GstBus *bus = gst_element_get_bus(pipeline);
   const GstStateChangeReturn state_change = gst_element_set_state(pipeline, GST_STATE_PLAYING);

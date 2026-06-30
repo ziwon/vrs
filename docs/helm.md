@@ -28,8 +28,9 @@ Workload components:
   The default and kind profiles use the Python metadata adapter. The production
   profile uses the DS 8.0 native C++ worker image/command and should be pointed
   at deployment-specific DeepStream pipeline/model configuration. In production,
-  a `detection-publisher` sidecar tails the worker's `detection.v1` JSONL output
-  from a shared `emptyDir` and publishes it to Redis Streams.
+  the pipeline writes `detection.v1` JSONL through `vrsmeta`, and a
+  `detection-publisher` sidecar tails that file from a shared `emptyDir` and
+  publishes it to Redis Streams.
 - Verifier worker deployment template with `vrs.ai/gpu-role: verifier`, disabled
   by default until `vrs.verifier.worker` exists.
 - Redis edge bus.
@@ -52,7 +53,8 @@ The Redis bridge is intentionally a sidecar rather than C++ worker logic. It
 keeps the current worker small while providing a real platform handoff:
 
 ```text
-vrs-deepstream-worker -> /tmp/vrs/deepstream_detections.jsonl
+vrs-deepstream-worker --disable-probe
+  -> nvinfer ! nvtracker ! vrsmeta output-path=/tmp/vrs/deepstream_detections.jsonl
   -> python -m vrs.deepstream.jsonl_bridge
   -> Redis Streams: vrs.detections
 ```

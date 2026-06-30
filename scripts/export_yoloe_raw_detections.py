@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 from vrs import setup_logging
 from vrs.eval.detection_export import write_detection_jsonl
@@ -30,6 +31,8 @@ def main() -> None:
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--half", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--target-fps", type=float, default=0.0, help="0 means every frame")
+    ap.add_argument("--raw-rgb-width", type=int, help="read source as one raw HWC RGB frame")
+    ap.add_argument("--raw-rgb-height", type=int, help="read source as one raw HWC RGB frame")
     args = ap.parse_args()
 
     from ultralytics import YOLOE
@@ -43,7 +46,12 @@ def main() -> None:
     model.set_classes(prompts, model.get_text_pe(prompts))
 
     records: list[dict] = []
-    for frame in iter_frames(str(source), target_fps=args.target_fps):
+    for frame in iter_frames(
+        str(source),
+        target_fps=args.target_fps,
+        raw_rgb_width=args.raw_rgb_width,
+        raw_rgb_height=args.raw_rgb_height,
+    ):
         result = model.predict(
             frame.image,
             imgsz=args.imgsz,
@@ -82,7 +90,19 @@ def main() -> None:
     print(f"written {args.out}: {len(records)} detection.v1 records")
 
 
-def iter_frames(source: str, *, target_fps: float) -> list[Frame]:
+def iter_frames(
+    source: str,
+    *,
+    target_fps: float,
+    raw_rgb_width: int | None = None,
+    raw_rgb_height: int | None = None,
+) -> list[Frame]:
+    if raw_rgb_width is not None or raw_rgb_height is not None:
+        if raw_rgb_width is None or raw_rgb_height is None:
+            raise ValueError("--raw-rgb-width and --raw-rgb-height must be provided together")
+        image = read_raw_rgb_frame(source, width=raw_rgb_width, height=raw_rgb_height)
+        return [Frame(index=0, pts_s=0.0, image=image)]
+
     if Path(source).suffix.lower() in {".bmp", ".jpeg", ".jpg", ".png", ".webp"}:
         image = cv2.imread(source, cv2.IMREAD_COLOR)
         if image is None:
@@ -107,6 +127,15 @@ def iter_frames(source: str, *, target_fps: float) -> list[Frame]:
         src_idx += 1
     cap.release()
     return frames
+
+
+def read_raw_rgb_frame(source: str, *, width: int, height: int) -> np.ndarray:
+    data = np.fromfile(source, dtype=np.uint8)
+    expected = width * height * 3
+    if data.size != expected:
+        raise ValueError(f"{source} has {data.size} bytes, expected {expected}")
+    rgb = data.reshape(height, width, 3)
+    return rgb[:, :, ::-1].copy()
 
 
 if __name__ == "__main__":

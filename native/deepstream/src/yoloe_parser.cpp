@@ -2,7 +2,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include "nvdsinfer_custom_impl.h"
@@ -82,6 +85,67 @@ float threshold_for_class(
   return params.perClassPreclusterThreshold.empty() ? 0.25f : params.perClassPreclusterThreshold[0];
 }
 
+void dump_raw_layer_once(
+    const NvDsInferLayerInfo &layer,
+    unsigned int class_count,
+    int channels,
+    int anchors,
+    bool channel_first) {
+  static bool dumped = false;
+  if (dumped) {
+    return;
+  }
+  const char *prefix = std::getenv("VRS_YOLOE_RAW_DUMP");
+  if (prefix == nullptr || prefix[0] == '\0') {
+    return;
+  }
+  dumped = true;
+
+  const unsigned int layer_volume = volume(layer.inferDims);
+  const auto *data = static_cast<const float *>(layer.buffer);
+  const std::string base(prefix);
+  const std::string bin_path = base + ".f32";
+  const std::string json_path = base + ".json";
+  const std::string bin_name = std::filesystem::path(bin_path).filename().string();
+
+  std::ofstream bin(bin_path, std::ios::out | std::ios::binary | std::ios::trunc);
+  if (!bin) {
+    std::cerr << "NvDsInferParseCustomYoloE: failed to open raw dump " << bin_path << "\n";
+    return;
+  }
+  bin.write(reinterpret_cast<const char *>(data), static_cast<std::streamsize>(
+      layer_volume * sizeof(float)));
+  bin.close();
+
+  std::ofstream meta(json_path, std::ios::out | std::ios::trunc);
+  if (!meta) {
+    std::cerr << "NvDsInferParseCustomYoloE: failed to open raw dump metadata " << json_path
+              << "\n";
+    return;
+  }
+  meta << "{\n"
+       << "  \"schema_version\": \"vrs.deepstream.yoloe_raw_tensor.v1\",\n"
+       << "  \"runtime\": \"deepstream-nvinfer\",\n"
+       << "  \"layer_name\": \"" << (layer.layerName ? layer.layerName : "") << "\",\n"
+       << "  \"dtype\": \"float32\",\n"
+       << "  \"binary\": \"" << bin_name << "\",\n"
+       << "  \"runtime_binary_path\": \"" << bin_path << "\",\n"
+       << "  \"dims\": [";
+  for (unsigned int i = 0; i < layer.inferDims.numDims; ++i) {
+    if (i != 0) {
+      meta << ", ";
+    }
+    meta << layer.inferDims.d[i];
+  }
+  meta << "],\n"
+       << "  \"volume\": " << layer_volume << ",\n"
+       << "  \"class_count\": " << class_count << ",\n"
+       << "  \"channels\": " << channels << ",\n"
+       << "  \"anchors\": " << anchors << ",\n"
+       << "  \"channel_first\": " << (channel_first ? "true" : "false") << "\n"
+       << "}\n";
+}
+
 }  // namespace
 
 extern "C" bool NvDsInferParseCustomYoloE(
@@ -143,6 +207,8 @@ extern "C" bool NvDsInferParseCustomYoloE(
     }
     return false;
   }
+
+  dump_raw_layer_once(*layer, class_count, channels, anchors, channel_first);
 
   auto at = [&](int channel, int anchor) -> float {
     if (channel_first) {

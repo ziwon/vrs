@@ -47,6 +47,10 @@ metadata:
     app.kubernetes.io/component: redis
 spec:
   accessModes: ["ReadWriteOnce"]
+  {{- $redisStorageClassName := default .Values.storageClassName .Values.redis.persistence.storageClassName }}
+  {{- if $redisStorageClassName }}
+  storageClassName: {{ $redisStorageClassName | quote }}
+  {{- end }}
   resources:
     requests:
       storage: {{ .Values.redis.persistence.size }}

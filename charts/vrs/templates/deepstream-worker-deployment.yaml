@@ -20,6 +20,7 @@ spec:
         app.kubernetes.io/component: deepstream-worker
         vrs.ai/gpu-role: {{ .Values.deepstreamWorker.gpuRole | quote }}
     spec:
+      {{- include "vrs.podScheduling" (dict "root" . "workload" .Values.deepstreamWorker) | nindent 6 }}
       containers:
         - name: deepstream-worker
           image: "{{ default .Values.image.repository .Values.deepstreamWorker.image.repository }}:{{ default .Values.image.tag .Values.deepstreamWorker.image.tag }}"

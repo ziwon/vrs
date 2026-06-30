@@ -15,6 +15,7 @@ def test_helm_chart_has_required_profiles_and_components() -> None:
         "values.yaml",
         "values-dev.yaml",
         "values-edge.yaml",
+        "values-k3s-gpu.yaml",
         "values-prod.yaml",
         "values-kind.yaml",
     ):
@@ -38,6 +39,7 @@ def test_helm_chart_has_required_profiles_and_components() -> None:
 def test_helm_profiles_keep_gpu_roles_explicit() -> None:
     default = yaml.safe_load((CHART_DIR / "values.yaml").read_text(encoding="utf-8"))
     edge = yaml.safe_load((CHART_DIR / "values-edge.yaml").read_text(encoding="utf-8"))
+    k3s_gpu = yaml.safe_load((CHART_DIR / "values-k3s-gpu.yaml").read_text(encoding="utf-8"))
     prod = yaml.safe_load((CHART_DIR / "values-prod.yaml").read_text(encoding="utf-8"))
     kind = yaml.safe_load((CHART_DIR / "values-kind.yaml").read_text(encoding="utf-8"))
 
@@ -48,6 +50,12 @@ def test_helm_profiles_keep_gpu_roles_explicit() -> None:
     assert edge["deepstreamWorker"]["gpuRole"] == "deepstream"
     assert edge["verifierWorker"]["gpuRole"] == "verifier"
     assert edge["verifierWorker"]["enabled"] is False
+    assert k3s_gpu["deepstreamWorker"]["image"]["repository"] == "vrs-deepstream"
+    assert k3s_gpu["deepstreamWorker"]["command"] == ["/opt/vrs/bin/vrs-deepstream-worker"]
+    assert k3s_gpu["deepstreamWorker"]["publisher"]["enabled"] is True
+    assert k3s_gpu["objectStorage"]["mode"] == "seaweedfs"
+    assert k3s_gpu["objectStorage"]["seaweedfs"]["enabled"] is True
+    assert k3s_gpu["sampleMetadata"]["enabled"] is False
     assert prod["objectStorage"]["mode"] == "seaweedfs"
     assert prod["console"]["replicas"] == 2
     assert prod["deepstreamWorker"]["image"]["repository"] == "vrs-deepstream"
@@ -113,6 +121,8 @@ def test_helm_template_renders_storage_mounts_and_sample_metadata() -> None:
     assert "http://test-vrs-api:8000/api/" in console_config["data"]["default.conf"]
     assert 'apiBaseUrl: ""' in console_config["data"]["config.js"]
     assert _service(docs, "test-vrs-console")["spec"]["ports"][0]["port"] == 80
+    assert _service(docs, "test-vrs-console")["spec"]["type"] == "ClusterIP"
+    assert _service(docs, "test-vrs-api")["spec"]["type"] == "ClusterIP"
 
     api_container = _container(api, "api")
     api_env = _env_by_name(api_container)
@@ -142,6 +152,61 @@ def test_helm_template_renders_storage_mounts_and_sample_metadata() -> None:
         doc["kind"] == "Deployment" and doc["metadata"]["name"] == "test-vrs-verifier"
         for doc in docs
     )
+
+
+def test_helm_template_renders_platform_storage_and_service_overrides(tmp_path: Path) -> None:
+    if shutil.which("helm") is None:
+        pytest.skip("helm binary is not installed")
+
+    platform_values = tmp_path / "platform.yaml"
+    platform_values.write_text(
+        """
+storageClassName: local-path
+api:
+  service:
+    type: NodePort
+    annotations:
+      example.com/exposure: internal
+    nodePort: 30080
+console:
+  service:
+    type: LoadBalancer
+    annotations:
+      example.com/exposure: edge
+redis:
+  persistence:
+    storageClassName: fast-local
+""",
+        encoding="utf-8",
+    )
+
+    rendered = subprocess.run(
+        [
+            "helm",
+            "template",
+            "test",
+            str(CHART_DIR),
+            "-f",
+            str(platform_values),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout
+    docs = [doc for doc in yaml.safe_load_all(rendered) if isinstance(doc, dict)]
+
+    api_service = _service(docs, "test-vrs-api")
+    console_service = _service(docs, "test-vrs-console")
+    evidence_pvc = _pvc(docs, "test-vrs-evidence")
+    redis_pvc = _pvc(docs, "test-vrs-redis")
+
+    assert api_service["spec"]["type"] == "NodePort"
+    assert api_service["metadata"]["annotations"]["example.com/exposure"] == "internal"
+    assert api_service["spec"]["ports"][0]["nodePort"] == 30080
+    assert console_service["spec"]["type"] == "LoadBalancer"
+    assert console_service["metadata"]["annotations"]["example.com/exposure"] == "edge"
+    assert evidence_pvc["spec"]["storageClassName"] == "local-path"
+    assert redis_pvc["spec"]["storageClassName"] == "fast-local"
 
 
 def test_helm_template_prod_renders_seaweedfs_storage() -> None:
@@ -252,6 +317,67 @@ def test_helm_template_kind_renders_without_gpu_request() -> None:
     )
 
 
+def test_helm_template_k3s_gpu_renders_native_deepstream_worker(tmp_path: Path) -> None:
+    if shutil.which("helm") is None:
+        pytest.skip("helm binary is not installed")
+
+    scheduling_values = tmp_path / "scheduling.yaml"
+    scheduling_values.write_text(
+        """
+deepstreamWorker:
+  runtimeClassName: nvidia
+  nodeSelector:
+    vrs.ai/gpu-node: "true"
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+""",
+        encoding="utf-8",
+    )
+
+    rendered = subprocess.run(
+        [
+            "helm",
+            "template",
+            "test",
+            str(CHART_DIR),
+            "-f",
+            str(CHART_DIR / "values-k3s-gpu.yaml"),
+            "-f",
+            str(scheduling_values),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout
+    docs = [doc for doc in yaml.safe_load_all(rendered) if isinstance(doc, dict)]
+    worker = _deployment(docs, "test-vrs-deepstream-worker")
+    worker_spec = worker["spec"]["template"]["spec"]
+    worker_container = _container(worker, "deepstream-worker")
+    publisher_container = _container(worker, "detection-publisher")
+
+    assert worker_spec["runtimeClassName"] == "nvidia"
+    assert worker_spec["nodeSelector"] == {"vrs.ai/gpu-node": "true"}
+    assert worker_spec["tolerations"][0]["key"] == "nvidia.com/gpu"
+    assert worker_container["image"] == "vrs-deepstream:ds8"
+    assert worker_container["command"] == ["/opt/vrs/bin/vrs-deepstream-worker"]
+    assert worker_container["resources"]["limits"]["nvidia.com/gpu"] == 1
+    assert "--pipeline" in worker_container["args"]
+    rendered_pipeline = worker_container["args"][worker_container["args"].index("--pipeline") + 1]
+    assert "stream-id=k3s-gpu-smoke" in rendered_pipeline
+    assert "output-path=/tmp/vrs/deepstream_detections.jsonl" in rendered_pipeline
+    assert publisher_container["command"] == ["python", "-m", "vrs.deepstream.jsonl_bridge"]
+    assert any(
+        vol.get("hostPath", {}).get("path") == "/data/vrs"
+        for vol in worker_spec["volumes"]
+    )
+    assert not any(
+        doc["kind"] == "ConfigMap" and doc["metadata"]["name"] == "test-vrs-sample-metadata"
+        for doc in docs
+    )
+
+
 def _deployment(docs: list[dict], name: str) -> dict:
     return next(
         doc for doc in docs if doc.get("kind") == "Deployment" and doc["metadata"]["name"] == name
@@ -267,6 +393,14 @@ def _service(docs: list[dict], name: str) -> dict:
 def _configmap(docs: list[dict], name: str) -> dict:
     return next(
         doc for doc in docs if doc.get("kind") == "ConfigMap" and doc["metadata"]["name"] == name
+    )
+
+
+def _pvc(docs: list[dict], name: str) -> dict:
+    return next(
+        doc
+        for doc in docs
+        if doc.get("kind") == "PersistentVolumeClaim" and doc["metadata"]["name"] == name
     )
 
 

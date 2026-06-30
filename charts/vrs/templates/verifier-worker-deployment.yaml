@@ -20,6 +20,7 @@ spec:
         app.kubernetes.io/component: verifier-worker
         vrs.ai/gpu-role: {{ .Values.verifierWorker.gpuRole | quote }}
     spec:
+      {{- include "vrs.podScheduling" (dict "root" . "workload" .Values.verifierWorker) | nindent 6 }}
       containers:
         - name: verifier-worker
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

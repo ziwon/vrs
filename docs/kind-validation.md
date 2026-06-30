@@ -22,6 +22,17 @@ the worker can run without copying large datasets into the cluster.
 kind create cluster --name vrs-dev
 ```
 
+Check the cluster defaults before installing the chart:
+
+```bash
+kubectl get storageclass
+kubectl get nodes -o wide
+```
+
+The kind smoke profile expects a normal default StorageClass for the local
+evidence PVC. It does not require Gateway API, an ingress controller, GPU
+resources, DRA, or NVIDIA runtime classes.
+
 For microk8s, use the same `values-kind.yaml` smoke profile first. Enable DNS,
 storage, and Helm support, then run the same Helm commands through microk8s:
 
@@ -31,9 +42,9 @@ alias kubectl='microk8s kubectl'
 alias helm='microk8s helm3'
 ```
 
-Use `values-edge.yaml` only after the single node has an NVIDIA runtime and
-device plugin configured; the edge profile keeps GPU scheduling labels and
-requests enabled.
+Use `docs/k3s-gpu.md` and `values-k3s-gpu.yaml` after the single node has an
+NVIDIA runtime and device plugin configured. The kind smoke path here is
+deliberately CPU-only.
 
 ## Build And Load The Image
 
@@ -42,6 +53,14 @@ docker build -t vrs:latest -f Dockerfile.backend .
 docker build -t vrs-console:latest -f Dockerfile.console .
 kind load docker-image vrs:latest --name vrs-dev
 kind load docker-image vrs-console:latest --name vrs-dev
+```
+
+The same workflow is available through Just:
+
+```bash
+just image-api
+just image-console
+just kind-load-images
 ```
 
 For microk8s containerd, import the same local image before installing:
@@ -81,6 +100,12 @@ kubectl get pods
 kubectl logs deploy/vrs-vrs-deepstream-worker
 kubectl exec deploy/vrs-vrs-deepstream-worker -- \
   sh -lc 'ls -R /data && cat /data/runs/deepstream_detections.jsonl'
+```
+
+Or run the non-destructive deployment checks through Just:
+
+```bash
+just kind-smoke-check
 ```
 
 Expected result: `/data/runs/deepstream_detections.jsonl` contains

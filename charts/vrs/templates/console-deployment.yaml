@@ -20,6 +20,7 @@ spec:
         app.kubernetes.io/component: console
         vrs.ai/gpu-role: "none"
     spec:
+      {{- include "vrs.podScheduling" (dict "root" . "workload" .Values.console) | nindent 6 }}
       containers:
         - name: console
           image: "{{ .Values.console.image.repository }}:{{ .Values.console.image.tag }}"

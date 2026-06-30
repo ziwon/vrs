@@ -20,6 +20,7 @@ spec:
         app.kubernetes.io/component: api
         vrs.ai/gpu-role: {{ .Values.api.gpuRole | quote }}
     spec:
+      {{- include "vrs.podScheduling" (dict "root" . "workload" .Values.api) | nindent 6 }}
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

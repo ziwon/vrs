@@ -13,6 +13,9 @@ Profiles:
 - `values-edge.yaml` targets a single-node edge host with Redis, local PVC
   object storage, one DeepStream worker, verifier worker disabled until a
   service entrypoint exists, and metrics.
+- `values-k3s-gpu.yaml` targets single-node GPU Kubernetes validation with the
+  native DS8 image, hostPath input/model mounts, Redis bridge sidecar,
+  SeaweedFS S3-compatible evidence storage, and GPU resource requests.
 - `values-prod.yaml` sketches a production cluster shape with multiple API,
   DeepStream worker replicas plus SeaweedFS and ServiceMonitor enabled. It
   disables sample metadata and injects SeaweedFS S3-compatible endpoint,
@@ -40,6 +43,10 @@ Workload components:
 - Redis edge bus.
 - Local PVC or SeaweedFS object storage.
 - Metrics service and optional ServiceMonitor.
+- Optional platform-facing service fields for API and console: Service type,
+  annotations, and NodePort. The default remains `ClusterIP`; Gateway API,
+  HTTPRoute, cloud load balancers, Cilium, Traefik, certificates, and DNS should
+  be supplied by platform overlays rather than the core VRS chart.
 
 The default DeepStream worker command points at
 `python -m vrs.deepstream.worker`, which converts DeepStream-style metadata
@@ -79,4 +86,15 @@ store adapter as the canonical evidence/manifest storage path. Runtime
 `object_manifest.v1` documents are written through that configured store; any
 container filesystem output is scratch or a local append index only.
 
-For a kind smoke path, see `docs/kind-validation.md`.
+PVC-backed storage uses the cluster default StorageClass unless
+`storageClassName` or a component-specific storage class is set. This keeps kind
+and k3s simple while allowing edge deployments to use k3s `local-path`,
+Longhorn, OpenEBS, NFS, or another CSI class without template changes.
+
+GPU scheduling currently uses standard Kubernetes scheduling fields and
+`nvidia.com/gpu` resource requests. DRA, ResourceClaims, MIG placement, and a
+future VRS multi-GPU scheduler are intentionally treated as platform/future
+extensions until VRS owns that scheduling policy.
+
+For a kind smoke path, see `docs/kind-validation.md`. For single-node GPU
+Kubernetes validation, see `docs/k3s-gpu.md`.

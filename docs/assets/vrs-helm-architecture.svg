@@ -98,13 +98,13 @@
   <text fill="#94a3b8" class="label muted tiny" x="102" y="280">RTSP / MP4 inputs</text>
   <text fill="#94a3b8" class="label muted tiny" x="102" y="300">static assignment</text>
 
-  <rect class="node" x="316" y="190" width="196" height="150" rx="16"/>
+  <rect class="node" x="316" y="190" width="196" height="162" rx="16"/>
   <text fill="#f8fafc" class="label medium" x="354" y="230">DeepStream</text>
   <text fill="#f8fafc" class="label medium" x="358" y="254">worker x N</text>
   <text fill="#94a3b8" class="label muted tiny" x="346" y="282">vrs-deepstream:ds8</text>
   <text fill="#94a3b8" class="label muted tiny" x="346" y="304">nvinfer + tracker</text>
-  <rect x="340" y="318" width="148" height="30" rx="15" fill="url(#gpu)" opacity=".22" stroke="#84cc16"/>
-  <text fill="#f8fafc" class="label tiny" x="363" y="338">gpu-role: deepstream</text>
+  <rect x="340" y="314" width="148" height="36" rx="18" fill="url(#gpu)" opacity=".22" stroke="#84cc16"/>
+  <text fill="#f8fafc" class="label tiny" x="363" y="337">gpu-role: deepstream</text>
 
   <rect class="node" x="612" y="190" width="196" height="150" rx="16"/>
   <text fill="#f8fafc" class="label medium" x="650" y="230">Redis</text>
@@ -152,19 +152,19 @@
   <path class="flow storeStroke" d="M512 430C560 456 590 486 626 530" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowStore)"/>
   <path class="flow storeStroke" d="M890 320C760 390 640 462 520 558" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowStore)"/>
 
-  <rect class="chip" x="72" y="470" width="250" height="32" rx="16"/>
-  <circle cx="94" cy="486" r="6" fill="#84cc16"/>
-  <text fill="#f8fafc" class="label tiny" x="110" y="491">prod: 2 DeepStream replicas</text>
+  <rect class="chip" x="72" y="464" width="250" height="42" rx="21"/>
+  <circle cx="94" cy="485" r="6" fill="#84cc16"/>
+  <text fill="#f8fafc" class="label tiny" x="110" y="490">prod: 2 DeepStream replicas</text>
 
-  <rect class="chip" x="346" y="470" width="248" height="32" rx="16"/>
-  <circle cx="368" cy="486" r="6" fill="#38bdf8"/>
-  <text fill="#f8fafc" class="label tiny" x="384" y="491">Redis transport boundary</text>
+  <rect class="chip" x="346" y="464" width="248" height="42" rx="21"/>
+  <circle cx="368" cy="485" r="6" fill="#38bdf8"/>
+  <text fill="#f8fafc" class="label tiny" x="384" y="490">Redis transport boundary</text>
 
-  <rect class="chip" x="618" y="470" width="278" height="32" rx="16"/>
-  <circle cx="640" cy="486" r="6" fill="#f59e0b"/>
-  <text fill="#f8fafc" class="label tiny" x="656" y="491">SeaweedFS preferred evidence store</text>
+  <rect class="chip" x="618" y="464" width="278" height="42" rx="21"/>
+  <circle cx="640" cy="485" r="6" fill="#f59e0b"/>
+  <text fill="#f8fafc" class="label tiny" x="656" y="490">SeaweedFS preferred evidence store</text>
 
-  <rect class="chip" x="920" y="470" width="202" height="32" rx="16"/>
-  <circle cx="942" cy="486" r="6" fill="#818cf8"/>
-  <text fill="#f8fafc" class="label tiny" x="958" y="491">Prometheus-ready metrics</text>
+  <rect class="chip" x="920" y="464" width="202" height="42" rx="21"/>
+  <circle cx="942" cy="485" r="6" fill="#818cf8"/>
+  <text fill="#f8fafc" class="label tiny" x="958" y="490">Prometheus-ready metrics</text>
 </svg>

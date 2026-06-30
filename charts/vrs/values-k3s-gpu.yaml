@@ -1,0 +1,70 @@
+profile: single-node-gpu-k3s
+
+runtime:
+  scratch:
+    enabled: false
+
+deepstreamWorker:
+  enabled: true
+  replicas: 1
+  image:
+    repository: vrs-deepstream
+    tag: ds8
+    pullPolicy: IfNotPresent
+  command:
+    - /opt/vrs/bin/vrs-deepstream-worker
+  args:
+    - --pipeline
+    - filesrc location=/data/vrs/input.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! m.sink_0 nvstreammux name=m batch-size=1 width=640 height=640 enable-padding=1 live-source=0 ! nvdspreprocess config-file=/opt/vrs/share/deepstream/configs/preprocess-yoloe-safety.txt ! nvinfer input-tensor-meta=true config-file-path=/opt/vrs/share/deepstream/configs/pgie-yoloe-safety-preprocess.txt ! nvtracker ll-lib-file=/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so ! vrsmeta stream-id=k3s-gpu-smoke detector-id=ds8-nvinfer-preprocess labels=/opt/vrs/share/deepstream/configs/yoloe-safety-labels.txt output-mode=jsonl output-path=/tmp/vrs/deepstream_detections.jsonl ! fakesink name=sink sync=false
+    - --disable-probe
+  gpuRole: deepstream
+  publisher:
+    enabled: true
+  volumeMounts:
+    - name: deepstream-output
+      mountPath: /tmp/vrs
+    - name: deepstream-input
+      mountPath: /data/vrs
+      readOnly: true
+    - name: deepstream-models
+      mountPath: /models
+      readOnly: true
+  volumes:
+    - name: deepstream-output
+      emptyDir: {}
+    - name: deepstream-input
+      hostPath:
+        path: /data/vrs
+        type: Directory
+    - name: deepstream-models
+      hostPath:
+        path: /data/vrs/models
+        type: Directory
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+
+verifierWorker:
+  enabled: false
+
+redis:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 8Gi
+
+objectStorage:
+  mode: seaweedfs
+  pvc:
+    enabled: false
+  seaweedfs:
+    enabled: true
+    size: 100Gi
+
+sampleMetadata:
+  enabled: false
+
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false

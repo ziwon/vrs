@@ -8,6 +8,10 @@ metadata:
     app.kubernetes.io/component: object-storage
 spec:
   accessModes: ["ReadWriteOnce"]
+  {{- $evidenceStorageClassName := default .Values.storageClassName .Values.objectStorage.pvc.storageClassName }}
+  {{- if $evidenceStorageClassName }}
+  storageClassName: {{ $evidenceStorageClassName | quote }}
+  {{- end }}
   resources:
     requests:
       storage: {{ .Values.objectStorage.pvc.size }}
@@ -105,6 +109,10 @@ metadata:
     app.kubernetes.io/component: seaweedfs
 spec:
   accessModes: ["ReadWriteOnce"]
+  {{- $seaweedfsStorageClassName := default .Values.storageClassName .Values.objectStorage.seaweedfs.storageClassName }}
+  {{- if $seaweedfsStorageClassName }}
+  storageClassName: {{ $seaweedfsStorageClassName | quote }}
+  {{- end }}
   resources:
     requests:
       storage: {{ .Values.objectStorage.seaweedfs.size }}

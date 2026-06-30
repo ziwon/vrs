@@ -52,6 +52,24 @@ console_policy := "configs/policies/safety.yaml"
 console_host := "127.0.0.1"
 console_api_port := "5445"
 console_port := "5173"
+helm_chart := "charts/vrs"
+helm_release := "vrs"
+helm_namespace := "default"
+values_dev := "charts/vrs/values-dev.yaml"
+values_kind := "charts/vrs/values-kind.yaml"
+values_edge := "charts/vrs/values-edge.yaml"
+values_k3s_gpu := "charts/vrs/values-k3s-gpu.yaml"
+values_prod := "charts/vrs/values-prod.yaml"
+kind_cluster := "vrs-dev"
+api_image := "vrs:latest"
+api_image_repository := "vrs"
+api_image_tag := "latest"
+console_image := "vrs-console:latest"
+console_image_repository := "vrs-console"
+console_image_tag := "latest"
+deepstream_image := "vrs-deepstream:ds8"
+deepstream_image_repository := "vrs-deepstream"
+deepstream_image_tag := "ds8"
 
 default:
     @just --list
@@ -102,6 +120,12 @@ package: build
     @ls -1 dist
 
 check: lock-check fmt-check lint test build
+
+verify-fast: lint test verify-helm
+
+verify-all: check verify-helm image-api image-console
+
+verify-helm: helm-lint helm-template-all
 
 _require-dfire-dataset:
     @test -d "{{dfire_dataset}}" || { \
@@ -408,6 +432,99 @@ console-api:
 
 console-ui:
     python -m http.server "{{console_port}}" --bind "{{console_host}}" --directory console
+
+image-api:
+    docker build -t "{{api_image}}" -f Dockerfile.backend .
+
+image-console:
+    docker build -t "{{console_image}}" -f Dockerfile.console .
+
+image-deepstream:
+    docker build -t "{{deepstream_image}}" -f Dockerfile.deepstream .
+
+images: image-api image-console image-deepstream
+
+helm-lint:
+    helm lint "{{helm_chart}}"
+
+helm-template values="charts/vrs/values-kind.yaml":
+    helm template "{{helm_release}}" "{{helm_chart}}" -f "{{values}}"
+
+helm-template-default:
+    helm template "{{helm_release}}" "{{helm_chart}}"
+
+helm-template-all:
+    helm template "{{helm_release}}" "{{helm_chart}}" >/dev/null
+    helm template "{{helm_release}}" "{{helm_chart}}" -f "{{values_dev}}" >/dev/null
+    helm template "{{helm_release}}" "{{helm_chart}}" -f "{{values_kind}}" >/dev/null
+    helm template "{{helm_release}}" "{{helm_chart}}" -f "{{values_edge}}" >/dev/null
+    helm template "{{helm_release}}" "{{helm_chart}}" -f "{{values_k3s_gpu}}" >/dev/null
+    helm template "{{helm_release}}" "{{helm_chart}}" -f "{{values_prod}}" >/dev/null
+
+helm-install-kind:
+    helm upgrade --install "{{helm_release}}" "{{helm_chart}}" \
+        --namespace "{{helm_namespace}}" --create-namespace \
+        -f "{{values_kind}}" \
+        --set image.repository="{{api_image_repository}}" \
+        --set image.tag="{{api_image_tag}}" \
+        --set image.pullPolicy=IfNotPresent \
+        --set console.image.repository="{{console_image_repository}}" \
+        --set console.image.tag="{{console_image_tag}}" \
+        --set console.image.pullPolicy=IfNotPresent
+
+helm-install-k3s-gpu:
+    helm upgrade --install "{{helm_release}}" "{{helm_chart}}" \
+        --namespace "{{helm_namespace}}" --create-namespace \
+        -f "{{values_k3s_gpu}}" \
+        --set image.repository="{{api_image_repository}}" \
+        --set image.tag="{{api_image_tag}}" \
+        --set image.pullPolicy=IfNotPresent \
+        --set console.image.repository="{{console_image_repository}}" \
+        --set console.image.tag="{{console_image_tag}}" \
+        --set console.image.pullPolicy=IfNotPresent \
+        --set deepstreamWorker.image.repository="{{deepstream_image_repository}}" \
+        --set deepstreamWorker.image.tag="{{deepstream_image_tag}}" \
+        --set deepstreamWorker.image.pullPolicy=IfNotPresent
+
+helm-status:
+    helm status "{{helm_release}}" --namespace "{{helm_namespace}}"
+
+helm-uninstall:
+    helm uninstall "{{helm_release}}" --namespace "{{helm_namespace}}"
+
+kind-create:
+    kind create cluster --name "{{kind_cluster}}"
+
+kind-delete:
+    kind delete cluster --name "{{kind_cluster}}"
+
+kind-load-images:
+    kind load docker-image "{{api_image}}" --name "{{kind_cluster}}"
+    kind load docker-image "{{console_image}}" --name "{{kind_cluster}}"
+
+kind-smoke: image-api image-console kind-load-images helm-install-kind
+
+kind-smoke-check:
+    kubectl get storageclass
+    kubectl wait --for=condition=Available "deploy/{{helm_release}}-vrs-api" --namespace "{{helm_namespace}}" --timeout=120s
+    kubectl wait --for=condition=Available "deploy/{{helm_release}}-vrs-console" --namespace "{{helm_namespace}}" --timeout=120s
+    kubectl wait --for=condition=Available "deploy/{{helm_release}}-vrs-deepstream-worker" --namespace "{{helm_namespace}}" --timeout=120s
+    kubectl get pods --namespace "{{helm_namespace}}" -o wide
+
+k3s-preflight:
+    kubectl get nodes -o wide
+    kubectl get storageclass
+    kubectl get runtimeclass || true
+    kubectl get deploy -A | grep -E 'traefik|local-path|metrics-server' || true
+    kubectl describe node "$(kubectl get nodes -o name | head -1 | cut -d/ -f2)" | grep -A8 -E 'Capacity|Allocatable|nvidia.com/gpu'
+
+k3s-import-images:
+    docker save "{{api_image}}" -o /tmp/vrs-api.tar
+    docker save "{{console_image}}" -o /tmp/vrs-console.tar
+    docker save "{{deepstream_image}}" -o /tmp/vrs-deepstream.tar
+    sudo k3s ctr images import /tmp/vrs-api.tar
+    sudo k3s ctr images import /tmp/vrs-console.tar
+    sudo k3s ctr images import /tmp/vrs-deepstream.tar
 
 compose-up *args:
     {{compose}} up -d --build {{args}}

@@ -6,7 +6,12 @@ metadata:
   labels:
     {{- include "vrs.labels" . | nindent 4 }}
     app.kubernetes.io/component: console
+  {{- with .Values.console.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
+  type: {{ .Values.console.service.type }}
   selector:
     app.kubernetes.io/name: {{ include "vrs.name" . }}
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -15,4 +20,7 @@ spec:
     - name: http
       port: {{ .Values.console.service.port }}
       targetPort: http
+      {{- if .Values.console.service.nodePort }}
+      nodePort: {{ .Values.console.service.nodePort }}
+      {{- end }}
 {{- end }}

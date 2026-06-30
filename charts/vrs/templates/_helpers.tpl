@@ -17,6 +17,30 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
+{{- define "vrs.podScheduling" -}}
+{{- $root := .root -}}
+{{- $workload := .workload | default dict -}}
+{{- $runtimeClassName := default $root.Values.runtimeClassName $workload.runtimeClassName -}}
+{{- if $runtimeClassName }}
+runtimeClassName: {{ $runtimeClassName | quote }}
+{{- end }}
+{{- $nodeSelector := default $root.Values.nodeSelector $workload.nodeSelector -}}
+{{- with $nodeSelector }}
+nodeSelector:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- $tolerations := default $root.Values.tolerations $workload.tolerations -}}
+{{- with $tolerations }}
+tolerations:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- $affinity := default $root.Values.affinity $workload.affinity -}}
+{{- with $affinity }}
+affinity:
+{{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
 {{- define "vrs.objectStorageEnv" -}}
 - name: VRS_OBJECT_STORE
   value: {{ .Values.objectStorage.mode | quote }}

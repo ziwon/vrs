@@ -11,6 +11,11 @@ api:
   port: 8000
   command: ["uvicorn", "vrs.api.api:app", "--host", "0.0.0.0", "--port", "8000"]
   gpuRole: none
+  service:
+    type: ClusterIP
+    annotations: {}
+    port: ""
+    nodePort: null
 
 console:
   enabled: true
@@ -20,7 +25,10 @@ console:
     tag: latest
     pullPolicy: IfNotPresent
   service:
+    type: ClusterIP
+    annotations: {}
     port: 80
+    nodePort: null
   apiBaseUrl: ""
   defaultRun: local-rtsp-multistream
   pollMs: 3000
@@ -85,6 +93,7 @@ redis:
     enabled: true
     size: 8Gi
     mountPath: /data
+    storageClassName: ""
 
 objectStorage:
   mode: local-pvc # local-pvc | seaweedfs | external
@@ -92,6 +101,7 @@ objectStorage:
   pvc:
     enabled: true
     size: 50Gi
+    storageClassName: ""
   seaweedfs:
     enabled: false
     image: chrislusf/seaweedfs:3.80
@@ -104,6 +114,7 @@ objectStorage:
     masterPort: 9333
     filerPort: 8888
     size: 100Gi
+    storageClassName: ""
   external:
     endpoint: ""
     bucket: ""
@@ -133,3 +144,5 @@ streamAssignment:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+runtimeClassName: ""
+storageClassName: ""

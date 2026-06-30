@@ -76,7 +76,7 @@ jobs:
             --max-f1-drop 0.02
 
   docker-smoke:
-    name: Docker backend/frontend smoke builds
+    name: Docker backend/console smoke builds
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: lint
@@ -88,8 +88,8 @@ jobs:
       - name: Build backend image
         run: docker build -f Dockerfile.backend .
 
-      - name: Build frontend image
-        run: docker build -f Dockerfile.frontend .
+      - name: Build console image
+        run: docker build -f Dockerfile.console .
 
   pr-integration:
     name: PR integration smoke test

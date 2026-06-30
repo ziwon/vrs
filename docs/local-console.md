@@ -32,10 +32,9 @@ Open <http://127.0.0.1:5173>.
 The stack starts:
 
 - `rtsp` — MediaMTX RTSP server.
-- `clip-init` — one-shot fallback generator for
-  `runs/pr-integration/clips/falldown_test.mp4` when the file is absent.
-- `rtsp-falldown` — FFmpeg publisher for
-  `runs/pr-integration/clips/falldown_test.mp4`.
+- `clip-init` — one-shot fallback generator for `clips/falldown_test.mp4`
+  when the file is absent.
+- `rtsp-falldown` — FFmpeg publisher for the selected MP4 under `clips/`.
 - `backend` — FastAPI filesystem API over `runs/`.
 - `console` — the VRS Console dashboard served by nginx.
 
@@ -44,23 +43,41 @@ useful for validating that MediaMTX, FFmpeg, the backend, and the dashboard can
 move video and artifacts through the local stack; it is not a fall-detection
 accuracy clip or benchmark.
 
-The falldown RTSP stream is available at:
+The default console run is `local-rtsp-demo`. It is a deterministic demo artifact
+set aligned with the default RTSP sample, not fresh model inference. Fresh
+model-backed output appears as the `live` run only after the inference profile
+or a manual pipeline writes `/app/runs/live`.
+
+The falldown stream is available as RTSP and HLS:
 
 ```text
 rtsp://127.0.0.1:8554/falldown
+http://127.0.0.1:8888/falldown/index.m3u8
 ```
 
-The publisher loops the MP4, normalizes timestamps/FPS, and drops audio:
+To try another MP4, put it under `clips/` and select it with
+`VRS_SAMPLE_CLIP`:
+
+```bash
+cp /path/to/site-camera-sample.mp4 clips/site-camera-sample.mp4
+VRS_SAMPLE_CLIP=site-camera-sample.mp4 docker compose up --build
+```
+
+The publisher loops the selected MP4, normalizes timestamps/FPS, and drops
+audio. The host-side equivalent command is:
 
 ```bash
 ffmpeg -re -stream_loop -1 -fflags +genpts \
-  -i runs/pr-integration/clips/falldown_test.mp4 \
+  -i "clips/${VRS_SAMPLE_CLIP:-falldown_test.mp4}" \
   -map 0:v:0 -an \
   -vf "fps=30,format=yuv420p" \
-  -c:v libx264 -preset veryfast -tune zerolatency \
+  -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p \
   -f rtsp -rtsp_transport tcp \
   rtsp://127.0.0.1:8554/falldown
 ```
+
+Inside Docker Compose, the input path is `/clips/...` and the RTSP target is
+`rtsp://rtsp:8554/falldown`.
 
 Visually verify the stream:
 
@@ -68,10 +85,8 @@ Visually verify the stream:
 ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/falldown
 ```
 
-The backend also generates deterministic fixture runs on container start, so the
-console has fallback/demo alerts immediately. Real inference output appears as the
-`live` run when the inference worker writes `/app/runs/live/alerts.jsonl` and
-`/app/runs/live/thumbnails/*`.
+For download examples using `curl` or `yt-dlp`, see
+[`clips/README.md`](../clips/README.md).
 
 On a GPU host with NVIDIA Container Toolkit, start the inference worker:
 
@@ -132,6 +147,7 @@ curl http://127.0.0.1:5173/api/health
 curl http://127.0.0.1:5173/api/runs
 curl http://127.0.0.1:5173/api/streams
 curl http://127.0.0.1:5173/api/policy
+curl 'http://127.0.0.1:5173/api/runs/local-rtsp-demo/tail?mode=latest&limit=20'
 curl http://127.0.0.1:5173/api/runs/live/alerts
 curl 'http://127.0.0.1:5173/api/runs/live/tail?mode=latest&limit=20'
 ```
@@ -193,9 +209,11 @@ uv run scripts/bench.py --clips runs/test_clips --out runs/bench
 If YOLOE does not fire on a synthetic clip, use the fixture runs above for UI
 validation. Real datasets are required for precision/recall claims.
 
-For the Compose falldown stream, the source clip is real video but still short
-and looped. It is suitable for local RTSP decode and artifact-writing tests; it
-is not a precision/recall benchmark by itself.
+For the Compose falldown stream, the default source clip is short, deterministic,
+and looped. It is suitable for local RTSP decode, HLS preview, and
+artifact-display tests; it is not a precision/recall benchmark by itself. Use
+`VRS_SAMPLE_CLIP` with your own licensed MP4 when you need a realistic camera
+sample.
 
 ## Real Pipeline Workflow
 
@@ -236,6 +254,9 @@ served verifier backend when needed.
 - No runs found: generate fixtures with
   `uv run scripts/make_fixture_runs.py --out runs` or run a VRS pipeline command
   that writes under `runs/`.
+- Demo alerts do not match a custom clip: `local-rtsp-demo` is a fixture aligned
+  with the default sample only. Use the inference profile or `scripts/run_rtsp.py`
+  to generate fresh alerts for a custom `VRS_SAMPLE_CLIP`.
 - No `live` run: start the inference profile on a GPU host with
   `docker compose --profile inference up --build`, set `HF_TOKEN` if using the
   gated Cosmos verifier, or run `scripts/run_rtsp.py` manually against

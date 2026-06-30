@@ -8,17 +8,23 @@ services:
 
   clip-init:
     image: jrottenberg/ffmpeg:6.1-alpine
+    environment:
+      VRS_SAMPLE_CLIP: ${VRS_SAMPLE_CLIP:-falldown_test.mp4}
     volumes:
-      - ./runs/pr-integration/clips:/clips
+      - ./clips:/clips
     entrypoint:
       - sh
       - -c
     command:
       - |
-        if [ ! -s /clips/falldown_test.mp4 ]; then
-          ffmpeg -y -f lavfi -i testsrc2=size=640x360:rate=30 -t 10 \
-            -vf "drawbox=x=220:y=210:w=210:h=28:color=white@0.8:t=fill,format=yuv420p" \
-            -c:v libx264 -preset veryfast -pix_fmt yuv420p /clips/falldown_test.mp4;
+        sample="$${VRS_SAMPLE_CLIP:-falldown_test.mp4}";
+        if [ "$$sample" = "falldown_test.mp4" ] && [ ! -s "/clips/$$sample" ]; then
+          ffmpeg -y -f lavfi -i color=c=0x101719:size=640x360:rate=30 -t 10 \
+            -vf "drawbox=x=0:y=241:w=640:h=2:color=0x3e5058:t=fill,drawbox=x=300:y=0:w=34:h=258:color=0xb4c6d2:t=fill,drawbox=x=286:y=0:w=62:h=18:color=0xbcd0dc:t=fill,format=yuv420p" \
+            -c:v libx264 -preset veryfast -pix_fmt yuv420p "/clips/$$sample";
+        elif [ ! -s "/clips/$$sample" ]; then
+          echo "Missing /clips/$$sample. Put the file under ./clips or unset VRS_SAMPLE_CLIP." >&2;
+          exit 1;
         fi
 
   rtsp-falldown:
@@ -29,34 +35,20 @@ services:
       clip-init:
         condition: service_completed_successfully
     restart: unless-stopped
+    environment:
+      VRS_SAMPLE_CLIP: ${VRS_SAMPLE_CLIP:-falldown_test.mp4}
     volumes:
-      - ./runs/pr-integration/clips:/clips:ro
+      - ./clips:/clips:ro
+    entrypoint:
+      - sh
+      - -c
     command:
-      - -re
-      - -stream_loop
-      - "-1"
-      - -fflags
-      - +genpts
-      - -i
-      - /clips/falldown_test.mp4
-      - -map
-      - 0:v:0
-      - -an
-      - -vf
-      - fps=30,format=yuv420p
-      - -c:v
-      - libx264
-      - -preset
-      - veryfast
-      - -tune
-      - zerolatency
-      - -pix_fmt
-      - yuv420p
-      - -f
-      - rtsp
-      - -rtsp_transport
-      - tcp
-      - rtsp://rtsp:8554/falldown
+      - |
+        sample="$${VRS_SAMPLE_CLIP:-falldown_test.mp4}";
+        exec ffmpeg -re -stream_loop -1 -fflags +genpts -i "/clips/$$sample" \
+          -map 0:v:0 -an -vf fps=30,format=yuv420p \
+          -c:v libx264 -preset veryfast -tune zerolatency -pix_fmt yuv420p \
+          -f rtsp -rtsp_transport tcp rtsp://rtsp:8554/falldown
 
   inference:
     profiles:

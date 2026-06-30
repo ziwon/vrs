@@ -12,9 +12,23 @@ api:
   command: ["uvicorn", "vrs.api.api:app", "--host", "0.0.0.0", "--port", "8000"]
   gpuRole: none
 
+console:
+  enabled: true
+  replicas: 1
+  image:
+    repository: vrs-console
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+  apiBaseUrl: ""
+  defaultRun: local-rtsp-multistream
+  pollMs: 3000
+
 runtime:
   configPath: /etc/vrs/config.yaml
   policyPath: /etc/vrs/policy.yaml
+  streamsPath: ""
   outputPath: /data/runs
   scratch:
     enabled: true

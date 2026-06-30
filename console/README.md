@@ -1,4 +1,4 @@
-# VRS Console Web UI
+# VRS Console
 
 This is the VRS Console dashboard integrated with the local FastAPI backend. It
 is still zero-build: nginx or any static file server can serve it.
@@ -54,17 +54,17 @@ docker compose -f docker-compose.yaml -f docker-compose.hf-local.yaml \
   --profile inference up --build
 ```
 
-The UI defaults to the `live` run when it exists. Fixture runs remain available
+The console defaults to the `live` run when it exists. Fixture runs remain available
 from the Run dropdown as demo/fallback data.
 
 ## Manual static serving
 
 ```bash
-cd web
+cd console
 python -m http.server 5173
 ```
 
-For manual serving, update `web/config.js` if the backend is not same-origin.
+For manual serving, update `console/config.js` if the backend is not same-origin.
 
 ## Notes
 

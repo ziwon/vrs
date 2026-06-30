@@ -25,7 +25,7 @@ _FIXTURE_SPEC.loader.exec_module(_FIXTURE)
 write_fixture_run = _FIXTURE.write_fixture_run
 
 
-def test_web_api_import_does_not_load_heavy_modules() -> None:
+def test_api_import_does_not_load_heavy_modules() -> None:
     code = (
         "import sys; import vrs.api.api; "
         "mods={'torch','ultralytics','transformers','cv2'} & set(sys.modules); "

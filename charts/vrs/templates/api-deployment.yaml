@@ -29,8 +29,14 @@ spec:
             - name: http
               containerPort: {{ .Values.api.port }}
           env:
-            - name: VRS_RUNS_DIR
+            - name: VRS_RUNS_ROOT
               value: {{ .Values.runtime.outputPath | quote }}
+            - name: VRS_POLICY_PATH
+              value: {{ .Values.runtime.policyPath | quote }}
+            {{- if .Values.runtime.streamsPath }}
+            - name: VRS_STREAMS_PATH
+              value: {{ .Values.runtime.streamsPath | quote }}
+            {{- end }}
             {{- include "vrs.objectStorageEnv" . | nindent 12 }}
           {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled }}
           volumeMounts:

@@ -24,7 +24,10 @@ def test_helm_chart_has_required_profiles_and_components() -> None:
     templates = {path.name for path in (CHART_DIR / "templates").glob("*.yaml")}
     assert {
         "api-deployment.yaml",
-        "metadata-adapter-deployment.yaml",
+        "console-configmap.yaml",
+        "console-deployment.yaml",
+        "console-service.yaml",
+        "deepstream-worker-deployment.yaml",
         "verifier-worker-deployment.yaml",
         "redis.yaml",
         "object-storage.yaml",
@@ -39,11 +42,14 @@ def test_helm_profiles_keep_gpu_roles_explicit() -> None:
     kind = yaml.safe_load((CHART_DIR / "values-kind.yaml").read_text(encoding="utf-8"))
 
     assert "vrs.deepstream.worker" in default["deepstreamWorker"]["command"]
+    assert default["console"]["enabled"] is True
+    assert default["console"]["image"]["repository"] == "vrs-console"
     assert default["verifierWorker"]["enabled"] is False
     assert edge["deepstreamWorker"]["gpuRole"] == "deepstream"
     assert edge["verifierWorker"]["gpuRole"] == "verifier"
     assert edge["verifierWorker"]["enabled"] is False
     assert prod["objectStorage"]["mode"] == "seaweedfs"
+    assert prod["console"]["replicas"] == 2
     assert prod["deepstreamWorker"]["image"]["repository"] == "vrs-deepstream"
     assert prod["deepstreamWorker"]["command"] == ["/opt/vrs/bin/vrs-deepstream-worker"]
     assert "--pipeline" in prod["deepstreamWorker"]["args"]
@@ -92,22 +98,40 @@ def test_helm_template_renders_storage_mounts_and_sample_metadata() -> None:
     docs = [doc for doc in yaml.safe_load_all(rendered) if isinstance(doc, dict)]
 
     api = _deployment(docs, "test-vrs-api")
-    adapter = _deployment(docs, "test-vrs-metadata-adapter")
+    console = _deployment(docs, "test-vrs-console")
+    console_config = _configmap(docs, "test-vrs-console")
+    worker = _deployment(docs, "test-vrs-deepstream-worker")
     redis = _deployment(docs, "test-vrs-redis")
 
-    assert _container(api, "api")["volumeMounts"][0]["mountPath"] == "/data"
+    console_container = _container(console, "console")
+    assert console_container["image"] == "vrs-console:latest"
+    assert console["spec"]["template"]["metadata"]["labels"]["vrs.ai/gpu-role"] == "none"
+    assert any(
+        mount["mountPath"] == "/etc/nginx/conf.d/default.conf"
+        for mount in console_container["volumeMounts"]
+    )
+    assert "http://test-vrs-api:8000/api/" in console_config["data"]["default.conf"]
+    assert 'apiBaseUrl: ""' in console_config["data"]["config.js"]
+    assert _service(docs, "test-vrs-console")["spec"]["ports"][0]["port"] == 80
+
+    api_container = _container(api, "api")
+    api_env = _env_by_name(api_container)
+    assert api_container["volumeMounts"][0]["mountPath"] == "/data"
+    assert api_env["VRS_RUNS_ROOT"]["value"] == "/data/runs"
+    assert api_env["VRS_POLICY_PATH"]["value"] == "/etc/vrs/policy.yaml"
+    assert "VRS_RUNS_DIR" not in api_env
     assert any(
         vol.get("persistentVolumeClaim", {}).get("claimName") == "test-vrs-evidence"
         for vol in api["spec"]["template"]["spec"]["volumes"]
     )
-    adapter_container = _container(adapter, "metadata-adapter")
-    assert adapter["spec"]["template"]["metadata"]["labels"]["vrs.ai/gpu-role"] == "deepstream"
-    assert adapter_container["resources"]["limits"]["nvidia.com/gpu"] == 1
-    adapter_mounts = adapter_container["volumeMounts"]
-    assert any(mount["mountPath"] == "/data" for mount in adapter_mounts)
-    assert any(mount["mountPath"] == "/data/deepstream/metadata.jsonl" for mount in adapter_mounts)
+    worker_container = _container(worker, "deepstream-worker")
+    assert worker["spec"]["template"]["metadata"]["labels"]["vrs.ai/gpu-role"] == "deepstream"
+    assert worker_container["resources"]["limits"]["nvidia.com/gpu"] == 1
+    worker_mounts = worker_container["volumeMounts"]
+    assert any(mount["mountPath"] == "/data" for mount in worker_mounts)
+    assert any(mount["mountPath"] == "/data/deepstream/metadata.jsonl" for mount in worker_mounts)
     assert any(
-        vol["name"] == "sample-metadata" for vol in adapter["spec"]["template"]["spec"]["volumes"]
+        vol["name"] == "sample-metadata" for vol in worker["spec"]["template"]["spec"]["volumes"]
     )
     assert _container(redis, "redis")["volumeMounts"][0]["mountPath"] == "/data"
     assert any(
@@ -133,12 +157,16 @@ def test_helm_template_prod_renders_seaweedfs_storage() -> None:
     docs = [doc for doc in yaml.safe_load_all(rendered) if isinstance(doc, dict)]
 
     seaweedfs = _deployment(docs, "test-vrs-seaweedfs")
+    console = _deployment(docs, "test-vrs-console")
+    console_config = _configmap(docs, "test-vrs-console")
     api = _deployment(docs, "test-vrs-api")
-    adapter = _deployment(docs, "test-vrs-metadata-adapter")
-    adapter_container = _container(adapter, "metadata-adapter")
-    publisher_container = _container(adapter, "detection-publisher")
+    worker = _deployment(docs, "test-vrs-deepstream-worker")
+    worker_container = _container(worker, "deepstream-worker")
+    publisher_container = _container(worker, "detection-publisher")
     api_container = _container(api, "api")
 
+    assert _container(console, "console")["image"] == "vrs-console:latest"
+    assert "http://test-vrs-api:8000/api/" in console_config["data"]["default.conf"]
     assert _container(seaweedfs, "seaweedfs")["volumeMounts"][0]["mountPath"] == "/data"
     assert any(
         doc["kind"] == "PersistentVolumeClaim" and doc["metadata"]["name"] == "test-vrs-seaweedfs"
@@ -154,12 +182,12 @@ def test_helm_template_prod_renders_seaweedfs_storage() -> None:
     )
     assert "accessKey" in secret["stringData"]
     assert "secretKey" in secret["stringData"]
-    adapter_env = _env_by_name(adapter_container)
+    worker_env = _env_by_name(worker_container)
     api_env = _env_by_name(api_container)
-    assert adapter_container["image"] == "vrs-deepstream:ds8"
-    assert adapter_container["command"] == ["/opt/vrs/bin/vrs-deepstream-worker"]
-    assert "--pipeline" in adapter_container["args"]
-    rendered_pipeline = adapter_container["args"][adapter_container["args"].index("--pipeline") + 1]
+    assert worker_container["image"] == "vrs-deepstream:ds8"
+    assert worker_container["command"] == ["/opt/vrs/bin/vrs-deepstream-worker"]
+    assert "--pipeline" in worker_container["args"]
+    rendered_pipeline = worker_container["args"][worker_container["args"].index("--pipeline") + 1]
     assert "width=640 height=640 enable-padding=1" in rendered_pipeline
     assert "nvdspreprocess config-file=/opt/vrs/share/deepstream/configs/preprocess-yoloe-safety.txt" in rendered_pipeline
     assert "nvinfer input-tensor-meta=true" in rendered_pipeline
@@ -168,23 +196,26 @@ def test_helm_template_prod_renders_seaweedfs_storage() -> None:
     assert "detector-id=ds8-nvinfer-preprocess" in rendered_pipeline
     assert "output-path=/tmp/vrs/deepstream_detections.jsonl" in rendered_pipeline
     assert "/opt/vrs/share/deepstream/configs/yoloe-safety-labels.txt" in rendered_pipeline
-    assert "--disable-probe" in adapter_container["args"]
-    assert any(mount["mountPath"] == "/models" for mount in adapter_container["volumeMounts"])
+    assert "--disable-probe" in worker_container["args"]
+    assert any(mount["mountPath"] == "/models" for mount in worker_container["volumeMounts"])
     assert any(
         vol.get("persistentVolumeClaim", {}).get("claimName") == "vrs-deepstream-models"
-        for vol in adapter["spec"]["template"]["spec"]["volumes"]
+        for vol in worker["spec"]["template"]["spec"]["volumes"]
     )
     assert publisher_container["command"] == ["python", "-m", "vrs.deepstream.jsonl_bridge"]
     assert "redis://test-vrs-redis:6379/0" in publisher_container["args"]
     assert any(mount["mountPath"] == "/tmp/vrs" for mount in publisher_container["volumeMounts"])
-    assert adapter_env["VRS_OBJECT_STORE"]["value"] == "seaweedfs"
-    assert adapter_env["VRS_OBJECT_STORE_ENDPOINT"]["value"] == "http://test-vrs-seaweedfs:8333"
-    assert adapter_env["VRS_OBJECT_STORE_BUCKET"]["value"] == "vrs-evidence"
-    assert "valueFrom" in adapter_env["AWS_ACCESS_KEY_ID"]
+    assert worker_env["VRS_OBJECT_STORE"]["value"] == "seaweedfs"
+    assert worker_env["VRS_OBJECT_STORE_ENDPOINT"]["value"] == "http://test-vrs-seaweedfs:8333"
+    assert worker_env["VRS_OBJECT_STORE_BUCKET"]["value"] == "vrs-evidence"
+    assert "valueFrom" in worker_env["AWS_ACCESS_KEY_ID"]
+    assert api_env["VRS_RUNS_ROOT"]["value"] == "/data/runs"
+    assert api_env["VRS_POLICY_PATH"]["value"] == "/etc/vrs/policy.yaml"
     assert api_env["VRS_OBJECT_STORE"]["value"] == "seaweedfs"
+    assert "VRS_RUNS_DIR" not in api_env
     empty_dirs = [
         vol["name"]
-        for vol in adapter["spec"]["template"]["spec"].get("volumes") or []
+        for vol in worker["spec"]["template"]["spec"].get("volumes") or []
         if vol.get("emptyDir") == {}
     ]
     assert empty_dirs == ["deepstream-output"]
@@ -208,11 +239,13 @@ def test_helm_template_kind_renders_without_gpu_request() -> None:
         capture_output=True,
     ).stdout
     docs = [doc for doc in yaml.safe_load_all(rendered) if isinstance(doc, dict)]
-    adapter = _deployment(docs, "test-vrs-metadata-adapter")
-    adapter_container = _container(adapter, "metadata-adapter")
+    console = _deployment(docs, "test-vrs-console")
+    worker = _deployment(docs, "test-vrs-deepstream-worker")
+    worker_container = _container(worker, "deepstream-worker")
 
-    assert adapter["spec"]["template"]["metadata"]["labels"]["vrs.ai/gpu-role"] == "none"
-    assert "nvidia.com/gpu" not in adapter_container.get("resources", {}).get("limits", {})
+    assert _container(console, "console")["image"] == "vrs-console:latest"
+    assert worker["spec"]["template"]["metadata"]["labels"]["vrs.ai/gpu-role"] == "none"
+    assert "nvidia.com/gpu" not in worker_container.get("resources", {}).get("limits", {})
     assert any(
         doc["kind"] == "ConfigMap" and doc["metadata"]["name"] == "test-vrs-sample-metadata"
         for doc in docs
@@ -222,6 +255,18 @@ def test_helm_template_kind_renders_without_gpu_request() -> None:
 def _deployment(docs: list[dict], name: str) -> dict:
     return next(
         doc for doc in docs if doc.get("kind") == "Deployment" and doc["metadata"]["name"] == name
+    )
+
+
+def _service(docs: list[dict], name: str) -> dict:
+    return next(
+        doc for doc in docs if doc.get("kind") == "Service" and doc["metadata"]["name"] == name
+    )
+
+
+def _configmap(docs: list[dict], name: str) -> dict:
+    return next(
+        doc for doc in docs if doc.get("kind") == "ConfigMap" and doc["metadata"]["name"] == name
     )
 
 

@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def test_dashboard_templates_escape_html_like_dynamic_values() -> None:
-    app_js = Path("web/app.js").read_text(encoding="utf-8")
+    app_js = Path("console/app.js").read_text(encoding="utf-8")
     html_like_fixture = {
         "stream_id": "<cam-01>",
         "class_name": "<img src=x onerror=alert(1)>",

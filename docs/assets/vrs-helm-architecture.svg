@@ -120,7 +120,7 @@
   <text fill="#f8fafc" class="label medium" x="944" y="230">API x N</text>
   <text fill="#94a3b8" class="label muted tiny" x="922" y="258">FastAPI artifact API</text>
   <text fill="#94a3b8" class="label muted tiny" x="922" y="280">Service: http 8000</text>
-  <text fill="#94a3b8" class="label muted tiny" x="922" y="302">VRS_RUNS_DIR=/data/runs</text>
+  <text fill="#94a3b8" class="label muted tiny" x="922" y="302">VRS_RUNS_ROOT=/data/runs</text>
 
   <rect class="store" x="316" y="394" width="196" height="72" rx="16"/>
   <text fill="#f8fafc" class="label medium" x="358" y="424">Detections</text>

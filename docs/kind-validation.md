@@ -1,9 +1,9 @@
-# kind Validation For Helm Wiring And Metadata Adapter
+# kind Validation For Helm Wiring And DeepStream Worker
 
 This path validates Kubernetes wiring and the dependency-free Python
-DeepStream metadata adapter. It does not validate the native C++ DeepStream 8.0
-worker, GStreamer, NVIDIA GPU device plugins, RTSP ingest, `nvstreammux`,
-`nvinfer`, or `nvtracker`.
+DeepStream adapter entrypoint inside the Helm DeepStream worker deployment. It
+does not validate the native C++ DeepStream 8.0 worker, GStreamer, NVIDIA GPU
+device plugins, RTSP ingest, `nvstreammux`, `nvinfer`, or `nvtracker`.
 
 Observed local data under `/data/vrs` on this workstation:
 
@@ -14,7 +14,7 @@ Observed local data under `/data/vrs` on this workstation:
 - UCF/UCA annotation archives under `/data/vrs/uca`
 
 The chart ships a tiny sample metadata ConfigMap by default. Use that first so
-the metadata adapter can run without copying large datasets into the cluster.
+the worker can run without copying large datasets into the cluster.
 
 ## Create A Cluster
 
@@ -22,11 +22,33 @@ the metadata adapter can run without copying large datasets into the cluster.
 kind create cluster --name vrs-dev
 ```
 
+For microk8s, use the same `values-kind.yaml` smoke profile first. Enable DNS,
+storage, and Helm support, then run the same Helm commands through microk8s:
+
+```bash
+microk8s enable dns hostpath-storage helm3
+alias kubectl='microk8s kubectl'
+alias helm='microk8s helm3'
+```
+
+Use `values-edge.yaml` only after the single node has an NVIDIA runtime and
+device plugin configured; the edge profile keeps GPU scheduling labels and
+requests enabled.
+
 ## Build And Load The Image
 
 ```bash
 docker build -t vrs:latest -f Dockerfile.backend .
+docker build -t vrs-console:latest -f Dockerfile.console .
 kind load docker-image vrs:latest --name vrs-dev
+kind load docker-image vrs-console:latest --name vrs-dev
+```
+
+For microk8s containerd, import the same local image before installing:
+
+```bash
+docker save vrs:latest | microk8s ctr image import -
+docker save vrs-console:latest | microk8s ctr image import -
 ```
 
 ## Render And Inspect The Chart
@@ -37,12 +59,12 @@ helm template test charts/vrs -f charts/vrs/values-dev.yaml
 helm template test charts/vrs -f charts/vrs/values-kind.yaml
 ```
 
-`values-kind.yaml` enables the metadata adapter worker with a sample metadata
+`values-kind.yaml` enables the DeepStream worker with a sample metadata
 ConfigMap, disables the placeholder verifier worker, and removes GPU resource
 requests so a normal kind cluster can schedule the pod. `values-dev.yaml`
 disables GPU workers entirely for chart iteration.
 
-## Install The Metadata Adapter Baseline
+## Install The Single-Node Smoke Baseline
 
 ```bash
 helm install vrs charts/vrs \
@@ -56,15 +78,36 @@ Check pods and logs:
 
 ```bash
 kubectl get pods
-kubectl logs deploy/vrs-vrs-metadata-adapter
-kubectl exec deploy/vrs-vrs-metadata-adapter -- \
+kubectl logs deploy/vrs-vrs-deepstream-worker
+kubectl exec deploy/vrs-vrs-deepstream-worker -- \
   sh -lc 'ls -R /data && cat /data/runs/deepstream_detections.jsonl'
 ```
 
 Expected result: `/data/runs/deepstream_detections.jsonl` contains
 `detection.v1` records converted from the sample metadata. This validates chart
 commands, `/data` mounts, ConfigMap sample metadata, and the Python metadata
-adapter entrypoint.
+adapter entrypoint used by the DeepStream worker deployment.
+
+Check the API deployment against the same mounted runtime path:
+
+```bash
+kubectl port-forward svc/vrs-vrs-api 8000:8000
+curl -fsS http://127.0.0.1:8000/api/health
+curl -fsS http://127.0.0.1:8000/api/artifacts
+```
+
+The API pod receives `VRS_RUNS_ROOT=/data/runs`, so artifact reads point at the
+same output directory that the worker writes in this local-PVC smoke profile.
+
+Check the console through its service. The console nginx config proxies `/api/*`
+to the in-cluster API service, so this validates the browser-facing route:
+
+```bash
+kubectl port-forward svc/vrs-vrs-console 5173:80
+curl -fsS http://127.0.0.1:5173/api/health
+```
+
+Open <http://127.0.0.1:5173> to inspect the VRS Console.
 
 ## Use Local `/data/vrs` Assets For Non-GPU Checks
 
@@ -80,7 +123,7 @@ uv run scripts/export_python_detections.py \
   /data/vrs/kaggle-fire-detection/mivia_fire/mivia_fire/fire1.avi
 ```
 
-To test the metadata adapter with custom DeepStream-like metadata:
+To test the Python adapter entrypoint with custom DeepStream-like metadata:
 
 ```bash
 mkdir -p runs/parity

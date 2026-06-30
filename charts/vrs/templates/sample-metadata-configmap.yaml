@@ -5,7 +5,7 @@ metadata:
   name: {{ include "vrs.fullname" . }}-sample-metadata
   labels:
     {{- include "vrs.labels" . | nindent 4 }}
-    app.kubernetes.io/component: deepstream-metadata-adapter
+    app.kubernetes.io/component: deepstream-worker
 data:
   {{ .Values.sampleMetadata.filename }}: |
 {{ .Values.sampleMetadata.content | indent 4 }}

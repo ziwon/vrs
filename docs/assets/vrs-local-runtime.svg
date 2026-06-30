@@ -109,7 +109,7 @@
 
   <rect class="box" x="80" y="300" width="188" height="92" rx="16"/>
   <text fill="#f8fafc" class="label medium" x="118" y="342">VRS Console</text>
-  <text fill="#94a3b8" class="label muted tiny" x="112" y="366">nginx static frontend</text>
+  <text fill="#94a3b8" class="label muted tiny" x="112" y="366">nginx operator console</text>
 
   <path class="flow greenStroke" d="M248 204H326" fill="none" stroke="#84cc16" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowGreen)"/>
   <path class="flow amberStroke" d="M516 204H594" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="8 8" stroke-linecap="round" opacity=".88" marker-end="url(#arrowAmber)"/>

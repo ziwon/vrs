@@ -3,6 +3,9 @@ profile: production-cluster
 api:
   replicas: 2
 
+console:
+  replicas: 2
+
 runtime:
   scratch:
     enabled: false

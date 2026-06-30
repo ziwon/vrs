@@ -1,4 +1,4 @@
-# Local Web UI Workflow
+# Local Console Workflow
 
 This milestone is a local filesystem dashboard for VRS run artifacts. It uses
 `runs/` as the source of truth, with no database, broker, object store, or
@@ -15,13 +15,13 @@ uv python install 3.11
 uv sync --python 3.11 --extra cu128
 ```
 
-The web API itself is CPU-light. Importing `vrs.api.api` does not import
+The API itself is CPU-light. Importing `vrs.api.api` does not import
 `torch`, `ultralytics`, `transformers`, or `cv2`; it only reads JSONL and image
 files that already exist under `runs/`.
 
 ## Docker Compose Workflow
 
-Start the local RTSP/API/UI stack:
+Start the local RTSP/API/console stack:
 
 ```bash
 docker compose up --build
@@ -37,7 +37,7 @@ The stack starts:
 - `rtsp-falldown` — FFmpeg publisher for
   `runs/pr-integration/clips/falldown_test.mp4`.
 - `backend` — FastAPI filesystem API over `runs/`.
-- `frontend` — the VRS Console dashboard served by nginx.
+- `console` — the VRS Console dashboard served by nginx.
 
 The fallback clip created by `clip-init` is only an RTSP plumbing fixture. It is
 useful for validating that MediaMTX, FFmpeg, the backend, and the dashboard can
@@ -69,7 +69,7 @@ ffplay -rtsp_transport tcp rtsp://127.0.0.1:8554/falldown
 ```
 
 The backend also generates deterministic fixture runs on container start, so the
-UI has fallback/demo alerts immediately. Real inference output appears as the
+console has fallback/demo alerts immediately. Real inference output appears as the
 `live` run when the inference worker writes `/app/runs/live/alerts.jsonl` and
 `/app/runs/live/thumbnails/*`.
 
@@ -150,15 +150,15 @@ Start the backend:
 uv run uvicorn vrs.api.api:app --host 127.0.0.1 --port 5445 --reload
 ```
 
-Serve the static frontend in another terminal:
+Serve the static console in another terminal:
 
 ```bash
-cd web
+cd console
 python -m http.server 5173
 ```
 
 Open <http://127.0.0.1:5173>. For same-origin API proxying use Docker Compose;
-for manual static serving, set `window.VRS_CONFIG.apiBaseUrl` in `web/config.js`
+for manual static serving, set `window.VRS_CONFIG.apiBaseUrl` in `console/config.js`
 to `http://127.0.0.1:5445`.
 
 Useful API checks:
@@ -243,6 +243,6 @@ served verifier backend when needed.
 - Thumbnails not loading: check that each alert `thumbnail_path` is relative to
   the run directory, for example `thumbnails/event.png`, and that the backend
   `VRS_RUNS_ROOT` points at the expected `runs/` root.
-- CORS or backend URL issues: Docker Compose serves the UI and API from the same
-  origin at <http://127.0.0.1:5173>. For manual serving, point `web/config.js`
+- CORS or backend URL issues: Docker Compose serves the console and API from the same
+  origin at <http://127.0.0.1:5173>. For manual serving, point `console/config.js`
   at the backend URL.

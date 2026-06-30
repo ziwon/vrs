@@ -1,6 +1,6 @@
 """Filesystem-backed access to VRS run artifacts.
 
-This module intentionally stays stdlib-only so importing the web layer does not
+This module intentionally stays stdlib-only so importing the API layer does not
 load GPU/model dependencies.
 """
 

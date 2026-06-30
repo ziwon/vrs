@@ -93,8 +93,8 @@ terminal:
 ```bash
 just local-rtsp-publish-all   # falldown, fire, smoke, weapon, optional MIVIA fire
 just local-multistream-run    # consumes configs/local-rtsp-streams.yaml
-just web-api
-just web-ui
+just console-api
+just console-ui
 ```
 
 Stop the local stack with:
@@ -103,7 +103,7 @@ Stop the local stack with:
 just stop-local
 ```
 
-See [docs/local-web-ui.md](docs/local-web-ui.md) for the full local workflow,
+See [docs/local-console.md](docs/local-console.md) for the full local workflow,
 RTSP checks, API checks, token setup, and troubleshooting.
 
 ## Why this design
@@ -218,8 +218,8 @@ written to JSONL, thumbnails, and the local console.
 - [System review](docs/01-system-review.md) — current implementation status,
   known gaps, and engineering review.
 - [Roadmap](docs/02-roadmap.md) — near-term prioritized work.
-- [Local web UI workflow](docs/local-web-ui.md) — Docker Compose, RTSP,
-  `.env`, Hugging Face cache, API checks, and UI troubleshooting.
+- [Local console workflow](docs/local-console.md) — Docker Compose, RTSP,
+  `.env`, Hugging Face cache, API checks, and console troubleshooting.
 - [Policy model](configs/policies/README.md) — watch-policy schema, runtime
   flow, UI-driven editing, validation, reload strategy, and scenario-policy
   direction.
@@ -336,15 +336,15 @@ Outputs:
 ├── baselines/              Eval baselines and comparison fixtures
 ├── charts/vrs/             Helm chart for dev, kind, edge, and production profiles
 ├── contracts/              Versioned JSON schemas for platform boundaries
-├── web/                    Static VRS Console frontend
-├── docker/                 nginx config for frontend/API proxying
+├── console/                Static VRS Console operator surface
+├── docker/                 nginx config for console/API proxying
 ├── docs/                   Current docs, operations notes, benchmarks, archive
 ├── configs/                Runtime configs, stream manifests, policies, DS configs
 │   └── deepstream/         DS8 YOLOE parser, preprocess, and example pipelines
 ├── scripts/                CLI runners, eval helpers, parity and TRT tooling
 ├── native/deepstream/      DS8 C++ worker, vrsmeta plugin, YOLOE parser
-├── docker-compose.yaml     RTSP, backend, frontend, and inference workflow
-├── Dockerfile.*            Backend, frontend, GPU inference, and DeepStream images
+├── docker-compose.yaml     RTSP, backend, console, and inference workflow
+├── Dockerfile.*            Backend, console, GPU inference, and DeepStream images
 └── vrs/
     ├── api/                FastAPI backend for artifacts and dashboard data
     ├── ingest/             RTSP/mp4 frame iterator
@@ -352,6 +352,8 @@ Outputs:
     ├── control/            Stream assignment and worker config control plane
     ├── eval/               Evaluation datasets, harnesses, and metrics
     ├── observability/      Prometheus metrics helpers
+    ├── storage/            Local and S3-compatible object-store boundary
+    ├── transport/          In-memory and Redis Streams event-bus boundary
     ├── triage/             YOLOE detector, tracking, event-state queue
     ├── verifier/           VLM prompts and structured-output parsing
     ├── runtime/            transformers, vLLM, OpenAI-compatible backends

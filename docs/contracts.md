@@ -46,7 +46,7 @@ contracts and object storage.
 ## Current Compatibility Boundary
 
 The local JSONL sink still writes the legacy `VerifiedAlert.to_json()` record so
-existing web UI, audit signing, tests, and run artifacts continue to work. The
+existing console, audit signing, tests, and run artifacts continue to work. The
 canonical contract adapters are additive and are the expected shape for the next
 transport and object-storage milestones.
 

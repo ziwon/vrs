@@ -1,1 +1,1 @@
-"""Lightweight local web API for browsing VRS run artifacts."""
+"""Lightweight local API for browsing VRS run artifacts."""

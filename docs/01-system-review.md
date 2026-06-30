@@ -58,7 +58,7 @@ The following components are present and covered by unit tests where practical:
 - Optional YuNet face detection and Gaussian face blur for retained MP4s.
 - Local FastAPI artifact API and zero-build VRS Console dashboard.
 - Docker Compose stack for MediaMTX, falldown MP4 RTSP publishing, backend,
-  frontend, and optional GPU inference.
+  console, and optional GPU inference.
 - Optional Prometheus-compatible runtime metrics endpoint.
 - Optional tamper-evident JSONL audit signing and verification CLI.
 

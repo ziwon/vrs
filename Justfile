@@ -47,11 +47,11 @@ vllm_smoke_class := "fire"
 vllm_smoke_out := "runs/vllm-smoke/result.json"
 vllm_bakeoff_baseline_config := "configs/tiny.yaml"
 vllm_bakeoff_out := "runs/verifier-vllm-bakeoff"
-web_runs_root := "runs"
-web_policy := "configs/policies/safety.yaml"
-web_host := "127.0.0.1"
-web_api_port := "5445"
-web_ui_port := "5173"
+console_runs_root := "runs"
+console_policy := "configs/policies/safety.yaml"
+console_host := "127.0.0.1"
+console_api_port := "5445"
+console_port := "5173"
 
 default:
     @just --list
@@ -402,12 +402,12 @@ stop-local:
     @pkill -f '[f]fmpeg .*rtsp://127.0.0.1:8554' || true
     {{compose}} down
 
-web-api:
-    VRS_RUNS_ROOT="{{web_runs_root}}" VRS_POLICY_PATH="{{web_policy}}" VRS_STREAMS_PATH="{{stream_manifest}}" \
-        uv run --frozen uvicorn vrs.api.api:app --host "{{web_host}}" --port "{{web_api_port}}"
+console-api:
+    VRS_RUNS_ROOT="{{console_runs_root}}" VRS_POLICY_PATH="{{console_policy}}" VRS_STREAMS_PATH="{{stream_manifest}}" \
+        uv run --frozen uvicorn vrs.api.api:app --host "{{console_host}}" --port "{{console_api_port}}"
 
-web-ui:
-    python -m http.server "{{web_ui_port}}" --bind "{{web_host}}" --directory web
+console-ui:
+    python -m http.server "{{console_port}}" --bind "{{console_host}}" --directory console
 
 compose-up *args:
     {{compose}} up -d --build {{args}}

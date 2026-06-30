@@ -282,14 +282,15 @@ Acceptance criteria:
 
 ### 15. Helm Edge Profile Scaffold
 
-Status: executable metadata-adapter baseline implemented under `charts/vrs`. The chart has
-explicit `values-dev.yaml`, `values-edge.yaml`, and `values-prod.yaml` profiles,
-plus templates for API/runtime, metadata adapter worker, disabled verifier
-worker template, Redis edge bus, local PVC or SeaweedFS object storage, metrics
-service, and optional ServiceMonitor. The default chart mounts `/data`, provides
-sample metadata by ConfigMap, and runs the importable metadata adapter command.
-GPU roles are labeled as `vrs.ai/gpu-role: deepstream` and
-`vrs.ai/gpu-role: verifier`.
+Status: executable DeepStream worker baseline implemented under `charts/vrs`.
+The chart has explicit `values-dev.yaml`, `values-edge.yaml`, `values-kind.yaml`,
+and `values-prod.yaml` profiles, plus templates for API/runtime, DeepStream
+worker, disabled verifier worker template, Redis edge bus, local PVC or
+SeaweedFS object storage, metrics service, and optional ServiceMonitor. The
+CPU-only kind chart mounts `/data`, provides sample metadata by ConfigMap,
+removes GPU resource requests, and runs the importable Python metadata adapter
+command inside the DeepStream worker deployment. GPU roles are labeled as
+`vrs.ai/gpu-role: deepstream` and `vrs.ai/gpu-role: verifier`.
 
 Acceptance criteria:
 

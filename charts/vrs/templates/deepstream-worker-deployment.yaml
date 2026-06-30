@@ -2,26 +2,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "vrs.fullname" . }}-metadata-adapter
+  name: {{ include "vrs.fullname" . }}-deepstream-worker
   labels:
     {{- include "vrs.labels" . | nindent 4 }}
-    app.kubernetes.io/component: metadata-adapter
+    app.kubernetes.io/component: deepstream-worker
 spec:
   replicas: {{ .Values.deepstreamWorker.replicas }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "vrs.name" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
-      app.kubernetes.io/component: metadata-adapter
+      app.kubernetes.io/component: deepstream-worker
   template:
     metadata:
       labels:
         {{- include "vrs.labels" . | nindent 8 }}
-        app.kubernetes.io/component: metadata-adapter
+        app.kubernetes.io/component: deepstream-worker
         vrs.ai/gpu-role: {{ .Values.deepstreamWorker.gpuRole | quote }}
     spec:
       containers:
-        - name: metadata-adapter
+        - name: deepstream-worker
           image: "{{ default .Values.image.repository .Values.deepstreamWorker.image.repository }}:{{ default .Values.image.tag .Values.deepstreamWorker.image.tag }}"
           imagePullPolicy: {{ default .Values.image.pullPolicy .Values.deepstreamWorker.image.pullPolicy }}
           command: {{ toJson .Values.deepstreamWorker.command }}

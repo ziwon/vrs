@@ -176,8 +176,10 @@ def anchor_filter_summary(
 ) -> dict | None:
     if anchor_filter is None:
         return None
-    score_end = args.score_end if args.score_end is not None else default_score_end(
-        args.score_start, class_count
+    score_end = (
+        args.score_end
+        if args.score_end is not None
+        else default_score_end(args.score_start, class_count)
     )
     return {
         "min_score": args.min_score,
@@ -198,9 +200,7 @@ def per_channel_stats(left: np.ndarray, right: np.ndarray) -> list[dict]:
                 "channel": channel,
                 "max_abs_delta": float(channel_abs.max(initial=0.0)),
                 "mean_abs_delta": float(channel_abs.mean()) if channel_abs.size else 0.0,
-                "p99_abs_delta": float(np.quantile(channel_abs, 0.99))
-                if channel_abs.size
-                else 0.0,
+                "p99_abs_delta": float(np.quantile(channel_abs, 0.99)) if channel_abs.size else 0.0,
                 "left_mean": float(left[channel].mean()) if left[channel].size else 0.0,
                 "right_mean": float(right[channel].mean()) if right[channel].size else 0.0,
                 "mean_signed_delta": float(delta[channel].mean()) if delta[channel].size else 0.0,

@@ -58,9 +58,7 @@ def test_deepstream_preprocess_configs_use_input_tensor_meta() -> None:
     preprocess = (Path("configs/deepstream/preprocess-yoloe-safety.txt")).read_text(
         encoding="utf-8"
     )
-    pgie = (Path("configs/deepstream/pgie-yoloe-safety-preprocess.txt")).read_text(
-        encoding="utf-8"
-    )
+    pgie = (Path("configs/deepstream/pgie-yoloe-safety-preprocess.txt")).read_text(encoding="utf-8")
     pipeline = (Path("configs/deepstream/ds8-file-preprocess-example.pipeline")).read_text(
         encoding="utf-8"
     )
@@ -92,7 +90,7 @@ def test_vrsmeta_plugin_skeleton_is_registered() -> None:
     assert "lib/gstreamer-1.0" in cmake
     assert "G_DEFINE_TYPE" in source
     assert "GST_PLUGIN_DEFINE" in source
-    assert "gst_element_register(plugin, \"vrsmeta\"" in source
+    assert 'gst_element_register(plugin, "vrsmeta"' in source
     assert "gst_base_transform_set_in_place" in source
     assert "GstBaseTransform" in source
 

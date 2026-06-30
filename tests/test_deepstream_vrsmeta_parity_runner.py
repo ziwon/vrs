@@ -30,7 +30,10 @@ def test_deepstream_pipeline_uses_vrsmeta_and_disable_probe_output() -> None:
 
     assert "qtdemux ! h264parse ! nvv4l2decoder" in pipeline
     assert "width=640 height=640 enable-padding=1" in pipeline
-    assert "nvinfer config-file-path=/opt/vrs/share/deepstream/configs/pgie-yoloe-safety.txt" in pipeline
+    assert (
+        "nvinfer config-file-path=/opt/vrs/share/deepstream/configs/pgie-yoloe-safety.txt"
+        in pipeline
+    )
     assert "nvtracker" in pipeline
     assert "vrsmeta stream-id=fire120 detector-id=ds8-yoloe-vrsmeta" in pipeline
     assert "output-path=/out/deepstream_120.jsonl" in pipeline

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -9,16 +10,24 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from scripts.make_fixture_runs import write_fixture_run
+from vrs.api.api import create_app
+from vrs.api.artifacts import RunArtifactStore, UnsafePathError
 from vrs.schemas import CandidateAlert, Detection, VerifiedAlert
 from vrs.sinks.jsonl_sink import JsonlSink
-from vrs.web.api import create_app
-from vrs.web.artifacts import RunArtifactStore, UnsafePathError
+
+_FIXTURE_SCRIPT = Path("scripts/make_fixture_runs.py")
+_FIXTURE_SPEC = importlib.util.spec_from_file_location("make_fixture_runs", _FIXTURE_SCRIPT)
+assert _FIXTURE_SPEC is not None
+assert _FIXTURE_SPEC.loader is not None
+_FIXTURE = importlib.util.module_from_spec(_FIXTURE_SPEC)
+sys.modules[_FIXTURE_SPEC.name] = _FIXTURE
+_FIXTURE_SPEC.loader.exec_module(_FIXTURE)
+write_fixture_run = _FIXTURE.write_fixture_run
 
 
 def test_web_api_import_does_not_load_heavy_modules() -> None:
     code = (
-        "import sys; import vrs.web.api; "
+        "import sys; import vrs.api.api; "
         "mods={'torch','ultralytics','transformers','cv2'} & set(sys.modules); "
         "print(','.join(sorted(mods))); raise SystemExit(1 if mods else 0)"
     )

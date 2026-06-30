@@ -15,7 +15,7 @@ uv python install 3.11
 uv sync --python 3.11 --extra cu128
 ```
 
-The web API itself is CPU-light. Importing `vrs.web.api` does not import
+The web API itself is CPU-light. Importing `vrs.api.api` does not import
 `torch`, `ultralytics`, `transformers`, or `cv2`; it only reads JSONL and image
 files that already exist under `runs/`.
 
@@ -147,7 +147,7 @@ uv run scripts/make_fixture_runs.py --out runs
 Start the backend:
 
 ```bash
-uv run uvicorn vrs.web.api:app --host 127.0.0.1 --port 5445 --reload
+uv run uvicorn vrs.api.api:app --host 127.0.0.1 --port 5445 --reload
 ```
 
 Serve the static frontend in another terminal:

@@ -133,7 +133,7 @@ kept swappable:
 | Stage | Model | Why |
 |-------|-------|-----|
 | Detect | **Ultralytics YOLOE-L** (`yoloe-11l-seg.pt` by default) | Open-vocabulary text prompts, returns bounding boxes, no per-site retraining loop |
-| DeepStream detect | **DeepStream 8 + TensorRT YOLOE-S validation path** | Native C++ worker and custom YOLOE parser are implemented for zero-copy production work, but class-score parity still needs raw-tensor validation before promotion. |
+| DeepStream detect | **DeepStream 8 + TensorRT YOLOE-S validation path** | Native C++ worker, custom YOLOE parser, raw-tensor parity tooling, and explicit `nvdspreprocess` path are implemented. End-to-end clip parity still gates production promotion. |
 | Reason | **nvidia/Cosmos-Reason2-2B** baseline | Physical-reasoning specialization, FPS=4 video path, bbox/point/trajectory-oriented prompting. Treat as a baseline, not the expected winner. |
 
 Sources:
@@ -297,7 +297,7 @@ docker run --rm --gpus all \
   -v "$PWD/configs/deepstream:/etc/vrs/deepstream:ro" \
   -v "$PWD/runs/engines:/models:ro" \
   vrs-deepstream:ds8 \
-  --pipeline "$(cat configs/deepstream/ds8-file-example.pipeline)" \
+  --pipeline "$(cat configs/deepstream/ds8-file-preprocess-example.pipeline)" \
   --disable-probe
 ```
 
@@ -327,23 +327,31 @@ Outputs:
 |---------|----------|----------|-------|
 | `default.yaml` | YOLOE-L FP16 | Cosmos-Reason2-2B BF16 | Accuracy-oriented local profile; validate memory on target GPU. NVIDIA's reference model card lists 24 GB minimum. |
 | `tiny.yaml` | YOLOE-S FP16 | Cosmos-Reason2-2B W4A16 | Intended for 8-16 GB cards / Jetson-class deployments after quantized-runtime validation. |
-| DeepStream 8 native | TensorRT YOLOE-S via `nvinfer` | External/served verifier target | Worker/parser are implemented and GPU-smoke-tested; 120.mp4 smoke parity is strong, but fire/smoke class-score divergence remains a production blocker. |
+| DeepStream 8 native | TensorRT YOLOE-S via `nvdspreprocess` + `nvinfer` | External/served verifier target | Worker/parser and preprocess path are implemented and GPU-smoke-tested; raw tensor parity is strong when Python consumes the same DeepStream-decoded RGB. Full end-to-end detector acceptance remains the gate. |
 
 ## Layout
 
 ```
 .
+├── baselines/              Eval baselines and comparison fixtures
+├── charts/vrs/             Helm chart for dev, kind, edge, and production profiles
+├── contracts/              Versioned JSON schemas for platform boundaries
 ├── web/                    Static VRS Console frontend
 ├── docker/                 nginx config for frontend/API proxying
 ├── docs/                   Current docs, operations notes, benchmarks, archive
-├── configs/                Runtime configs, stream manifests, watch policies
-├── scripts/                CLI runners, fixtures, benchmarks, eval helpers
-├── native/deepstream/      DeepStream 8 C++ worker and custom YOLOE parser
+├── configs/                Runtime configs, stream manifests, policies, DS configs
+│   └── deepstream/         DS8 YOLOE parser, preprocess, and example pipelines
+├── scripts/                CLI runners, eval helpers, parity and TRT tooling
+├── native/deepstream/      DS8 C++ worker, vrsmeta plugin, YOLOE parser
 ├── docker-compose.yaml     RTSP, backend, frontend, and inference workflow
 ├── Dockerfile.*            Backend, frontend, GPU inference, and DeepStream images
 └── vrs/
-    ├── web/                FastAPI artifact browser for dashboard data
+    ├── api/                FastAPI backend for artifacts and dashboard data
     ├── ingest/             RTSP/mp4 frame iterator
+    ├── deepstream/         JSONL bridge and DeepStream adapter helpers
+    ├── control/            Stream assignment and worker config control plane
+    ├── eval/               Evaluation datasets, harnesses, and metrics
+    ├── observability/      Prometheus metrics helpers
     ├── triage/             YOLOE detector, tracking, event-state queue
     ├── verifier/           VLM prompts and structured-output parsing
     ├── runtime/            transformers, vLLM, OpenAI-compatible backends

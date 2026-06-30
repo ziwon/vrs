@@ -397,14 +397,14 @@ stop-local:
     @pkill -f '[p]ublish_rtsp_streams.py' || true
     @pkill -f '[r]un_multistream.py' || true
     @pkill -f '[r]un_rtsp.py' || true
-    @pkill -f '[u]vicorn vrs.web.api:app' || true
+    @pkill -f '[u]vicorn vrs.api.api:app' || true
     @pkill -f '[p]ython -m http.server .*5173' || true
     @pkill -f '[f]fmpeg .*rtsp://127.0.0.1:8554' || true
     {{compose}} down
 
 web-api:
     VRS_RUNS_ROOT="{{web_runs_root}}" VRS_POLICY_PATH="{{web_policy}}" VRS_STREAMS_PATH="{{stream_manifest}}" \
-        uv run --frozen uvicorn vrs.web.api:app --host "{{web_host}}" --port "{{web_api_port}}"
+        uv run --frozen uvicorn vrs.api.api:app --host "{{web_host}}" --port "{{web_api_port}}"
 
 web-ui:
     python -m http.server "{{web_ui_port}}" --bind "{{web_host}}" --directory web

@@ -9,7 +9,7 @@ api:
   enabled: true
   replicas: 1
   port: 8000
-  command: ["uvicorn", "vrs.web.api:app", "--host", "0.0.0.0", "--port", "8000"]
+  command: ["uvicorn", "vrs.api.api:app", "--host", "0.0.0.0", "--port", "8000"]
   gpuRole: none
 
 runtime:

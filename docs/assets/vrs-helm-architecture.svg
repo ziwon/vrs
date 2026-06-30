@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-labelledby="title desc">
   <title id="title">VRS Helm production architecture</title>
-  <desc id="desc">Kubernetes architecture diagram for charts/vrs showing API, DeepStream workers, optional verifier workers, Redis transport, SeaweedFS object storage, metrics, and GPU node roles.</desc>
+  <desc id="desc">Kubernetes architecture diagram for charts/vrs showing API, DeepStream workers, optional verifier workers, Redis transport, SeaweedFS evidence storage, metrics, and GPU node roles.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0f172a"/>
@@ -138,8 +138,8 @@
   <circle class="pulse p4" r="8" fill="#818cf8"/>
 
   <rect class="panel" x="42" y="530" width="520" height="110" rx="18"/>
-  <text fill="#f8fafc" class="label medium" x="72" y="566">Object storage</text>
-  <text fill="#94a3b8" class="label muted small" x="72" y="594">SeaweedFS in production profile</text>
+  <text fill="#f8fafc" class="label medium" x="72" y="566">SeaweedFS</text>
+  <text fill="#94a3b8" class="label muted small" x="72" y="594">Evidence storage in production profile</text>
   <text fill="#94a3b8" class="label muted tiny" x="72" y="620">S3 API service, Secret credentials, PVC-backed filer/master/s3 process</text>
   <rect x="356" y="562" width="156" height="42" rx="21" fill="url(#storeGrad)" opacity=".18" stroke="#f59e0b"/>
   <text fill="#f8fafc" class="label tiny" x="384" y="588">bucket: vrs-evidence</text>

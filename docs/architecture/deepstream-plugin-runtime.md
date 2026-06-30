@@ -236,6 +236,8 @@ Acceptance:
 
 ### M1 - Extract Metadata Mapping Core
 
+Status: implemented as `vrs_deepstream_metadata_core`.
+
 Goal: make metadata conversion reusable before creating a plugin.
 
 Deliverables:
@@ -246,6 +248,14 @@ Deliverables:
 - Add local tests where possible for pure helper logic that does not require
   DeepStream headers.
 
+Implemented:
+
+- `native/deepstream/src/metadata_core.hpp`
+- `native/deepstream/src/metadata_core.cpp`
+- `native/deepstream/tests/test_metadata_core.cpp`
+- CMake target `vrs_deepstream_metadata_core`
+- CMake executable `vrs-deepstream-metadata-core-test`
+
 Acceptance:
 
 - Existing DS 8 worker smoke still builds in `Dockerfile.deepstream`.
@@ -253,6 +263,8 @@ Acceptance:
 - CPU-only tests still pass.
 
 ### M2 - Add `gst-vrsmeta` Plugin Skeleton
+
+Status: implemented.
 
 Goal: create a loadable GStreamer element.
 
@@ -263,6 +275,13 @@ Deliverables:
 - Implement pass-through `GstBaseTransform` behavior.
 - Install the plugin into the DS 8 image.
 
+Implemented:
+
+- `native/deepstream/src/gst_vrsmeta.cpp`
+- CMake target `gstvrsmeta`, producing `libgstvrsmeta.so`
+- Plugin install path `/opt/vrs/lib/gstreamer-1.0`
+- Runtime `GST_PLUGIN_PATH=/opt/vrs/lib/gstreamer-1.0:${GST_PLUGIN_PATH}`
+
 Acceptance:
 
 - `gst-inspect-1.0 vrsmeta` works inside `vrs-deepstream:ds8`.
@@ -270,6 +289,8 @@ Acceptance:
 - Existing worker target still builds.
 
 ### M3 - Move Detection Export Into `vrsmeta`
+
+Status: initial JSONL export implemented.
 
 Goal: replace pad-probe export with plugin-owned export.
 
@@ -280,6 +301,17 @@ Deliverables:
 - It supports labels, stream id, detector id, bbox scale, and bbox offset
   properties.
 - The worker no longer needs to attach a metadata pad probe for this path.
+
+Implemented:
+
+- `vrsmeta` reads `NvDsBatchMeta`, `NvDsFrameMeta`, and `NvDsObjectMeta` from
+  each `GstBuffer`.
+- It uses `vrs_deepstream_metadata_core` to serialize `detection.v1`.
+- It supports `stream-id`, `source-id`, `detector-id`, `labels`,
+  `output-mode=jsonl`, `output-path`, `append`, bbox scale/offset, and `debug`
+  properties.
+- The existing worker pad probe remains available as the fallback/bootstrap path
+  until Helm switches production pipelines to include `vrsmeta`.
 
 Acceptance:
 
@@ -325,6 +357,12 @@ Acceptance:
 - Python event-state can consume the same records through the existing transport
   boundary.
 - Publish failures are counted and bounded, not silently blocking the pipeline.
+
+Current interim implementation: the production Helm profile uses a
+`detection-publisher` sidecar running `python -m vrs.deepstream.jsonl_bridge`.
+This tails the C++ worker JSONL output from a shared `emptyDir` and publishes
+records to Redis Streams. `vrsmeta output-mode=redis` remains the target plugin
+implementation.
 
 ### M6 - Helm Integration
 

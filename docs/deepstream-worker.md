@@ -10,6 +10,12 @@ application pad probe into a reusable GStreamer element. See
 `docs/architecture/deepstream-plugin-runtime.md` for the `gst-vrsmeta`
 milestones and zero-copy boundary.
 
+The first `vrsmeta` plugin is now built into the DS8 image. It is installed under
+`/opt/vrs/lib/gstreamer-1.0` and exposed through `GST_PLUGIN_PATH`. It can export
+DeepStream object metadata to `detection.v1` JSONL when `output-path` is set. The
+worker pad probe remains available as the fallback/bootstrap path until Helm
+switches production pipelines to include `vrsmeta`.
+
 The existing Python `vrs.deepstream.worker` remains useful for kind and contract
 smoke tests because it does not require NVIDIA runtime libraries.
 
@@ -44,13 +50,15 @@ docker run --rm --gpus all --network host \
   --probe-pad sink \
   --stream-id file-fire1 \
   --detector-id ds8-nvinfer \
-  --labels /etc/vrs/deepstream/labels.txt \
+  --labels /opt/vrs/share/deepstream/configs/yoloe-safety-labels.txt \
   --out /runs/deepstream/detections.jsonl
 ```
 
-The checked-in pipeline is a template. It expects `/etc/vrs/deepstream/pgie.txt`
-and the referenced engine/model files to exist. Update the demux/parser section
-to match the actual codec of the mounted test clip.
+The checked-in pipeline is a template. It uses the image-baked
+`/opt/vrs/share/deepstream/configs/pgie-yoloe-safety.txt` and expects the
+referenced TensorRT engine under `/models` to exist. Update the source,
+demux/parser section, and bbox transform options to match the actual clip or RTSP
+source.
 
 ## Contract Boundary
 
@@ -68,6 +76,29 @@ Each output record includes:
 - `detector_id`
 
 ## Validation
+
+Check the plugin skeleton inside the DeepStream image:
+
+```bash
+docker run --rm --entrypoint gst-inspect-1.0 vrs-deepstream:ds8 vrsmeta
+```
+
+Pass-through smoke:
+
+```bash
+docker run --rm --entrypoint gst-launch-1.0 vrs-deepstream:ds8 \
+  videotestsrc num-buffers=1 ! vrsmeta ! fakesink
+```
+
+Plugin-owned metadata export path:
+
+```text
+... ! nvinfer ! nvtracker \
+  ! vrsmeta stream-id=cam-01 detector-id=ds8-yoloe \
+      labels=/opt/vrs/share/deepstream/configs/yoloe-safety-labels.txt \
+      output-mode=jsonl output-path=/runs/deepstream/detections.jsonl \
+  ! fakesink sync=false
+```
 
 After producing DeepStream JSONL, compare against the existing Python detector
 export path:

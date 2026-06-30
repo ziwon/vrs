@@ -54,7 +54,10 @@ Single-stream and multistream runtime sinks now write one
 `manifests/<manifest_id>.json` per verified alert plus an append-friendly
 `object_manifest.index.jsonl`. Each per-alert manifest is an
 `object_manifest.v1` document containing the `verified_alert.v1` record and
-local `evidence_ref.v1` references for emitted thumbnails. Set
+`evidence_ref.v1` references for emitted thumbnails. The manifest sink builds its
+default `ObjectStore` from `VRS_OBJECT_STORE*` environment variables, so Helm
+profiles can write manifests to local PVC, SeaweedFS, or external S3-compatible
+storage without changing alert contracts. Set
 `sink.write_manifest: false` to disable this during specialized tests; keep it
 enabled for runtime artifacts that need to cross process, bus, or object-storage
 boundaries.
@@ -67,10 +70,12 @@ boundaries.
 - `EventTransport`
 - `InMemoryEventTransport` for unit tests
 - `RedisStreamsConfig` for edge-mode stream naming
+- `RedisStreamsTransport` for Redis Streams publishing
 - `KafkaConfig` for production topic naming
 
-Redis and Kafka clients are not required by unit tests and are not implemented
-yet. Future adapters should implement `EventTransport`.
+Redis is implemented with a lazily imported client and can be exercised through
+the DeepStream JSONL bridge sidecar. Kafka remains a naming/config shape only.
+Unit tests still avoid service dependencies by injecting fake clients.
 
 `vrs.storage` defines the object-store boundary:
 
@@ -83,7 +88,9 @@ yet. Future adapters should implement `EventTransport`.
 The runtime manifest sink can use any `ObjectStore`. `LocalObjectStore` covers
 dev/test/local edge paths. `S3CompatibleObjectStore` uses the same protocol for
 SeaweedFS or external S3-compatible storage and returns `s3://bucket/key` URIs
-described by `S3CompatibleConfig`.
+described by `S3CompatibleConfig`. `object_manifest.index.jsonl` remains a local
+append index for fast audit/debug lookup, while the manifest body itself is
+written through the configured object store.
 
 ## DeepStream Boundary
 

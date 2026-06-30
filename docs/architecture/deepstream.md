@@ -235,18 +235,21 @@ The platform should define canonical schemas for:
 DeepStream emits detections, tracks, and evidence references by default. VRS event-state and policy code is the boundary that promotes those inputs to `candidate_alert.v1`; VLM verifier workers then produce `verified_alert.v1`. VLM verification is not part of the DeepStream data plane.
 
 The first runtime boundary interfaces are in place: `vrs.transport` defines the
-service-free `EventTransport` shape plus Redis Streams and Kafka naming configs,
-and `vrs.storage` defines `ObjectStore` with a local filesystem implementation
-and S3/SeaweedFS-compatible URI config scaffold. These are scaffolds for the bus and
-object-store adapters; they are not production Redis, Kafka, S3, or SeaweedFS
-clients yet.
+service-free `EventTransport` shape, an in-memory test transport, Redis Streams
+configuration, a Redis Streams publisher, and Kafka naming configs. `vrs.storage`
+defines `ObjectStore` with local filesystem and S3/SeaweedFS-compatible
+implementations. Runtime manifest sinks now select that store from
+`VRS_OBJECT_STORE*` environment variables. Kafka remains a config shape only;
+Redis and object-storage clients exist, but still need live service validation in
+deployment profiles.
 
 `vrs.deepstream.adapter` provides the dependency-free Python metadata boundary
 for tests and JSON/JSONL fallback conversion. `native/deepstream` contains the
 DS 8.0 C++ worker path: it runs a GStreamer/DeepStream pipeline, attaches a pad
 probe, reads `NvDsFrameMeta` and `NvDsObjectMeta`, and emits `detection.v1`
 records. GPU smoke, deployment-specific PGIE/tracker configuration, and
-transport publishing still need production validation.
+transport publishing is wired through a JSONL-to-Redis sidecar bridge in the
+production Helm profile, but still needs live service validation.
 
 ---
 

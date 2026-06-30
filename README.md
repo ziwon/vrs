@@ -6,6 +6,7 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![CUDA](https://img.shields.io/badge/CUDA-12.1%20%7C%2012.8-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/cuda-toolkit)
+[![DeepStream](https://img.shields.io/badge/DeepStream-8.0-76B900?logo=nvidia&logoColor=white)](https://developer.nvidia.com/deepstream-sdk)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5%2B-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 
 A modern, two-stage CCTV / video-understanding pipeline for a **single local GPU**.
@@ -153,12 +154,12 @@ The detector runs on every sampled frame, while the verifier only runs after
 event-state promotes a stable candidate. This keeps the local GPU budget focused
 on real alert decisions instead of spending VLM time on quiet frames.
 
-![Diagram of the charts/vrs Kubernetes production architecture: DeepStream workers, Redis transport, API replicas, optional verifier workers, SeaweedFS object storage, and metrics.](docs/assets/vrs-helm-architecture.svg)
+![Diagram of the charts/vrs Kubernetes production architecture: DeepStream workers, Redis transport, API replicas, optional verifier workers, SeaweedFS evidence storage, and metrics.](docs/assets/vrs-helm-architecture.svg)
 
 The Helm chart under `charts/vrs` separates the production data plane from the
 control/API plane: DeepStream workers own GPU video ingest and metadata export,
 Redis carries work between components, API replicas serve artifacts and runtime
-state, SeaweedFS backs evidence/object storage in the production profile, and
+state, SeaweedFS backs evidence storage in the production profile, and
 metrics are exposed through a Service plus optional ServiceMonitor.
 
 ## Policy flow

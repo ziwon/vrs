@@ -9,6 +9,7 @@ rebuild into an object-store index later.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -33,9 +34,7 @@ class ObjectManifestSink:
     ):
         self.root_dir = Path(root_dir)
         self.root_dir.mkdir(parents=True, exist_ok=True)
-        self.store = store or (
-            object_store_from_env() if use_env_store else LocalObjectStore(self.root_dir)
-        )
+        self.store = store or self._default_store(use_env_store)
         self.stream_id = stream_id
         self.run_id = run_id or self.root_dir.name
         self.manifest_dir = manifest_dir.strip("/\\") or "manifests"
@@ -140,3 +139,20 @@ class ObjectManifestSink:
         if isinstance(self.store, LocalObjectStore):
             return "local-filesystem"
         return "object-store"
+
+    def _default_store(self, use_env_store: bool) -> ObjectStore:
+        if use_env_store and _has_object_store_env():
+            return object_store_from_env()
+        return LocalObjectStore(self.root_dir)
+
+
+def _has_object_store_env() -> bool:
+    return any(
+        name in os.environ
+        for name in (
+            "VRS_OBJECT_STORE",
+            "VRS_OBJECT_STORE_ROOT",
+            "VRS_RUNS_ROOT",
+            "VRS_RUNS_DIR",
+        )
+    )

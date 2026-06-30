@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from .contracts import evidence_ref_v1
+from ..contracts import evidence_ref_v1
 
 
 @dataclass(frozen=True)
@@ -194,7 +194,10 @@ def object_store_from_env(prefix: str = "VRS_OBJECT_STORE") -> ObjectStore:
 
     mode = os.getenv(prefix, os.getenv("VRS_OBJECT_STORE", "local-pvc")).lower()
     if mode in {"local", "local-pvc", "filesystem"}:
-        root_dir = os.getenv("VRS_OBJECT_STORE_ROOT", os.getenv("VRS_RUNS_DIR", "/data/runs"))
+        root_dir = os.getenv(
+            "VRS_OBJECT_STORE_ROOT",
+            os.getenv("VRS_RUNS_ROOT", os.getenv("VRS_RUNS_DIR", "/data/runs")),
+        )
         return LocalObjectStore(root_dir)
     if mode in {"seaweedfs", "s3", "external"}:
         bucket = os.environ["VRS_OBJECT_STORE_BUCKET"]

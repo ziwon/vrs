@@ -46,6 +46,34 @@ def test_deepstream_dockerfile_targets_ds8_container() -> None:
     assert "GST_PLUGIN_PATH" in dockerfile
 
 
+def test_yoloe_parser_can_dump_raw_tensor_for_m7() -> None:
+    source = (ROOT / "src" / "yoloe_parser.cpp").read_text(encoding="utf-8")
+
+    assert "VRS_YOLOE_RAW_DUMP" in source
+    assert "vrs.deepstream.yoloe_raw_tensor.v1" in source
+    assert ".f32" in source
+
+
+def test_deepstream_preprocess_configs_use_input_tensor_meta() -> None:
+    preprocess = (Path("configs/deepstream/preprocess-yoloe-safety.txt")).read_text(
+        encoding="utf-8"
+    )
+    pgie = (Path("configs/deepstream/pgie-yoloe-safety-preprocess.txt")).read_text(
+        encoding="utf-8"
+    )
+    pipeline = (Path("configs/deepstream/ds8-file-preprocess-example.pipeline")).read_text(
+        encoding="utf-8"
+    )
+
+    assert "tensor-name=images" in preprocess
+    assert "network-input-shape=1;3;640;640" in preprocess
+    assert "pixel-normalization-factor=0.00392156862745098" in preprocess
+    assert "input-tensor-meta=1" not in pgie
+    assert "input-tensor-meta=true" in pgie
+    assert "nvdspreprocess config-file=" in pipeline
+    assert "nvinfer input-tensor-meta=true" in pipeline
+
+
 def test_native_metadata_core_has_cmake_test_target() -> None:
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
 

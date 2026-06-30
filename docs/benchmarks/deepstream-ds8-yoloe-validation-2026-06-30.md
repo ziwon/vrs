@@ -122,9 +122,9 @@ YOLOE TensorRT detector path is not production-ready yet.
 The blocking gap is parity between the Python YOLOE baseline and the DeepStream
 `nvinfer` path. The current evidence makes preprocessing parity the leading
 cause. Parser/export issues are less likely than they were after the first
-MIVIA failure, but they are not fully ruled out until a raw tensor comparison
-tool compares PyTorch, ONNX Runtime, TensorRT, and DeepStream on the same decoded
-frame.
+MIVIA failure, and the M7 raw tensor comparison below narrows the remaining gap:
+active-anchor bbox geometry is close, while class-score calibration/runtime drift
+still needs isolation.
 
 Evidence that narrows the problem:
 
@@ -154,17 +154,279 @@ The concrete preprocessing risks are:
 
 TensorRT engine serialization is still runtime-version-specific (the DS 8 engine
 would not load under the local Python TRT runtime), which is why per-frame
-comparison must happen inside one consistent container, not a separate parity
-cause.
+comparison should continue to happen inside one consistent container/runtime.
 
-Next validation should be done inside one consistent container/runtime:
+Next validation should continue inside one consistent container/runtime:
 
-1. Export ONNX and TensorRT from a DeepStream 8-compatible Python environment
-   after `model.set_classes(prompts, model.get_text_pe(prompts))`.
-2. Compare PyTorch, ONNX Runtime, TensorRT, and DeepStream outputs for the same
-   decoded frame before running full-video parity.
+1. Make the Python parity baseline consume the same GStreamer/DeepStream-decoded
+   RGB frame used by the native pipeline, or make DeepStream consume an explicit
+   preprocessing output that is byte-comparable with Python.
+2. Contract-test the pre-`nvinfer` input tensor, not just post-`nvinfer`
+   detections.
 3. Only promote `configs/deepstream/pgie-yoloe-safety.txt` after per-frame
    class, score, and bbox parity is within an agreed tolerance.
+
+## M7 Raw Tensor Parity Probe
+
+M7 added a pre-parser raw tensor dump path so parity can be checked before NMS,
+metadata conversion, Redis transport, or storage writes:
+
+- `VRS_YOLOE_RAW_DUMP=/out/prefix` on the native DeepStream parser writes
+  `prefix.f32` plus metadata for the selected `nvinfer` output layer.
+- `scripts/dump_yoloe_pytorch_raw.py` writes the same style of dump from
+  Ultralytics YOLOE after the same policy prompt vocabulary is installed. It can
+  also write the preprocessed `images` input tensor for direct TensorRT checks.
+- `scripts/compare_yoloe_raw_tensors.py` normalizes `[1,C,A]`, `[C,A]`, and
+  `[A,C]` layouts and reports global, per-channel, top-delta, and score-filtered
+  anchor statistics.
+- `scripts/convert_trtexec_output.py` converts `trtexec --exportOutput` JSON
+  into the same `.f32 + .json` dump format.
+- `scripts/convert_raw_rgb_to_tensor.py` converts captured HWC RGB frames into
+  CHW float32 TensorRT input dumps.
+
+Recheck clip:
+
+```text
+/data/vrs/fire_dataset/extracted_sample/fire/120.mp4
+```
+
+The clip is 640x360. The PyTorch dump uses a 640x640 black letterbox so the pad
+color matches DeepStream's observed `nvstreammux enable-padding=1` behavior:
+
+```bash
+uv run scripts/dump_yoloe_pytorch_raw.py \
+  --source /data/vrs/fire_dataset/extracted_sample/fire/120.mp4 \
+  --frame-index 0 \
+  --out-prefix runs/raw-tensors/m7-20260630/pytorch_fire120_frame0_black \
+  --input-prefix runs/raw-tensors/m7-20260630/input_fire120_frame0_black \
+  --pad-value 0 \
+  --device cuda \
+  --half
+```
+
+DeepStream dump command:
+
+```bash
+docker run --rm --gpus all \
+  -e VRS_YOLOE_RAW_DUMP=/out/deepstream_fire120_frame0 \
+  -v "$PWD/runs/engines:/models:ro" \
+  -v "/data/vrs/fire_dataset/extracted_sample/fire:/clips:ro" \
+  -v "$PWD/runs/raw-tensors/m7-20260630:/out" \
+  vrs-deepstream:ds8 \
+  --pipeline 'filesrc location=/clips/120.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! m.sink_0 nvstreammux name=m batch-size=1 width=640 height=640 enable-padding=1 live-source=0 ! nvinfer config-file-path=/opt/vrs/share/deepstream/configs/pgie-yoloe-safety.txt ! identity eos-after=1 ! fakesink name=sink sync=false' \
+  --disable-probe
+```
+
+Output tensor metadata:
+
+| Runtime | Shape | Layer | Notes |
+| --- | --- | --- | --- |
+| PyTorch / Ultralytics | `[1, 48, 8400]` | detection head | `48 = 4 bbox + 12 classes + 32 mask coeffs` |
+| DeepStream / nvinfer | `[48, 8400]` | `output0` | selected by the custom parser |
+
+Baseline comparison commands:
+
+```bash
+uv run scripts/compare_yoloe_raw_tensors.py \
+  --left runs/raw-tensors/m7-20260630/pytorch_fire120_frame0_black.json \
+  --right runs/raw-tensors/m7-20260630/deepstream_fire120_frame0.json \
+  --channels 16 \
+  --out runs/raw-tensors/m7-20260630/compare_pytorch_deepstream_frame0_ch16.json
+
+uv run scripts/compare_yoloe_raw_tensors.py \
+  --left runs/raw-tensors/m7-20260630/pytorch_fire120_frame0_black.json \
+  --right runs/raw-tensors/m7-20260630/deepstream_fire120_frame0.json \
+  --out runs/raw-tensors/m7-20260630/compare_pytorch_deepstream_frame0_all48.json
+
+uv run scripts/compare_yoloe_raw_tensors.py \
+  --left runs/raw-tensors/m7-20260630/pytorch_fire120_frame0_black.json \
+  --right runs/raw-tensors/m7-20260630/deepstream_fire120_frame0.json \
+  --channels 16 \
+  --min-score 0.1 \
+  --out runs/raw-tensors/m7-20260630/compare_pytorch_deepstream_frame0_ch16_score010.json
+
+uv run scripts/compare_yoloe_raw_tensors.py \
+  --left runs/raw-tensors/m7-20260630/pytorch_fire120_frame0_black.json \
+  --right runs/raw-tensors/m7-20260630/deepstream_fire120_frame0.json \
+  --channels 16 \
+  --min-score 0.25 \
+  --out runs/raw-tensors/m7-20260630/compare_pytorch_deepstream_frame0_ch16_score025.json
+```
+
+Results:
+
+| Compared channels | Anchor filter | Anchors | Count | Max abs delta | Mean abs delta | P99 abs delta | Cosine |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 (`bbox + classes`) | none | 8,400 | 134,400 | 550.448 | 1.802 | 31.548 | 0.998104 |
+| 48 (`bbox + classes + mask`) | none | 8,400 | 403,200 | 550.448 | 0.650 | 10.704 | 0.998104 |
+| 16 (`bbox + classes`) | max class score >= 0.10 | 22 | 352 | 19.028 | 0.560 | 7.480 | 0.999892 |
+| 16 (`bbox + classes`) | max class score >= 0.25 | 10 | 160 | 19.028 | 0.653 | 7.516 | 0.999849 |
+
+The important split is per channel:
+
+| Channel group | Observation |
+| --- | --- |
+| bbox `0..3` | Still divergent. Width/height channels have the largest drift: channel 2 max 550.448, mean 13.220; channel 3 max 261.862, mean 9.024. |
+| class scores `4..15` | Much closer. Channel 4 max is 0.270 and most class channels are orders of magnitude smaller. |
+
+The unfiltered bbox max delta is dominated by low-confidence anchors. When the
+comparison is restricted to anchors that either runtime scores at or above 0.10,
+bbox geometry is much closer: center-x max 3.193 px, center-y max 4.617 px,
+width max 8.162 px, and height max 19.028 px.
+
+M7 conclusion: the exported class vocabulary, tensor layout, and active-anchor
+bbox geometry are broadly aligned. The remaining blocker is not a gross
+geometry/parser failure; it is the class-score calibration gap seen in
+end-to-end runs, especially DeepStream fire false positives on 120.mp4 and
+strict temporal/class divergence on MIVIA. Next work should compare ONNX Runtime
+and direct TensorRT outputs for the same frame to separate export/runtime drift
+from DeepStream preprocessing.
+
+### Direct TensorRT and Input-Capture Split
+
+The follow-up split used `trtexec` to run the same engine outside DeepStream:
+
+```bash
+docker run --rm --gpus all --entrypoint trtexec \
+  -v "$PWD/runs/engines:/models:ro" \
+  -v "$PWD/runs/raw-tensors/m7-20260630:/out" \
+  vrs-deepstream:ds8 \
+  --loadEngine=/models/yoloe-11s-safety-rx5080-ds8-trtexec.engine \
+  --loadInputs=images:/out/input_fire120_frame0_black.f32 \
+  --iterations=1 --warmUp=0 --duration=0 \
+  --exportOutput=/out/trtexec_fire120_frame0_black_output.json
+
+uv run scripts/convert_trtexec_output.py \
+  --input runs/raw-tensors/m7-20260630/trtexec_fire120_frame0_black_output.json \
+  --tensor output0 \
+  --out-prefix runs/raw-tensors/m7-20260630/trtexec_fire120_frame0_black_output0
+```
+
+Result with score-filtered anchors (`max class score >= 0.10`, channels
+`0..15`):
+
+| Comparison | Anchors | Max abs delta | Mean abs delta | P99 abs delta | Cosine | Interpretation |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| PyTorch output vs direct `trtexec` on PyTorch input | 9 | 0.241 | 0.024 | 0.219 | 1.000000 | Export/engine drift is small. |
+| Direct `trtexec` on PyTorch input vs DeepStream `nvinfer` dump | 22 | 19.822 | 0.567 | 7.548 | 0.999888 | Difference remains outside the engine. |
+
+Then the frame immediately before `nvinfer` was captured from the DeepStream
+pipeline:
+
+```bash
+docker run --rm --gpus all --entrypoint bash \
+  -v "/data/vrs/fire_dataset/extracted_sample/fire:/clips:ro" \
+  -v "$PWD/runs/raw-tensors/m7-20260630:/out" \
+  vrs-deepstream:ds8 -lc \
+  'gst-launch-1.0 -q filesrc location=/clips/120.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! m.sink_0 nvstreammux name=m batch-size=1 width=640 height=640 enable-padding=1 live-source=0 ! nvvideoconvert ! video/x-raw,format=RGB ! identity eos-after=1 ! filesink location=/out/deepstream_fire120_frame0_mux_rgb.raw'
+
+uv run scripts/convert_raw_rgb_to_tensor.py \
+  --input runs/raw-tensors/m7-20260630/deepstream_fire120_frame0_mux_rgb.raw \
+  --width 640 --height 640 \
+  --runtime deepstream-mux-rgb-capture \
+  --out-prefix runs/raw-tensors/m7-20260630/input_fire120_frame0_deepstream_mux_rgb
+```
+
+The captured DeepStream mux RGB tensor differs from the OpenCV/PyTorch input:
+
+| Input comparison | Max abs delta | Mean abs delta | P99 abs delta | Pixels/channels > 1/255 |
+| --- | ---: | ---: | ---: | ---: |
+| PyTorch input vs DeepStream mux RGB input | 0.424 | 0.00571 | 0.0745 | 364,422 / 1,228,800 |
+
+Using that captured DeepStream mux RGB as the direct TensorRT input nearly
+reproduces the DeepStream `nvinfer` dump:
+
+| Comparison | Anchors | Max abs delta | Mean abs delta | P99 abs delta | Cosine | Interpretation |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Direct `trtexec` on DeepStream mux RGB vs DeepStream `nvinfer` dump | 23 | 1.148 | 0.052 | 1.058 | 0.999999 | DeepStream `nvinfer` is consistent with the captured mux input. |
+| PyTorch output vs direct `trtexec` on DeepStream mux RGB | 23 | 18.957 | 0.559 | 7.338 | 0.999894 | The remaining drift follows the input pixels. |
+
+Updated M7 conclusion: the engine and parser are not the primary blocker.
+Production parity now depends on controlling the decoded/preprocessed input
+pixels. The next implementation step should make the Python baseline consume the
+same GStreamer/DeepStream decoded RGB frames, or introduce an explicit
+DeepStream preprocessing stage whose output can be contract-tested against the
+Python preprocessing path.
+
+### Implemented Step 1: Python Baseline on DeepStream-Decoded RGB
+
+`scripts/dump_yoloe_pytorch_raw.py` and `scripts/export_yoloe_raw_detections.py`
+now accept a raw HWC RGB frame:
+
+```bash
+uv run scripts/dump_yoloe_pytorch_raw.py \
+  --source runs/raw-tensors/m7-20260630/deepstream_fire120_frame0_mux_rgb.raw \
+  --raw-rgb-width 640 \
+  --raw-rgb-height 640 \
+  --out-prefix runs/raw-tensors/m7-20260630/pytorch_fire120_frame0_deepstream_mux_rgb \
+  --input-prefix runs/raw-tensors/m7-20260630/input_pytorch_fire120_frame0_deepstream_mux_rgb \
+  --pad-value 0 \
+  --device cuda \
+  --half
+
+uv run scripts/export_yoloe_raw_detections.py \
+  runs/raw-tensors/m7-20260630/deepstream_fire120_frame0_mux_rgb.raw \
+  --raw-rgb-width 640 \
+  --raw-rgb-height 640 \
+  --out runs/raw-tensors/m7-20260630/python_dsdecoded_frame0_raw_detections.jsonl \
+  --stream-id fire120-frame0 \
+  --detector-id python-yoloe-dsdecoded \
+  --conf 0.001 \
+  --device cuda \
+  --half
+```
+
+With the Python baseline consuming the same decoded RGB pixels, raw tensor
+parity is effectively accepted for this frame:
+
+| Comparison | Anchor filter | Max abs delta | Mean abs delta | Cosine |
+| --- | --- | ---: | ---: | ---: |
+| Python on DeepStream-decoded RGB vs DeepStream `nvinfer` | max class score >= 0.10 | 1.187 | 0.0585 | 0.999999 |
+
+This closes the immediate model/export/parser question. Any remaining
+end-to-end detector divergence should be evaluated with a baseline that uses the
+same decoded frames as the DeepStream path.
+
+### Implemented Step 2: Explicit `nvdspreprocess` Stage
+
+The repository now includes a reference explicit preprocessing path:
+
+- `configs/deepstream/preprocess-yoloe-safety.txt`
+- `configs/deepstream/pgie-yoloe-safety-preprocess.txt`
+- `configs/deepstream/ds8-file-preprocess-example.pipeline`
+
+The working pipeline is:
+
+```bash
+docker run --rm --gpus all \
+  -e VRS_YOLOE_RAW_DUMP=/out/deepstream_preprocess_fire120_frame0 \
+  -v "$PWD/runs/engines:/models:ro" \
+  -v "/data/vrs/fire_dataset/extracted_sample/fire:/clips:ro" \
+  -v "$PWD/runs/raw-tensors/m7-20260630:/out" \
+  vrs-deepstream:ds8 \
+  --pipeline 'filesrc location=/clips/120.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! m.sink_0 nvstreammux name=m batch-size=1 width=640 height=640 enable-padding=1 live-source=0 ! nvdspreprocess config-file=/opt/vrs/share/deepstream/configs/preprocess-yoloe-safety.txt ! nvinfer input-tensor-meta=true config-file-path=/opt/vrs/share/deepstream/configs/pgie-yoloe-safety-preprocess.txt ! identity eos-after=1 ! fakesink name=sink sync=false' \
+  --disable-probe
+```
+
+Two implementation details matter:
+
+- `input-tensor-meta=true` must be set as the `nvinfer` element property in the
+  pipeline. In this DS8 runtime, putting `input-tensor-meta=1` inside the
+  `nvinfer` config file emits an unknown-key warning.
+- `scaling-filter=0` in `preprocess-yoloe-safety.txt` matches the existing
+  internal `nvinfer` preprocessing path for this test. `scaling-filter=1`
+  produced a larger raw tensor delta.
+
+Result:
+
+| Comparison | Anchor filter | Max abs delta | Mean abs delta | Cosine |
+| --- | --- | ---: | ---: | ---: |
+| Existing internal `nvinfer` preprocessing vs explicit `nvdspreprocess` | max class score >= 0.10 | 0.000 | 0.000 | 1.000000 |
+| Python on DeepStream-decoded RGB vs explicit `nvdspreprocess` path | max class score >= 0.10 | 1.187 | 0.0585 | 0.999999 |
+
+This gives the production path a concrete preprocessing boundary. The next
+production hardening step is to promote this pipeline into the worker/Helm
+deployment path and add an automated pre-`nvinfer` tensor contract test.
 
 ## Reproducible Recheck Artifacts
 

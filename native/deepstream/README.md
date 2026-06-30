@@ -41,8 +41,11 @@ engine, labels file, and tracker config before using it for validation.
 ## YOLOE PGIE Status
 
 The image also installs `libnvdsinfer_custom_yoloe.so`, a custom parser for the
-YOLOE safety TensorRT config under `configs/deepstream`. This path is still in
-validation: the parser loads and receives YOLOE tensors, but Python YOLOE and
-DeepStream `nvinfer` parity has not been accepted. See
+YOLOE safety TensorRT config under `configs/deepstream`. This path now has raw
+tensor parity evidence when the Python baseline consumes the same
+GStreamer/DeepStream-decoded RGB frame. The repository also includes an explicit
+`nvdspreprocess` path using `input-tensor-meta=true`, but full production
+detector acceptance still requires end-to-end clip parity and deployment wiring.
+See
 `docs/benchmarks/deepstream-ds8-yoloe-validation-2026-06-30.md` before using it
 as a production detector.

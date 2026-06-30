@@ -1,0 +1,25 @@
+# YOLOE safety PGIE used after nvdspreprocess.
+#
+# Use this config with the nvinfer GObject property `input-tensor-meta=true`.
+# DeepStream 8 accepts that as an element property; placing it in this config
+# file is treated as an unknown/legacy key by gst-nvinfer.
+
+[property]
+gpu-id=0
+model-engine-file=/models/yoloe-11s-safety-rx5080-ds8-trtexec.engine
+labelfile-path=/opt/vrs/share/deepstream/configs/yoloe-safety-labels.txt
+batch-size=1
+network-mode=2
+num-detected-classes=12
+interval=0
+gie-unique-id=1
+network-type=0
+process-mode=1
+output-blob-names=output0
+parse-bbox-func-name=NvDsInferParseCustomYoloE
+custom-lib-path=/opt/vrs/lib/libnvdsinfer_custom_yoloe.so
+
+[class-attrs-all]
+pre-cluster-threshold=0.25
+nms-iou-threshold=0.50
+topk=300

@@ -429,6 +429,9 @@ Recommended next task:
 M1 - Extract Metadata Mapping Core
 ```
 
-Do not start with `gst-vrsevidence` or custom preprocessing. The current highest
-leverage step is to make `detection.v1` metadata export a reusable native
-component, then place it behind a real DeepStream plugin boundary.
+The metadata plugin boundary is now in place, and M7 raw tensor validation has
+shown that the remaining detector-parity risk is decoded/preprocessed input
+parity rather than TensorRT export or parser layout. The next highest-leverage
+DeepStream work is to promote the explicit `nvdspreprocess` +
+`nvinfer input-tensor-meta=true` path into the production worker/Helm wiring and
+to add a pre-`nvinfer` tensor contract test.

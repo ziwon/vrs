@@ -1,4 +1,12 @@
-from vrs.transport import EventMessage, InMemoryEventTransport, KafkaConfig, RedisStreamsConfig
+import json
+
+from vrs.transport import (
+    EventMessage,
+    InMemoryEventTransport,
+    KafkaConfig,
+    RedisStreamsConfig,
+    RedisStreamsTransport,
+)
 
 
 def test_in_memory_transport_preserves_stream_order_and_cursor() -> None:
@@ -27,3 +35,36 @@ def test_redis_and_kafka_configs_define_logical_name_mapping() -> None:
         KafkaConfig(bootstrap_servers="localhost:9092", topic_prefix="prod").topic_name("alerts")
         == "prod.alerts"
     )
+
+
+def test_redis_streams_transport_publishes_json_payload() -> None:
+    class FakeRedis:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def xadd(self, stream, fields, **kwargs):
+            self.calls.append((stream, fields, kwargs))
+            return b"1-0"
+
+    client = FakeRedis()
+    transport = RedisStreamsTransport(
+        RedisStreamsConfig(stream_prefix="edge", max_len=10),
+        client=client,
+    )
+
+    message_id = transport.publish(
+        EventMessage(
+            stream="detections",
+            key="det-1",
+            payload={"schema_version": "detection.v1", "score": 0.9},
+            headers={"source_runtime": "deepstream"},
+        )
+    )
+
+    assert message_id == "1-0"
+    stream, fields, kwargs = client.calls[0]
+    assert stream == "edge.detections"
+    assert fields["key"] == "det-1"
+    assert json.loads(fields["payload"])["schema_version"] == "detection.v1"
+    assert fields["header.source_runtime"] == "deepstream"
+    assert kwargs == {"maxlen": 10, "approximate": True}

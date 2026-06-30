@@ -36,6 +36,19 @@ deepstreamWorker:
     - /data/runs/deepstream_detections.jsonl
   args: []
   gpuRole: deepstream
+  publisher:
+    enabled: false
+    image:
+      repository: ""
+      tag: ""
+      pullPolicy: ""
+    command:
+      - python
+      - -m
+      - vrs.deepstream.jsonl_bridge
+    args: []
+  volumeMounts: []
+  volumes: []
   resources:
     limits:
       nvidia.com/gpu: 1
@@ -53,6 +66,7 @@ redis:
   enabled: true
   image: redis:7-alpine
   port: 6379
+  streamPrefix: vrs
   persistence:
     enabled: true
     size: 8Gi

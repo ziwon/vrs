@@ -1,12 +1,8 @@
-"""Event transport contracts for VRS runtime records.
-
-The production adapters are intentionally not implemented here; this module
-defines the stable boundary that Redis Streams and Kafka implementations must
-match while keeping unit tests service-free.
-"""
+"""Event transport contracts and adapters for VRS runtime records."""
 
 from __future__ import annotations
 
+import json
 from collections import defaultdict, deque
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -90,3 +86,73 @@ class InMemoryEventTransport:
                 if len(out) >= limit:
                     break
         return out
+
+
+class RedisStreamsTransport:
+    """Redis Streams transport for edge-mode worker handoff.
+
+    The Redis client is imported lazily so unit tests and CPU-only development do
+    not require a running Redis service. Tests can inject a small fake client that
+    implements ``xadd``.
+    """
+
+    def __init__(self, config: RedisStreamsConfig | None = None, *, client: Any | None = None):
+        self.config = config or RedisStreamsConfig()
+        self.client = client or self._build_client(self.config.url)
+
+    def publish(self, message: EventMessage) -> str:
+        stream_name = self.config.stream_name(message.stream)
+        fields: dict[str, str] = {
+            "key": message.key,
+            "payload": json.dumps(message.payload, ensure_ascii=False, separators=(",", ":")),
+        }
+        for name, value in message.headers.items():
+            fields[f"header.{name}"] = value
+        kwargs: dict[str, Any] = {}
+        if self.config.max_len is not None:
+            kwargs["maxlen"] = int(self.config.max_len)
+            kwargs["approximate"] = True
+        message_id = self.client.xadd(stream_name, fields, **kwargs)
+        if isinstance(message_id, bytes):
+            return message_id.decode("utf-8")
+        return str(message_id)
+
+    def read(
+        self, stream: str, *, after_id: str | None = None, limit: int = 100
+    ) -> list[EventMessage]:
+        stream_name = self.config.stream_name(stream)
+        start = after_id or "0-0"
+        rows = self.client.xrange(stream_name, min=start, count=limit)
+        out: list[EventMessage] = []
+        for message_id, fields in rows:
+            normalized = {_decode(key): _decode(value) for key, value in dict(fields).items()}
+            if after_id is not None and _decode(message_id) == after_id:
+                continue
+            headers = {
+                key.removeprefix("header."): value
+                for key, value in normalized.items()
+                if key.startswith("header.")
+            }
+            out.append(
+                EventMessage(
+                    stream=stream,
+                    key=normalized.get("key", ""),
+                    payload=json.loads(normalized["payload"]),
+                    headers=headers,
+                )
+            )
+        return out
+
+    @staticmethod
+    def _build_client(url: str) -> Any:
+        try:
+            import redis
+        except ImportError as exc:  # pragma: no cover - only exercised without optional dep.
+            raise RuntimeError("redis is required for RedisStreamsTransport") from exc
+        return redis.Redis.from_url(url)
+
+
+def _decode(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return str(value)

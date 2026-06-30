@@ -36,7 +36,7 @@ spec:
           resources:
             {{- toYaml .Values.deepstreamWorker.resources | nindent 12 }}
           {{- end }}
-          {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled .Values.sampleMetadata.enabled }}
+          {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled .Values.sampleMetadata.enabled .Values.deepstreamWorker.volumeMounts }}
           volumeMounts:
             {{- if eq .Values.objectStorage.mode "local-pvc" }}
             - name: data
@@ -51,8 +51,37 @@ spec:
               subPath: {{ .Values.sampleMetadata.filename }}
               readOnly: true
             {{- end }}
+            {{- with .Values.deepstreamWorker.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           {{- end }}
-      {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled .Values.sampleMetadata.enabled }}
+        {{- if .Values.deepstreamWorker.publisher.enabled }}
+        - name: detection-publisher
+          image: "{{ default .Values.image.repository .Values.deepstreamWorker.publisher.image.repository }}:{{ default .Values.image.tag .Values.deepstreamWorker.publisher.image.tag }}"
+          imagePullPolicy: {{ default .Values.image.pullPolicy .Values.deepstreamWorker.publisher.image.pullPolicy }}
+          command: {{ toJson .Values.deepstreamWorker.publisher.command }}
+          args:
+            {{- if .Values.deepstreamWorker.publisher.args }}
+            {{- toYaml .Values.deepstreamWorker.publisher.args | nindent 12 }}
+            {{- else }}
+            - --input
+            - /tmp/vrs/deepstream_detections.jsonl
+            - --redis-url
+            - redis://{{ include "vrs.fullname" . }}-redis:{{ .Values.redis.port }}/0
+            - --stream
+            - detections
+            - --stream-prefix
+            - {{ .Values.redis.streamPrefix | quote }}
+            {{- end }}
+          env:
+            - name: VRS_TRANSPORT
+              value: redis-streams
+          volumeMounts:
+            {{- with .Values.deepstreamWorker.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- end }}
+      {{- if or (eq .Values.objectStorage.mode "local-pvc") .Values.runtime.scratch.enabled .Values.sampleMetadata.enabled .Values.deepstreamWorker.volumes }}
       volumes:
         {{- if eq .Values.objectStorage.mode "local-pvc" }}
         - name: data
@@ -70,6 +99,9 @@ spec:
         - name: sample-metadata
           configMap:
             name: {{ include "vrs.fullname" . }}-sample-metadata
+        {{- end }}
+        {{- with .Values.deepstreamWorker.volumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- end }}
 {{- end }}

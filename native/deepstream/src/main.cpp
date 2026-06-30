@@ -1,20 +1,16 @@
 #include <gst/gst.h>
 
-#include <algorithm>
 #include <atomic>
 #include <csignal>
-#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
-#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
 #include <utility>
-#include <vector>
+
+#include "metadata_core.hpp"
 
 extern "C" {
 #include "gstnvdsmeta.h"
@@ -44,7 +40,7 @@ struct Options {
 struct Context {
   Options options;
   std::ofstream out;
-  std::unordered_map<int, std::string> labels;
+  vrs::deepstream::LabelMap labels;
 };
 
 void print_usage(const char *argv0) {
@@ -74,7 +70,7 @@ std::string example_pipeline() {
   return "filesrc location=/data/vrs/sample.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! "
          "m.sink_0 nvstreammux name=m batch-size=1 width=640 height=640 enable-padding=1 "
          "live-source=0 ! "
-         "nvinfer config-file-path=/etc/vrs/deepstream/pgie.txt ! "
+         "nvinfer config-file-path=/opt/vrs/share/deepstream/configs/pgie-yoloe-safety.txt ! "
          "nvtracker ll-lib-file=/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so ! "
          "fakesink name=sink sync=false";
 }
@@ -134,84 +130,6 @@ Options parse_args(int argc, char **argv) {
   return options;
 }
 
-std::string json_escape(const std::string &value) {
-  std::ostringstream out;
-  for (unsigned char c : value) {
-    switch (c) {
-      case '"':
-        out << "\\\"";
-        break;
-      case '\\':
-        out << "\\\\";
-        break;
-      case '\b':
-        out << "\\b";
-        break;
-      case '\f':
-        out << "\\f";
-        break;
-      case '\n':
-        out << "\\n";
-        break;
-      case '\r':
-        out << "\\r";
-        break;
-      case '\t':
-        out << "\\t";
-        break;
-      default:
-        if (c < 0x20) {
-          out << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(c);
-        } else {
-          out << c;
-        }
-    }
-  }
-  return out.str();
-}
-
-uint64_t fnv1a64(const std::string &value) {
-  uint64_t hash = 1469598103934665603ULL;
-  for (unsigned char c : value) {
-    hash ^= static_cast<uint64_t>(c);
-    hash *= 1099511628211ULL;
-  }
-  return hash;
-}
-
-std::string stable_id(const std::string &prefix, const std::vector<std::string> &parts) {
-  std::ostringstream joined;
-  for (const auto &part : parts) {
-    joined << part << "|";
-  }
-  std::ostringstream out;
-  out << prefix << "_" << std::hex << std::setw(16) << std::setfill('0') << fnv1a64(joined.str());
-  return out.str();
-}
-
-std::unordered_map<int, std::string> load_labels(const std::string &path) {
-  std::unordered_map<int, std::string> labels;
-  if (path.empty()) {
-    return labels;
-  }
-  std::ifstream in(path);
-  if (!in) {
-    throw std::runtime_error("failed to open labels file: " + path);
-  }
-  std::string line;
-  int idx = 0;
-  while (std::getline(in, line)) {
-    if (!line.empty() && line.back() == '\r') {
-      line.pop_back();
-    }
-    if (!line.empty()) {
-      labels[idx] = line;
-    }
-    ++idx;
-  }
-  return labels;
-}
-
 double pts_seconds(const NvDsFrameMeta *frame_meta) {
   if (frame_meta == nullptr || frame_meta->buf_pts == GST_CLOCK_TIME_NONE) {
     return 0.0;
@@ -219,74 +137,45 @@ double pts_seconds(const NvDsFrameMeta *frame_meta) {
   return static_cast<double>(frame_meta->buf_pts) / static_cast<double>(GST_SECOND);
 }
 
-std::string class_name_for(const NvDsObjectMeta *obj_meta, const Context *ctx) {
-  if (obj_meta->obj_label[0] != '\0') {
-    return obj_meta->obj_label;
+NvDsBatchMeta *get_batch_meta(GstBuffer *buffer) {
+  NvDsMeta *meta = gst_buffer_get_nvds_meta(buffer);
+  if (meta == nullptr || meta->meta_type != NVDS_BATCH_GST_META) {
+    return nullptr;
   }
-  auto found = ctx->labels.find(static_cast<int>(obj_meta->class_id));
-  if (found != ctx->labels.end()) {
-    return found->second;
-  }
-  return "class_" + std::to_string(obj_meta->class_id);
+  return static_cast<NvDsBatchMeta *>(meta->meta_data);
+}
+
+vrs::deepstream::RuntimeConfig runtime_config_from(const Options &options) {
+  vrs::deepstream::RuntimeConfig config;
+  config.stream_id = options.stream_id;
+  config.source_id = options.source_id;
+  config.detector_id = options.detector_id;
+  config.bbox.scale_x = options.bbox_scale_x;
+  config.bbox.scale_y = options.bbox_scale_y;
+  config.bbox.offset_x = options.bbox_offset_x;
+  config.bbox.offset_y = options.bbox_offset_y;
+  return config;
 }
 
 void write_detection(const NvDsFrameMeta *frame_meta, const NvDsObjectMeta *obj_meta, Context *ctx) {
-  const double pts_s = pts_seconds(frame_meta);
   const auto &rect = obj_meta->rect_params;
-  const double left =
-      (static_cast<double>(rect.left) + ctx->options.bbox_offset_x) * ctx->options.bbox_scale_x;
-  const double top =
-      (static_cast<double>(rect.top) + ctx->options.bbox_offset_y) * ctx->options.bbox_scale_y;
-  const double right = (static_cast<double>(rect.left) + static_cast<double>(rect.width) +
-                       ctx->options.bbox_offset_x) *
-                      ctx->options.bbox_scale_x;
-  const double bottom = (static_cast<double>(rect.top) + static_cast<double>(rect.height) +
-                        ctx->options.bbox_offset_y) *
-                       ctx->options.bbox_scale_y;
-  const std::string class_name = class_name_for(obj_meta, ctx);
-  const std::string raw_label = obj_meta->obj_label[0] != '\0' ? obj_meta->obj_label : class_name;
-  const std::string track_id =
+  vrs::deepstream::RawObject object;
+  object.frame_index = static_cast<int>(frame_meta->frame_num);
+  object.pts_s = pts_seconds(frame_meta);
+  object.class_id = static_cast<int>(obj_meta->class_id);
+  object.object_label = obj_meta->obj_label[0] != '\0' ? obj_meta->obj_label : "";
+  object.confidence = static_cast<double>(obj_meta->confidence);
+  object.left = static_cast<double>(rect.left);
+  object.top = static_cast<double>(rect.top);
+  object.width = static_cast<double>(rect.width);
+  object.height = static_cast<double>(rect.height);
+  object.track_id =
       obj_meta->object_id == UNTRACKED_OBJECT_ID ? "" : std::to_string(obj_meta->object_id);
-  const std::string detection_id = stable_id(
-      "det",
-      {
-          "deepstream",
-          ctx->options.stream_id,
-          ctx->options.source_id,
-          std::to_string(frame_meta->frame_num),
-          std::to_string(pts_s),
-          class_name,
-          track_id,
-          std::to_string(left) + "," + std::to_string(top) + "," + std::to_string(right) + "," +
-              std::to_string(bottom),
-      });
 
-  ctx->out << std::fixed << std::setprecision(6);
-  ctx->out << "{";
-  ctx->out << "\"schema_version\":\"detection.v1\",";
-  ctx->out << "\"record_type\":\"detection\",";
-  ctx->out << "\"detection_id\":\"" << detection_id << "\",";
-  ctx->out << "\"idempotency_key\":\"" << detection_id << "\",";
-  ctx->out << "\"class_name\":\"" << json_escape(class_name) << "\",";
-  ctx->out << "\"score\":" << static_cast<double>(obj_meta->confidence) << ",";
-  ctx->out << "\"bbox_xyxy\":[" << left << "," << top << "," << right << "," << bottom << "],";
-  ctx->out << "\"raw_label\":\"" << json_escape(raw_label) << "\",";
-  if (track_id.empty()) {
-    ctx->out << "\"track_id\":null,";
-  } else {
-    ctx->out << "\"track_id\":" << track_id << ",";
-  }
-  ctx->out << "\"source_runtime\":\"deepstream\",";
-  ctx->out << "\"observed_at\":\"stream:" << pts_s << "\",";
-  ctx->out << "\"evidence_refs\":[],";
-  ctx->out << "\"stream_id\":\"" << json_escape(ctx->options.stream_id) << "\",";
-  if (!ctx->options.source_id.empty()) {
-    ctx->out << "\"source_id\":\"" << json_escape(ctx->options.source_id) << "\",";
-  }
-  ctx->out << "\"frame_index\":" << frame_meta->frame_num << ",";
-  ctx->out << "\"pts_s\":" << pts_s << ",";
-  ctx->out << "\"detector_id\":\"" << json_escape(ctx->options.detector_id) << "\"";
-  ctx->out << "}\n";
+  ctx->out << vrs::deepstream::detection_jsonl(
+      runtime_config_from(ctx->options),
+      object,
+      ctx->labels);
 }
 
 GstPadProbeReturn metadata_probe(GstPad *, GstPadProbeInfo *info, gpointer user_data) {
@@ -295,7 +184,7 @@ GstPadProbeReturn metadata_probe(GstPad *, GstPadProbeInfo *info, gpointer user_
   if (buffer == nullptr) {
     return GST_PAD_PROBE_OK;
   }
-  NvDsBatchMeta *batch_meta = gst_buffer_get_nvds_batch_meta(buffer);
+  NvDsBatchMeta *batch_meta = get_batch_meta(buffer);
   if (batch_meta == nullptr) {
     return GST_PAD_PROBE_OK;
   }
@@ -337,7 +226,7 @@ void install_probe(GstElement *pipeline, Context *ctx) {
 int run(const Options &options) {
   Context ctx;
   ctx.options = options;
-  ctx.labels = load_labels(options.labels_path);
+  ctx.labels = vrs::deepstream::load_labels(options.labels_path);
   const std::filesystem::path out_path(options.out_path);
   if (out_path.has_parent_path()) {
     std::filesystem::create_directories(out_path.parent_path());
@@ -361,9 +250,15 @@ int run(const Options &options) {
   install_probe(pipeline, &ctx);
 
   GstBus *bus = gst_element_get_bus(pipeline);
-  gst_element_set_state(pipeline, GST_STATE_PLAYING);
+  const GstStateChangeReturn state_change = gst_element_set_state(pipeline, GST_STATE_PLAYING);
+  if (state_change == GST_STATE_CHANGE_FAILURE) {
+    gst_object_unref(bus);
+    gst_object_unref(pipeline);
+    throw std::runtime_error("failed to set pipeline to PLAYING");
+  }
 
   bool done = false;
+  bool had_error = false;
   while (!done && !g_stop.load()) {
     GstMessage *msg = gst_bus_timed_pop_filtered(
         bus,
@@ -387,6 +282,7 @@ int run(const Options &options) {
         if (debug != nullptr) {
           g_free(debug);
         }
+        had_error = true;
         done = true;
         break;
       }
@@ -402,7 +298,7 @@ int run(const Options &options) {
   gst_element_set_state(pipeline, GST_STATE_NULL);
   gst_object_unref(bus);
   gst_object_unref(pipeline);
-  return 0;
+  return had_error ? 1 : 0;
 }
 
 }  // namespace

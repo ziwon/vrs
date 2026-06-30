@@ -26,10 +26,13 @@ RUN cmake -S native/deepstream -B build/deepstream \
 FROM ${DEEPSTREAM_IMAGE} AS runtime
 
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,graphics \
-    LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib:${LD_LIBRARY_PATH}
+    LD_LIBRARY_PATH=/opt/nvidia/deepstream/deepstream/lib \
+    GST_PLUGIN_PATH=/opt/vrs/lib/gstreamer-1.0
 
 COPY --from=builder /opt/vrs/bin/vrs-deepstream-worker /opt/vrs/bin/vrs-deepstream-worker
 COPY --from=builder /opt/vrs/lib/libnvdsinfer_custom_yoloe.so /opt/vrs/lib/libnvdsinfer_custom_yoloe.so
+COPY --from=builder /opt/vrs/lib/gstreamer-1.0/libgstvrsmeta.so /opt/vrs/lib/gstreamer-1.0/libgstvrsmeta.so
 COPY native/deepstream/configs /opt/vrs/share/deepstream/configs
+COPY configs/deepstream /opt/vrs/share/deepstream/configs
 
 ENTRYPOINT ["/opt/vrs/bin/vrs-deepstream-worker"]

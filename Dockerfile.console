@@ -1,6 +1,6 @@
 FROM nginx:1.27-alpine
 
-COPY docker/console-nginx.conf /etc/nginx/conf.d/default.conf
-COPY console /usr/share/nginx/html
+COPY console/nginx.conf /etc/nginx/conf.d/default.conf
+COPY console/index.html console/app.js console/config.js console/sample_alerts.jsonl /usr/share/nginx/html/
 
 EXPOSE 80

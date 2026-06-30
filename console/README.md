@@ -20,6 +20,7 @@ If the backend is unavailable, it falls back to embedded sample alerts.
 | `index.html` | Page shell (Tailwind via CDN, VRS Console header + sidebar + main). |
 | `app.js` | Tabs, filters, sample data, synthetic-keyframe SVGs, detail drawer. |
 | `config.js` | Runtime API configuration. |
+| `nginx.conf` | Docker Compose console image config and same-origin `/api/*` proxy. |
 | `sample_alerts.jsonl` | Legacy fallback data. |
 
 ## Tabs

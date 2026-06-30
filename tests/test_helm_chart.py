@@ -52,7 +52,10 @@ def test_helm_profiles_keep_gpu_roles_explicit() -> None:
         prod["deepstreamWorker"]["args"].index("--pipeline") + 1
     ]
     assert "width=640 height=640 enable-padding=1" in pipeline
-    assert "pgie-yoloe-safety.txt" in pipeline
+    assert "nvdspreprocess" in pipeline
+    assert "preprocess-yoloe-safety.txt" in pipeline
+    assert "nvinfer input-tensor-meta=true" in pipeline
+    assert "pgie-yoloe-safety-preprocess.txt" in pipeline
     assert "vrsmeta" in pipeline
     assert "output-path=/tmp/vrs/deepstream_detections.jsonl" in pipeline
     assert "pgie.txt" not in pipeline
@@ -158,8 +161,11 @@ def test_helm_template_prod_renders_seaweedfs_storage() -> None:
     assert "--pipeline" in adapter_container["args"]
     rendered_pipeline = adapter_container["args"][adapter_container["args"].index("--pipeline") + 1]
     assert "width=640 height=640 enable-padding=1" in rendered_pipeline
-    assert "/opt/vrs/share/deepstream/configs/pgie-yoloe-safety.txt" in rendered_pipeline
+    assert "nvdspreprocess config-file=/opt/vrs/share/deepstream/configs/preprocess-yoloe-safety.txt" in rendered_pipeline
+    assert "nvinfer input-tensor-meta=true" in rendered_pipeline
+    assert "/opt/vrs/share/deepstream/configs/pgie-yoloe-safety-preprocess.txt" in rendered_pipeline
     assert "vrsmeta" in rendered_pipeline
+    assert "detector-id=ds8-nvinfer-preprocess" in rendered_pipeline
     assert "output-path=/tmp/vrs/deepstream_detections.jsonl" in rendered_pipeline
     assert "/opt/vrs/share/deepstream/configs/yoloe-safety-labels.txt" in rendered_pipeline
     assert "--disable-probe" in adapter_container["args"]

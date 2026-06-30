@@ -17,9 +17,9 @@ Profiles:
   disables sample metadata and injects SeaweedFS S3-compatible endpoint,
   bucket, and credential environment variables into workloads. The verifier
   worker is disabled until a real service entrypoint exists. The DeepStream
-  worker uses the DS8 image-baked YOLOE PGIE/label configs and expects the
-  deployment to provide `vrs-deepstream-input` and `vrs-deepstream-models`
-  PVCs for input media/RTSP config and TensorRT engines.
+  worker uses the DS8 image-baked YOLOE preprocess/PGIE/label configs and
+  expects the deployment to provide `vrs-deepstream-input` and
+  `vrs-deepstream-models` PVCs for input media/RTSP config and TensorRT engines.
 
 Workload components:
 
@@ -42,10 +42,11 @@ The default metadata adapter worker command points at
 JSON/JSONL into canonical `detection.v1` JSONL for CPU-only smoke tests. The
 production profile points at `/opt/vrs/bin/vrs-deepstream-worker`, the native
 DS 8.0 C++ worker. Its reference pipeline uses a square `nvstreammux`
-(`width=640 height=640 enable-padding=1`) and
-`/opt/vrs/share/deepstream/configs/pgie-yoloe-safety.txt` to avoid the
-aspect-ratio distortion documented in the DS8 YOLOE validation note. The
-default chart mounts `/data`, creates a local PVC when
+(`width=640 height=640 enable-padding=1`), an explicit `nvdspreprocess` stage,
+and `nvinfer input-tensor-meta=true` with
+`/opt/vrs/share/deepstream/configs/pgie-yoloe-safety-preprocess.txt`. This keeps
+the production profile aligned with the raw tensor parity evidence documented in
+the DS8 YOLOE validation note. The default chart mounts `/data`, creates a local PVC when
 `objectStorage.mode: local-pvc`, mounts sample metadata through a ConfigMap, and
 writes adapter output under `/data/runs`.
 
@@ -54,7 +55,8 @@ keeps the current worker small while providing a real platform handoff:
 
 ```text
 vrs-deepstream-worker --disable-probe
-  -> nvinfer ! nvtracker ! vrsmeta output-path=/tmp/vrs/deepstream_detections.jsonl
+  -> nvdspreprocess ! nvinfer input-tensor-meta=true ! nvtracker
+  -> vrsmeta output-path=/tmp/vrs/deepstream_detections.jsonl
   -> python -m vrs.deepstream.jsonl_bridge
   -> Redis Streams: vrs.detections
 ```

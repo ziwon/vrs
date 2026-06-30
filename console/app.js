@@ -11,6 +11,11 @@ const CONFIG = window.VRS_CONFIG || {};
 const API_BASE = CONFIG.apiBaseUrl ?? "";
 const DEFAULT_RUN = CONFIG.defaultRun ?? "fixture_multi";
 const POLL_MS = Number(CONFIG.pollMs ?? 3000);
+const DEFAULT_HLS_BASE = location.protocol.startsWith("http")
+  ? `${location.protocol}//${location.hostname || "127.0.0.1"}:8888`
+  : "http://127.0.0.1:8888";
+const HLS_BASE = String(CONFIG.hlsBaseUrl || DEFAULT_HLS_BASE).replace(/\/+$/, "");
+const hlsPlayers = [];
 
 /* ───────────────────────── Icons (Tabler-style, 24×24, currentColor) ───────────────────────── */
 const ICON = {
@@ -162,6 +167,44 @@ function apiUrl(path) {
   return `${API_BASE}${path}`;
 }
 
+function streamPathFromUrl(rawUrl) {
+  if (!rawUrl) return "";
+  try {
+    return new URL(rawUrl).pathname.replace(/^\/+|\/+$/g, "");
+  } catch {
+    return "";
+  }
+}
+
+function hlsUrlForStream(stream) {
+  if (stream.hls_url) return String(stream.hls_url);
+  const path = streamPathFromUrl(stream.rtsp_url) || String(stream.id || "").replace(/^\/+|\/+$/g, "");
+  return path ? `${HLS_BASE}/${encodeURIComponent(path)}/index.m3u8` : "";
+}
+
+function destroyLivePlayers() {
+  while (hlsPlayers.length) {
+    hlsPlayers.pop().destroy();
+  }
+}
+
+function initLivePlayers() {
+  document.querySelectorAll("video[data-hls-src]").forEach((video) => {
+    const src = video.getAttribute("data-hls-src");
+    if (!src) return;
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = src;
+      return;
+    }
+    if (window.Hls?.isSupported()) {
+      const hls = new window.Hls({ lowLatencyMode: true });
+      hls.loadSource(src);
+      hls.attachMedia(video);
+      hlsPlayers.push(hls);
+    }
+  });
+}
+
 async function apiJSON(path) {
   const res = await fetch(apiUrl(path), { cache: "no-store" });
   if (!res.ok) throw new Error(`${path} returned ${res.status}`);
@@ -173,7 +216,7 @@ function normalizeAlert(raw) {
   return {
     ...raw,
     ts: raw.ts || raw.created_at || raw.written_at || "",
-    stream_id: String(raw.stream_id || "cam-01"),
+    stream_id: String(raw.stream_id || state.rtsp?.path || "cam-01"),
     class_name: String(raw.class_name || fallback.name),
     severity: String(raw.severity || fallback.severity),
     true_alert: Boolean(raw.true_alert),
@@ -530,6 +573,7 @@ function renderCascade() {
 
 /* ── Streams ── */
 function renderStreams() {
+  destroyLivePlayers();
   const streams = visibleStreams();
   const cards = streams.map((s) => {
     const recent = state.alerts.filter((a) => a.stream_id === s.id);
@@ -537,9 +581,13 @@ function renderStreams() {
     const online = s.status === "online";
     const dotCls = online ? "bg-nv-green" : "bg-amber-500";
     const streamUrl = s.rtsp_url || state.rtsp?.url || "";
+    const hlsUrl = hlsUrlForStream(s);
+    const liveVideo = hlsUrl
+      ? `<video data-hls-src="${esc(hlsUrl)}" class="w-full h-full object-cover bg-gray-950" autoplay muted playsinline controls preload="metadata"></video>`
+      : "";
     return `<div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-      <div class="relative">
-        ${last ? thumbMarkup(last, 640, 240, "contain").replace('style="width:640px;height:240px"', 'style="width:100%;height:240px"') : `<div class="w-full aspect-video bg-gray-900 flex items-center justify-center text-gray-600">${icon("video", 32)}</div>`}
+      <div class="relative aspect-video bg-gray-950">
+        ${liveVideo || (last ? thumbMarkup(last, 640, 240, "contain").replace('style="width:640px;height:240px"', 'style="width:100%;height:100%"') : `<div class="w-full h-full flex items-center justify-center text-gray-600">${icon("video", 32)}</div>`)}
         <div class="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 rounded bg-black/55 text-xs text-white">
           <span class="live-dot w-2 h-2 rounded-full ${dotCls}"></span>${esc(String(s.status || "").toUpperCase())} · ${Number(s.fps || 0)} fps
         </div>
@@ -553,6 +601,7 @@ function renderStreams() {
         </div>
         <div class="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 mt-1">${icon("pin", 12)} ${esc(s.location)}</div>
         ${streamUrl ? `<div class="mt-1 text-xs text-gray-400 dark:text-gray-500 font-mono break-all">RTSP ${esc(streamUrl)}</div>` : ""}
+        ${hlsUrl ? `<div class="mt-1 text-xs text-gray-400 dark:text-gray-500 font-mono break-all">HLS ${esc(hlsUrl)}</div>` : ""}
         ${last ? `<div class="mt-2 flex items-center gap-2 text-sm">${sevChip(last.severity)}<span class="text-gray-500 dark:text-gray-400 truncate">${esc(last.rationale)}</span></div>` : ""}
       </div>
     </div>`;
@@ -562,6 +611,7 @@ function renderStreams() {
     <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Per-stream latest keyframe for the selected run.</p>
     <div class="grid base:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">${cards || `<div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 text-sm text-gray-400">No stream artifacts for the selected run.</div>`}</div>
   </div>`;
+  initLivePlayers();
 }
 
 /* ── Policy ── */
@@ -649,6 +699,7 @@ function toggleTheme() {
 }
 
 function render() {
+  if (state.tab !== "streams") destroyLivePlayers();
   renderNav();
   ({ alerts: renderAlerts, cascade: renderCascade, streams: renderStreams, policy: renderPolicy }[state.tab] || renderAlerts)();
 }
